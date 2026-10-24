@@ -421,6 +421,66 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual(kept[0]["status"], "COMPLETED")
         self.assertGreaterEqual(len(conference.json()["common_opponents"]), 3)
 
+    def test_scouting_report_meter_stays_in_range(self) -> None:
+        from types import SimpleNamespace
+
+        from scouting import build_scouting_report
+
+        with engine.connect() as connection:
+            sporting = connection.execute(
+                text("SELECT id FROM team WHERE name = 'Sporting SA JAX' AND age_group = 'U13' AND tier = 'ECNL'")
+            ).scalar_one()
+            parkland = connection.execute(
+                text("SELECT id FROM team WHERE name = 'Parkland Soccer Club' AND age_group = 'U13' AND tier = 'ECNL'")
+            ).scalar_one()
+        response = self.client.get(f"/head-to-head?team_a_id={sporting}&team_b_id={parkland}")
+        self.assertEqual(response.status_code, 200, response.text)
+        report = response.json()["scouting_report"]
+        self.assertIn(report["favored_team"], {"team_a", "team_b", "even"})
+        self.assertIn(report["verdict_headline"], {"Little separates them", "Slight edge", "Favored"})
+        self.assertIn(report["projected_tempo"], {"High-Scoring", "Tight Defensive Battle", "Balanced Matchup"})
+        self.assertGreaterEqual(report["edge_meter"], -100)
+        self.assertLessEqual(report["edge_meter"], 100)
+        self.assertGreaterEqual(len(report["insights"]), 3)
+        self.assertLessEqual(len(report["insights"]), 4)
+        for card in report["insights"]:
+            self.assertIn(card["advantage"], {"team_a", "team_b", "even"})
+            self.assertLess(len(card["headline"].split()), 6)
+            self.assertLess(len(card["detail"]), 32)
+
+        def tape(team_id: int, name: str, ppg: float, gd: int, gf: float, ga: float, split: float, form: list[str]):
+            record = SimpleNamespace(ppg=ppg, gd=gd, gp=10)
+            side = SimpleNamespace(ppg=split, gp=5)
+            return SimpleNamespace(
+                team_id=team_id,
+                name=name,
+                overall_record=record,
+                home_record=side,
+                away_record=side,
+                avg_gf=gf,
+                avg_ga=ga,
+                last_5_form=[SimpleNamespace(result=mark) for mark in form],
+            )
+
+        def rollup(ppg: float, gd: int):
+            return SimpleNamespace(ppg=ppg, gd=gd, gp=10)
+
+        empty = SimpleNamespace(summary=SimpleNamespace(team_a_wins=0, team_b_wins=0, draws=0, team_a_goals=0, team_b_goals=0), games=[])
+        strong = build_scouting_report(
+            tape(1, "Alpha", 3.0, 30, 5.0, 0.0, 3.0, ["W", "W", "W", "W", "W"]),
+            tape(2, "Beta", 0.0, -30, 0.0, 1.0, 0.0, ["L", "L", "L", "L", "L"]),
+            SimpleNamespace(team_a_vs_common=rollup(3.0, 30), team_b_vs_common=rollup(0.0, -30)),
+            empty,
+        )
+        weak = build_scouting_report(
+            tape(1, "Alpha", 0.0, -30, 0.0, 1.0, 0.0, ["L", "L", "L", "L", "L"]),
+            tape(2, "Beta", 3.0, 30, 5.0, 0.0, 3.0, ["W", "W", "W", "W", "W"]),
+            SimpleNamespace(team_a_vs_common=rollup(0.0, -30), team_b_vs_common=rollup(3.0, 30)),
+            empty,
+        )
+        self.assertEqual(strong.edge_meter, 100)
+        self.assertEqual(weak.edge_meter, -100)
+
     def test_empty_raw_text_is_400(self) -> None:
         response = self.client.post("/ingest/raw-text", json={"text": "   "})
         self.assertEqual(response.status_code, 400)
