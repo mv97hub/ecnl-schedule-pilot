@@ -181,6 +181,94 @@ def kickoff_iso(game_date: str, zone_name: str) -> str:
     return aware.isoformat()
 
 
+def official_result(match: dict) -> tuple[str, int | None, int | None]:
+    """Use a published box score. Unplayed games stay scheduled with no score."""
+
+    flag = (match.get("flagText") or "").strip().casefold()
+    schedule_status = (match.get("status") or "").strip().casefold()
+    if "postpone" in flag or "postpone" in schedule_status:
+        return "POSTPONED", None, None
+    if "cancel" in flag or "cancel" in schedule_status:
+        return "CANCELLED", None, None
+    home = match.get("hometeamscore")
+    away = match.get("awayteamscore")
+    if flag == "box score" and home is not None and away is not None:
+        return "COMPLETED", int(home), int(away)
+    return "SCHEDULED", None, None
+
+
+def fetch_match_index() -> dict[int, dict]:
+    """Current ECNL Boys matches from AthleteOne, keyed by match id."""
+
+    clubs = get_json(f"{API}/Event/get-org-club-list-by-orgID/{ORG_ID}")
+    event_ids = sorted({club["eventID"] for club in clubs if club.get("eventID") and club["eventID"] not in SKIP_EVENT_IDS})
+    flights: list[tuple[int, int]] = []
+    for event_id in event_ids:
+        details = get_json(f"{API}/team/get-event-details-by-eventid/{event_id}")
+        name = details["name"]
+        if SEASON not in name or not name.startswith("ECNL Boys"):
+            continue
+        divisions = get_json(f"{API}/Event/get-event-schedule-or-standings/{event_id}")
+        for division in divisions.get("boysDivAndFlightList") or []:
+            for flight in division.get("flightList") or []:
+                flights.append((event_id, flight["flightID"]))
+
+    def fetch_flight(item: tuple[int, int]) -> list[dict]:
+        event_id, flight_id = item
+        rows = get_json(f"{API}/Event/get-schedules-by-flight/{event_id}/{flight_id}/0")
+        return rows if isinstance(rows, list) else []
+
+    index: dict[int, dict] = {}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for future in as_completed(pool.submit(fetch_flight, item) for item in flights):
+            for match in future.result():
+                match_id = match.get("matchID")
+                if match_id is None or match.get("isactive") == 0:
+                    continue
+                if not match.get("hometeamID") or not match.get("awayteamID"):
+                    continue
+                index[match_id] = match
+    return index
+
+
+def apply_official_results(payload: dict, index: dict[int, dict]) -> dict[str, int]:
+    completed = scheduled = missing = 0
+    for game in payload["games"]:
+        match = index.get(game["source_id"])
+        if match is None:
+            game["status"] = "SCHEDULED"
+            game["home_score"] = None
+            game["away_score"] = None
+            missing += 1
+            continue
+        status, home_score, away_score = official_result(match)
+        game["status"] = status
+        game["home_score"] = home_score
+        game["away_score"] = away_score
+        if status == "COMPLETED":
+            completed += 1
+        else:
+            scheduled += 1
+    return {"completed": completed, "scheduled": scheduled, "missing": missing, "official_matches": len(index)}
+
+
+def refresh_scores() -> dict:
+    """Write published box scores onto the saved schedule without reloading venues."""
+
+    if not OUTPUT.is_file():
+        raise RuntimeError(f"Missing {OUTPUT}. Run load_league.py first.")
+    payload = json.loads(OUTPUT.read_text())
+    index = fetch_match_index()
+    stats = apply_official_results(payload, index)
+    OUTPUT.write_text(json.dumps(payload))
+    print(
+        f"Updated {OUTPUT.name}: completed={stats['completed']} scheduled={stats['scheduled']} "
+        f"missing={stats['missing']} official_matches={stats['official_matches']}",
+        flush=True,
+    )
+    return payload
+
+
 def event_label(match: dict) -> str | None:
     if match.get("friendly") == 1:
         return "Friendly"
@@ -276,6 +364,7 @@ def load() -> dict:
             missing_place += 1
             city, state = home["city"] or "Unknown", home["state"] or "FL"
         zone = timezone_for(state, zip_code)
+        status, home_score, away_score = official_result(match)
         games.append(
             {
                 "source_id": match["matchID"],
@@ -287,6 +376,9 @@ def load() -> dict:
                 "city": city,
                 "state": state,
                 "event": event_label(match),
+                "status": status,
+                "home_score": home_score,
+                "away_score": away_score,
             }
         )
 
@@ -322,4 +414,9 @@ def load() -> dict:
 
 
 if __name__ == "__main__":
-    load()
+    import sys
+
+    if "--scores" in sys.argv:
+        refresh_scores()
+    else:
+        load()

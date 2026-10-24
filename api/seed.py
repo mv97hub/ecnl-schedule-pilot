@@ -6,8 +6,8 @@ api/data/ecnl_boys_2026_27.json. Refresh that file with load_league.py.
 
 from __future__ import annotations
 
-import hashlib
 import json
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -55,16 +55,17 @@ def _conference_game(event: str | None, venue: str) -> bool:
     return "invitational" not in blob.lower()
 
 
-def _final_score(home_id: int, away_id: int, starts_at: datetime) -> tuple[str, int | None, int | None]:
-    kickoff = starts_at if starts_at.tzinfo is not None else starts_at.replace(tzinfo=UTC)
-    if kickoff.year < 2024 or kickoff >= datetime.now(UTC):
-        return "SCHEDULED", None, None
-    digest = hashlib.sha256(f"{home_id}:{away_id}:{kickoff.isoformat()}".encode()).digest()
-    home_score = digest[0] % 5
-    away_score = digest[1] % 5
-    if home_score == away_score and digest[2] % 5 != 0:
-        home_score = (home_score + 1) % 5
-    return "COMPLETED", home_score, away_score
+def _published_score(row: dict) -> tuple[str, int | None, int | None]:
+    status = row.get("status") or "SCHEDULED"
+    if status not in {"SCHEDULED", "COMPLETED", "POSTPONED", "CANCELLED"}:
+        status = "SCHEDULED"
+    home_score = row.get("home_score")
+    away_score = row.get("away_score")
+    if status != "COMPLETED" or home_score is None or away_score is None:
+        if status == "COMPLETED":
+            status = "SCHEDULED"
+        return status, None, None
+    return "COMPLETED", int(home_score), int(away_score)
 
 
 def seed() -> dict[str, int]:
@@ -96,7 +97,7 @@ def seed() -> dict[str, int]:
             if home is None or away is None or home.age_group != away.age_group:
                 continue
             starts_at = datetime.fromisoformat(row["starts_at"])
-            status, home_score, away_score = _final_score(home.id, away.id, starts_at)
+            status, home_score, away_score = _published_score(row)
             games.append(
                 Game(
                     home_team_id=home.id,
@@ -132,5 +133,65 @@ def seed() -> dict[str, int]:
     return {"teams": team_count, "games": game_count}
 
 
+def _instant(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def apply_published_scores() -> dict[str, int]:
+    """Replace stored results with the box scores saved in the league file. Does not drop tables."""
+
+    if not DATA_PATH.is_file():
+        raise RuntimeError(f"Missing {DATA_PATH}. Run: python load_league.py --scores")
+    payload = json.loads(DATA_PATH.read_text())
+    teams_by_source = {row["source_id"]: row for row in payload["teams"]}
+    published: dict[tuple, list[dict]] = {}
+    for row in payload["games"]:
+        home = teams_by_source[row["home_source_id"]]
+        away = teams_by_source[row["away_source_id"]]
+        key = (home["name"], away["name"], home["age_group"], _instant(datetime.fromisoformat(row["starts_at"])))
+        published.setdefault(key, []).append(row)
+
+    updated = unmatched = ambiguous = 0
+    with Session(engine) as session:
+        db_teams = {team.id: team for team in session.scalars(select(Team)).all()}
+        for game in session.scalars(select(Game)).all():
+            home = db_teams[game.home_team_id]
+            away = db_teams[game.away_team_id]
+            key = (home.name, away.name, home.age_group, _instant(game.starts_at))
+            choices = published.get(key, [])
+            if len(choices) > 1:
+                choices = [row for row in choices if row["venue_name"] == game.venue_name]
+            if len(choices) != 1:
+                if len(choices) > 1:
+                    ambiguous += 1
+                else:
+                    unmatched += 1
+                game.status = "SCHEDULED"
+                game.home_score = None
+                game.away_score = None
+                continue
+            status, home_score, away_score = _published_score(choices[0])
+            game.status = status
+            game.home_score = home_score
+            game.away_score = away_score
+            updated += 1
+        if unmatched + ambiguous > 50:
+            session.rollback()
+            raise RuntimeError(f"Refusing to apply scores: {unmatched} unmatched and {ambiguous} ambiguous games.")
+        session.commit()
+        if unmatched or ambiguous:
+            print(f"Score match left {unmatched} unmatched and {ambiguous} ambiguous games scheduled.", flush=True)
+        ecnl_rows = replace_ecnl_standings(session)
+        completed = int(session.scalar(select(func.count()).select_from(Game).where(Game.status == "COMPLETED")) or 0)
+
+    print(f"Applied published scores: updated={updated} completed={completed} ecnl_standings={ecnl_rows}", flush=True)
+    return {"updated": updated, "unmatched": unmatched, "ambiguous": ambiguous, "completed": completed}
+
+
 if __name__ == "__main__":
-    seed()
+    if "--apply-scores" in sys.argv:
+        apply_published_scores()
+    else:
+        seed()
