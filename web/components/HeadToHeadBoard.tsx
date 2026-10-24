@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { ResultMark } from "@/components/ResultMark";
+import { ShareMatchup } from "@/components/ShareMatchup";
 import { fetchHeadToHead, fetchTeams } from "@/lib/api";
 import { AGE_GROUPS, TIERS } from "@/lib/leagues";
 import type { CommonGame, CommonOpponent, CountRecord, DirectMatch, HeadToHeadReport, OpponentMini, Rollup, ScoutingReport, SplitRecord, Team, TeamTape } from "@/lib/types";
@@ -506,8 +507,15 @@ export function HeadToHeadBoard() {
   return (
     <div className="min-h-full bg-stone-100">
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-        <h1 className="text-3xl font-semibold tracking-tight text-stone-950">Head-to-Head</h1>
-        <p className="mt-1 text-sm text-stone-500">Direct meetings and how each club did against the same opponents.</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight text-stone-950">Head-to-Head</h1>
+            <p className="mt-1 text-sm text-stone-500">Direct meetings and how each club did against the same opponents.</p>
+          </div>
+          {report && !loading && teamA && teamB && report.team_a_stats.team_id === teamA && report.team_b_stats.team_id === teamB ? (
+            <ShareMatchup report={report} teamA={teamA} teamB={teamB} conferenceOnly={conferenceOnly} />
+          ) : null}
+        </div>
 
         <div className="mt-6 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
           <SideSelect prefix="team-a" legend="Team A" side={sideA} teams={teams} prefer={null} onChange={(next) => commit(setSideA, sideA, next, teamB)} />
