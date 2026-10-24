@@ -6,10 +6,11 @@ import { useEffect, useMemo, useState } from "react";
 import { ConferenceSelect } from "@/components/ConferenceSelect";
 import { FilterPills } from "@/components/FilterPills";
 import { ScheduleCard } from "@/components/ScheduleCard";
+import { SeasonBanner } from "@/components/SeasonBanner";
 import { TeamSelector } from "@/components/TeamSelector";
 import { fetchSchedule, fetchTeams } from "@/lib/api";
 import { teamLabel } from "@/lib/format";
-import type { Game, ScheduleFilter, Team } from "@/lib/types";
+import type { Game, ScheduleFilter, Team, TeamRecordSummary } from "@/lib/types";
 
 export function Dashboard() {
   const [teams, setTeams] = useState<Team[]>([]);
@@ -18,6 +19,7 @@ export function Dashboard() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [filter, setFilter] = useState<ScheduleFilter>("all");
   const [games, setGames] = useState<Game[]>([]);
+  const [summary, setSummary] = useState<TeamRecordSummary | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,10 +29,12 @@ export function Dashboard() {
       .then((data) => {
         if (cancelled) return;
         setTeams(data);
+        const requested = Number(new URLSearchParams(window.location.search).get("team"));
+        const requestedTeam = data.find((team) => team.id === requested);
         const names = [...new Set(data.map((team) => team.conference))].sort((a, b) => a.localeCompare(b));
-        const initialConference = names[0] ?? null;
+        const initialConference = requestedTeam?.conference ?? names[0] ?? null;
+        const firstTeam = requestedTeam ?? data.find((team) => team.conference === initialConference);
         setConference(initialConference);
-        const firstTeam = data.find((team) => team.conference === initialConference);
         if (firstTeam) {
           setScheduleLoading(true);
           setSelectedId(firstTeam.id);
@@ -51,13 +55,17 @@ export function Dashboard() {
     if (selectedId == null) return;
     let cancelled = false;
     fetchSchedule(selectedId, filter)
-      .then((nextGames) => {
-        if (!cancelled) setGames(nextGames);
+      .then((payload) => {
+        if (!cancelled) {
+          setGames(payload.games);
+          setSummary(payload.team_record_summary);
+        }
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "Failed to load schedule");
         setGames([]);
+        setSummary(null);
       })
       .finally(() => {
         if (!cancelled) setScheduleLoading(false);
@@ -83,6 +91,7 @@ export function Dashboard() {
     setConference(next);
     setScheduleLoading(true);
     setGames([]);
+    setSummary(null);
     setError(null);
     setSelectedId(nextTeam?.id ?? null);
   }
@@ -120,6 +129,7 @@ export function Dashboard() {
                 if (team.id === selectedId) return;
                 setScheduleLoading(true);
                 setGames([]);
+                setSummary(null);
                 setError(null);
                 setSelectedId(team.id);
               }}
@@ -129,6 +139,7 @@ export function Dashboard() {
       </header>
 
       <main className="mx-auto max-w-6xl px-6 py-8">
+        {selected && summary && <SeasonBanner team={selected} summary={summary} />}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <FilterPills
             value={filter}

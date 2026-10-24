@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import date, datetime, time
 
@@ -9,7 +10,7 @@ from bs4 import BeautifulSoup
 from icalendar import Calendar
 
 from app.ingestion.normalizer import looks_like_showcase, normalize_field_number, split_location, split_venue
-from app.ingestion.upsert import ParsedGame
+from app.ingestion.upsert import ParsedGame, ParsedScore
 
 _VERSUS = r"(?:versus|vs\.?|v\.?)"
 _DATE_PREFIXES = (
@@ -348,3 +349,215 @@ def _game_from_cells(
         age_group=age_group,
         tier=tier,
     )
+
+
+_SCORE_TOKEN = re.compile(
+    r"^(?:(?P<tag>[WLDT])\s+)?(?P<a>\d{1,2})\s*[-–—]\s*(?P<b>\d{1,2})$",
+    re.IGNORECASE,
+)
+_SCORE_IN_LINE = re.compile(
+    r"(?:(?P<tag>[WLDT])\s+)?(?P<a>\d{1,2})\s*[-–—]\s*(?P<b>\d{1,2})",
+    re.IGNORECASE,
+)
+_STANDING_NUMBER = re.compile(r"-?\d+(?:\.\d+)?")
+_STAT_HEADERS = {
+    "gp": "gp",
+    "w": "w",
+    "l": "l",
+    "d": "d",
+    "t": "d",
+    "gf": "gf",
+    "ga": "ga",
+    "gd": "gd",
+    "pts": "pts",
+    "points": "pts",
+    "ppg": "ppg",
+}
+_DEFAULT_STAT_ORDER = ("gp", "w", "l", "d", "gf", "ga", "gd", "pts", "ppg")
+
+
+def parse_score_token(token: str) -> tuple[int, int] | None:
+    match = _SCORE_TOKEN.match(" ".join(token.split()))
+    if match is None:
+        return None
+    tag = (match.group("tag") or "").upper()
+    home_score = int(match.group("a"))
+    away_score = int(match.group("b"))
+    if tag == "W" and home_score < away_score:
+        home_score, away_score = away_score, home_score
+    return home_score, away_score
+
+
+def parse_score_text(text: str, *, age_group: str, tier: str | None = None) -> list[ParsedScore]:
+    stripped = text.strip()
+    if stripped.startswith("{") or stripped.startswith("["):
+        try:
+            payload = json.loads(stripped)
+        except json.JSONDecodeError as exc:
+            raise ValueError("Could not parse the scores JSON") from exc
+        records = payload.get("games") if isinstance(payload, dict) else payload
+        if not isinstance(records, list):
+            raise ValueError("Scores JSON must be a list of games")
+        return scores_from_records(records, age_group=age_group, tier=tier)
+
+    games: list[ParsedScore] = []
+    for raw_line in text.splitlines():
+        line = " ".join(raw_line.replace("\xa0", " ").split())
+        if not line or line.startswith("#"):
+            continue
+        game = _parse_score_line(line, age_group, tier)
+        if game is not None:
+            games.append(game)
+    return games
+
+
+def scores_from_records(records: list[object], *, age_group: str, tier: str | None) -> list[ParsedScore]:
+    games: list[ParsedScore] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        game_date = _parse_date(str(record.get("date") or record.get("game_date") or ""))
+        home = str(record.get("home_team") or record.get("home") or "").strip()
+        away = str(record.get("away_team") or record.get("away") or "").strip()
+        if game_date is None or not home or not away:
+            continue
+        if record.get("home_score") is not None and record.get("away_score") is not None:
+            home_score = int(record["home_score"])
+            away_score = int(record["away_score"])
+        else:
+            parsed = parse_score_token(str(record.get("score") or ""))
+            if parsed is None:
+                continue
+            home_score, away_score = parsed
+        status = str(record.get("status") or "COMPLETED").upper()
+        games.append(
+            ParsedScore(
+                game_date=game_date,
+                home_name=home,
+                away_name=away,
+                home_score=home_score,
+                away_score=away_score,
+                age_group=age_group,
+                tier=tier,
+                status=status if status in {"COMPLETED", "POSTPONED", "CANCELLED"} else "COMPLETED",
+            )
+        )
+    return games
+
+
+def _parse_score_line(line: str, age_group: str, tier: str | None) -> ParsedScore | None:
+    if "|" in line:
+        parts = [part.strip() for part in line.split("|")]
+        if parts and parts[0].lower() in {"date", "game date"}:
+            return None
+        game_date = _parse_date(parts[0]) if parts else None
+        if game_date is None or len(parts) < 4:
+            return None
+        if parse_score_token(parts[2]):
+            home, away, token = parts[1], parts[3], parts[2]
+        elif parse_score_token(parts[3]):
+            home, away, token = parts[1], parts[2], parts[3]
+        else:
+            return None
+        parsed = parse_score_token(token)
+        if parsed is None or not home or not away:
+            return None
+        home_score, away_score = parsed
+        return ParsedScore(
+            game_date=game_date,
+            home_name=home,
+            away_name=away,
+            home_score=home_score,
+            away_score=away_score,
+            age_group=age_group,
+            tier=tier,
+        )
+
+    remainder = line
+    game_date: date | None = None
+    for pattern in _DATE_PREFIXES:
+        match = pattern.match(remainder)
+        if match:
+            game_date = _parse_date(match.group("date"))
+            remainder = remainder[match.end() :].strip()
+            break
+    if game_date is None:
+        return None
+    found = _SCORE_IN_LINE.search(remainder)
+    if found is None:
+        return None
+    home = remainder[: found.start()].strip(" -")
+    away = remainder[found.end() :].strip(" -")
+    parsed = parse_score_token(found.group(0))
+    if parsed is None or not home or not away:
+        return None
+    home_score, away_score = parsed
+    return ParsedScore(
+        game_date=game_date,
+        home_name=home,
+        away_name=away,
+        home_score=home_score,
+        away_score=away_score,
+        age_group=age_group,
+        tier=tier,
+    )
+
+
+def parse_standings_text(text: str) -> list[dict[str, object]]:
+    order = list(_DEFAULT_STAT_ORDER)
+    rows: list[dict[str, object]] = []
+    for raw_line in text.splitlines():
+        line = " ".join(raw_line.replace("\xa0", " ").replace("|", " ").split())
+        if not line or line.startswith("#"):
+            continue
+        header = _standing_header(line)
+        if header is not None:
+            order = header
+            continue
+        line = re.sub(r"^\d{1,2}\s+(?=[A-Za-z])", "", line)
+        split = re.match(r"^(?P<name>.*?)\s+(?P<rest>-?\d.*)$", line)
+        if split is None:
+            continue
+        numbers = [float(value) if "." in value else int(value) for value in _STANDING_NUMBER.findall(split.group("rest"))]
+        if len(numbers) < 6:
+            continue
+        values = {column: numbers[index] for index, column in enumerate(order) if index < len(numbers)}
+        try:
+            games_played = int(values["gp"])
+            wins = int(values["w"])
+            losses = int(values["l"])
+            draws = int(values.get("d", 0))
+            goals_for = int(values["gf"])
+            goals_against = int(values["ga"])
+        except KeyError:
+            continue
+        team_name = split.group("name").strip()
+        if not team_name:
+            continue
+        rows.append(
+            {
+                "team_name": team_name,
+                "games_played": games_played,
+                "wins": wins,
+                "losses": losses,
+                "draws": draws,
+                "goals_for": goals_for,
+                "goals_against": goals_against,
+                "goal_diff": int(values["gd"]) if "gd" in values else None,
+                "points": int(values["pts"]) if "pts" in values else None,
+                "points_per_game": float(values["ppg"]) if "ppg" in values else None,
+            }
+        )
+    return rows
+
+
+def _standing_header(line: str) -> list[str] | None:
+    tokens = [token.lower().strip(".") for token in line.replace("/", " ").split()]
+    if "gp" not in tokens:
+        return None
+    if not ({"w", "pts", "ppg", "points"} & set(tokens)):
+        return None
+    order = [_STAT_HEADERS[token] for token in tokens if token in _STAT_HEADERS]
+    if "gp" not in order or "w" not in order:
+        return None
+    return order

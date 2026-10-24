@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from app.database import engine
 from app.ingestion.normalizer import split_venue, standardize_team_name
-from app.ingestion.parsing import extract_games_from_html, parse_ics
+from app.ingestion.parsing import extract_games_from_html, parse_ics, parse_score_text, parse_standings_text
 from app.main import app
 
 ICS = """BEGIN:VCALENDAR
@@ -77,6 +77,23 @@ class NormalizerTests(unittest.TestCase):
         self.assertEqual(prose_games[0].field_number, "2")
         self.assertEqual(prose_games[0].city_state, "Tampa, FL")
 
+    def test_score_and_standings_text(self) -> None:
+        scores = parse_score_text(
+            "\n".join(
+                [
+                    "2026-08-29 | Probe Central | Probe Coastal | 3 - 1",
+                    "2026-08-30 Probe Central W 4-0 Probe Coastal",
+                    "2026-08-31 Probe Central 2-2 Probe Coastal",
+                ]
+            ),
+            age_group="U13",
+        )
+        self.assertEqual([(score.home_score, score.away_score) for score in scores], [(3, 1), (4, 0), (2, 2)])
+        rows = parse_standings_text("Team GP W L D GF GA\nProbe Central 4 3 1 0 8 2\n")
+        self.assertEqual(rows[0]["games_played"], 4)
+        self.assertEqual(rows[0]["wins"], 3)
+        self.assertIsNone(rows[0]["points"])
+
 
 class EndpointTests(unittest.TestCase):
     @classmethod
@@ -106,6 +123,7 @@ class EndpointTests(unittest.TestCase):
                 )
             )
             connection.execute(text("DELETE FROM ingest_team WHERE name LIKE 'Probe %'"))
+            connection.execute(text("DELETE FROM conference_standing WHERE team_name LIKE 'Probe %' OR conference = 'Probe Conference'"))
         cls._client_cm.__exit__(None, None, None)
 
     def setUp(self) -> None:
@@ -118,6 +136,7 @@ class EndpointTests(unittest.TestCase):
             team_count = connection.execute(text("SELECT count(*) FROM team")).scalar_one()
             game_count = connection.execute(text("SELECT count(*) FROM game")).scalar_one()
         self.assertIn("conference", team_columns)
+        self.assertIn("home_score", game_columns)
         self.assertNotIn("match_key", game_columns)
         self.assertEqual(team_count, 1038)
         self.assertEqual(game_count, 9345)
@@ -228,6 +247,94 @@ class EndpointTests(unittest.TestCase):
         page = self.client.post("/ingest/url", json={"url": "http://10.0.0.8/schedule"})
         self.assertEqual(ics.status_code, 400)
         self.assertEqual(page.status_code, 400)
+
+    def test_scores_reimport_keeps_one_row_and_schedule_import_keeps_the_score(self) -> None:
+        first = self.client.post(
+            "/ingest/scores",
+            json={
+                "age_group": "U13",
+                "text": "2026-09-20 | Probe Central | Probe Coastal | 3-1",
+            },
+        )
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(first.json()["inserted"], 1)
+        self.assertEqual(first.json()["games"][0]["home_score"], 3)
+        self.assertIn("home_score", self.statements[-1])
+        self.assertIn("ON CONFLICT", self.statements[-1])
+
+        second = self.client.post(
+            "/ingest/scores",
+            json={
+                "age_group": "U13",
+                "games": [
+                    {
+                        "date": "2026-09-20",
+                        "home_team": "Probe Central",
+                        "away_team": "Probe Coastal",
+                        "home_score": 2,
+                        "away_score": 2,
+                    }
+                ],
+            },
+        )
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertEqual(second.json()["updated"], 1)
+        self.assertEqual(second.json()["games"][0]["id"], first.json()["games"][0]["id"])
+        self.assertEqual(second.json()["games"][0]["away_score"], 2)
+
+        schedule = self.client.post(
+            "/ingest/raw-text",
+            json={
+                "age_group": "U13",
+                "text": "2026-09-20 | 11:00 AM | Probe Central | Probe Coastal | Matt Park - Field 2 | Jacksonville, FL |",
+            },
+        )
+        self.assertEqual(schedule.status_code, 200, schedule.text)
+        with engine.connect() as connection:
+            row = connection.execute(
+                text("SELECT home_score, away_score, status, field_number FROM ingest_game WHERE match_key = :key"),
+                {"key": first.json()["games"][0]["match_key"]},
+            ).one()
+        self.assertEqual(row.home_score, 2)
+        self.assertEqual(row.away_score, 2)
+        self.assertEqual(row.status, "COMPLETED")
+        self.assertEqual(row.field_number, "2")
+
+    def test_standings_upsert_computes_points(self) -> None:
+        created = self.client.post(
+            "/ingest/standings",
+            json={
+                "conference": "Probe Conference",
+                "tier": "ECNL",
+                "age_group": "U13/B2013",
+                "text": "Team GP W L D GF GA\nProbe Central 4 3 1 0 8 2\nProbe Coastal 4 1 1 2 4 4\n",
+            },
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        self.assertEqual(created.json()["age_group"], "U13")
+        listed = self.client.get("/standings?conference=Probe%20Conference&tier=ECNL&age_group=U13")
+        self.assertEqual(listed.status_code, 200, listed.text)
+        rows = listed.json()
+        self.assertEqual(rows[0]["team_name"], "Probe Central")
+        self.assertEqual(rows[0]["points"], 9)
+        self.assertEqual(rows[0]["points_per_game"], 2.25)
+        self.assertEqual(rows[0]["goal_diff"], 6)
+        self.assertEqual(rows[0]["rank"], 1)
+        rejected = self.client.get("/standings?conference=Probe%20Conference&tier=ECNL&age_group=U13&mode=nope")
+        self.assertEqual(rejected.status_code, 400)
+
+    def test_schedule_payload_includes_record(self) -> None:
+        with engine.connect() as connection:
+            team_id = connection.execute(
+                text("SELECT id FROM team WHERE name = 'Sporting SA JAX' AND age_group = 'U13'")
+            ).scalar_one()
+        response = self.client.get(f"/teams/{team_id}/schedule")
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertIn("team_record_summary", body)
+        self.assertRegex(body["team_record_summary"]["overall_record"], r"^\d+-\d+-\d+$")
+        self.assertIn(body["games"][0]["venue_type"], ["Home", "Away", "Showcase"])
+        self.assertIn(body["games"][0]["status"], ["SCHEDULED", "COMPLETED", "POSTPONED", "CANCELLED"])
 
     def test_empty_raw_text_is_400(self) -> None:
         response = self.client.post("/ingest/raw-text", json={"text": "   "})

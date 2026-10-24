@@ -14,6 +14,18 @@ from app.models import Game, Team
 
 
 @dataclass(frozen=True)
+class ParsedScore:
+    game_date: date
+    home_name: str
+    away_name: str
+    home_score: int
+    away_score: int
+    age_group: str
+    tier: str | None = None
+    status: str = "COMPLETED"
+
+
+@dataclass(frozen=True)
 class ParsedGame:
     game_date: date
     kickoff_time: time | None
@@ -109,6 +121,10 @@ def upsert_games(session: Session, games: list[ParsedGame]) -> UpsertResult:
             "field_number": field_number,
             "city_state": city_state,
             "is_showcase": game.is_showcase,
+            "status": "SCHEDULED",
+            "home_score": None,
+            "away_score": None,
+            "is_conference_game": not game.is_showcase,
         }
 
     if not staged:
@@ -130,6 +146,7 @@ def upsert_games(session: Session, games: list[ParsedGame]) -> UpsertResult:
                 "field_number": excluded.field_number,
                 "city_state": excluded.city_state,
                 "is_showcase": excluded.is_showcase,
+                "is_conference_game": excluded.is_conference_game,
             },
         )
     )
@@ -155,3 +172,92 @@ def upsert_games(session: Session, games: list[ParsedGame]) -> UpsertResult:
     ]
     updated = sum(1 for key in keys if key in existing)
     return UpsertResult(inserted=len(keys) - updated, updated=updated, games=saved)
+
+
+@dataclass(frozen=True)
+class SavedScore:
+    id: int
+    match_key: str
+    date: date
+    home_team: str
+    away_team: str
+    home_score: int
+    away_score: int
+    status: str
+
+
+def upsert_scores(session: Session, scores: list[ParsedScore]) -> tuple[int, int, list[SavedScore]]:
+    """Insert or update a final score. A schedule re-import does not clear these columns."""
+
+    cache: dict[tuple[str, str], Team] = {}
+    staged: dict[str, dict[str, object]] = {}
+    for score in scores:
+        home_name = standardize_team_name(score.home_name)[:160]
+        away_name = standardize_team_name(score.away_name)[:160]
+        if not home_name or not away_name or home_name.casefold() == away_name.casefold():
+            continue
+        age_group = " ".join((score.age_group or "Unknown").split())[:16] or "Unknown"
+        tier = " ".join((score.tier or "").split())[:40] or None
+        home = _team(session, cache, home_name, age_group, tier, None)
+        away = _team(session, cache, away_name, age_group, tier, None)
+        match_key = build_match_key(score.game_date, home_name, away_name, age_group)
+        staged[match_key] = {
+            "match_key": match_key,
+            "date": score.game_date,
+            "kickoff_time": None,
+            "home_team_id": home.id,
+            "away_team_id": away.id,
+            "complex_name": "",
+            "field_number": "",
+            "city_state": "",
+            "is_showcase": False,
+            "status": score.status if score.status in {"COMPLETED", "POSTPONED", "CANCELLED"} else "COMPLETED",
+            "home_score": score.home_score,
+            "away_score": score.away_score,
+            "is_conference_game": True,
+        }
+
+    if not staged:
+        return 0, 0, []
+
+    keys = list(staged)
+    existing = set(session.scalars(select(Game.match_key).where(Game.match_key.in_(keys))).all())
+    statement = pg_insert(Game.__table__).values(list(staged.values()))
+    excluded = statement.excluded
+    session.execute(
+        statement.on_conflict_do_update(
+            index_elements=["match_key"],
+            set_={
+                "date": excluded["date"],
+                "home_team_id": excluded.home_team_id,
+                "away_team_id": excluded.away_team_id,
+                "status": excluded.status,
+                "home_score": excluded.home_score,
+                "away_score": excluded.away_score,
+            },
+        )
+    )
+    session.commit()
+
+    rows = session.scalars(select(Game).where(Game.match_key.in_(keys)).order_by(Game.date, Game.id)).all()
+    team_ids = {row.home_team_id for row in rows} | {row.away_team_id for row in rows}
+    teams = {
+        team.id: team.name
+        for team in session.scalars(select(Team).where(Team.id.in_(team_ids))).all()
+        if team.id is not None
+    }
+    saved = [
+        SavedScore(
+            id=row.id or 0,
+            match_key=row.match_key,
+            date=row.date,
+            home_team=teams.get(row.home_team_id, ""),
+            away_team=teams.get(row.away_team_id, ""),
+            home_score=row.home_score or 0,
+            away_score=row.away_score or 0,
+            status=row.status,
+        )
+        for row in rows
+    ]
+    updated = sum(1 for key in keys if key in existing)
+    return len(keys) - updated, updated, saved

@@ -1,16 +1,19 @@
 """Schedule tables (`team`, `game`) and ingested schedules (`ingest_team`, `ingest_game`)."""
 
 from datetime import date as DateValue
-from datetime import datetime
+from datetime import UTC, datetime
 from datetime import time as TimeValue
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlmodel import Field, SQLModel
 
 
 class Base(DeclarativeBase):
     pass
+
+
+SQLModel.metadata = Base.metadata
 
 
 class ScheduleTeam(Base):
@@ -43,6 +46,12 @@ class ScheduleTeam(Base):
 
 class ScheduleGame(Base):
     __tablename__ = "game"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('SCHEDULED', 'COMPLETED', 'POSTPONED', 'CANCELLED')",
+            name="ck_game_status",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     home_team_id: Mapped[int] = mapped_column(ForeignKey("team.id"), nullable=False, index=True)
@@ -53,6 +62,10 @@ class ScheduleGame(Base):
     state: Mapped[str] = mapped_column(String(2), nullable=False)
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="America/New_York")
     event: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="SCHEDULED", server_default="SCHEDULED")
+    home_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    away_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_conference_game: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
 
     home_team: Mapped[ScheduleTeam] = relationship(back_populates="home_games", foreign_keys=[home_team_id])
     away_team: Mapped[ScheduleTeam] = relationship(back_populates="away_games", foreign_keys=[away_team_id])
@@ -75,6 +88,12 @@ class Game(SQLModel, table=True):
     """One imported match. `match_key` ignores kickoff and field so a re-import updates them."""
 
     __tablename__ = "ingest_game"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('SCHEDULED', 'COMPLETED', 'POSTPONED', 'CANCELLED')",
+            name="ck_ingest_game_status",
+        ),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     match_key: str = Field(max_length=64, unique=True, index=True)
@@ -86,3 +105,39 @@ class Game(SQLModel, table=True):
     field_number: str = Field(default="", max_length=40)
     city_state: str = Field(default="", max_length=120)
     is_showcase: bool = Field(default=False)
+    status: str = Field(default="SCHEDULED", max_length=16)
+    home_score: int | None = None
+    away_score: int | None = None
+    is_conference_game: bool = Field(default=True)
+
+
+class ConferenceStanding(SQLModel, table=True):
+    """Official conference table. Re-importing the same club updates this row."""
+
+    __tablename__ = "conference_standing"
+    __table_args__ = (
+        UniqueConstraint(
+            "conference",
+            "tier",
+            "age_group",
+            "team_name",
+            name="uq_conference_standing_identity",
+        ),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    conference: str = Field(max_length=80, index=True)
+    tier: str = Field(max_length=16, index=True)
+    age_group: str = Field(max_length=16, index=True)
+    team_id: int | None = Field(default=None, foreign_key="team.id", index=True)
+    team_name: str = Field(max_length=160)
+    games_played: int = Field(default=0)
+    wins: int = Field(default=0)
+    losses: int = Field(default=0)
+    draws: int = Field(default=0)
+    goals_for: int = Field(default=0)
+    goals_against: int = Field(default=0)
+    goal_diff: int = Field(default=0)
+    points: int = Field(default=0)
+    points_per_game: float = Field(default=0.0)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

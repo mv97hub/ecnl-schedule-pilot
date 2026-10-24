@@ -6,8 +6,10 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_session
+from app.ingestion.normalizer import looks_like_showcase
 from app.models import ScheduleGame as Game, ScheduleTeam as Team
-from app.schemas import OpponentOut, ScheduleGameOut, TeamOut
+from app.schemas import OpponentOut, ScheduleGameOut, ScheduleResponse, TeamOut, TeamRecordSummary
+from app.standings import conference_rank, short_conference
 
 router = APIRouter()
 
@@ -39,12 +41,24 @@ def list_teams(
     return list(session.scalars(statement).all())
 
 
-@router.get("/teams/{team_id}/schedule", response_model=list[ScheduleGameOut])
+def _marker(goals_for: int, goals_against: int) -> str:
+    if goals_for > goals_against:
+        return "W"
+    if goals_for < goals_against:
+        return "L"
+    return "D"
+
+
+def _record(wins: int, losses: int, draws: int) -> str:
+    return f"{wins}-{losses}-{draws}"
+
+
+@router.get("/teams/{team_id}/schedule", response_model=ScheduleResponse)
 def team_schedule(
     team_id: int,
     session: Annotated[Session, Depends(get_session)],
     filter: str = Query(default="all"),
-) -> list[ScheduleGameOut]:
+) -> ScheduleResponse:
     if filter not in FILTERS:
         raise HTTPException(status_code=400, detail="filter must be one of: all, home, away")
 
@@ -52,37 +66,46 @@ def team_schedule(
     if team is None:
         raise HTTPException(status_code=404, detail="Team not found")
 
-    statement = (
+    games = session.scalars(
         select(Game)
         .options(selectinload(Game.home_team), selectinload(Game.away_team))
         .where(or_(Game.home_team_id == team_id, Game.away_team_id == team_id))
         .order_by(Game.starts_at, Game.id)
-    )
-    if filter == "home":
-        statement = statement.where(Game.home_team_id == team_id)
-    elif filter == "away":
-        statement = statement.where(Game.away_team_id == team_id)
+    ).all()
 
-    games = session.scalars(statement).all()
+    overall = {"wins": 0, "losses": 0, "draws": 0}
+    conference = {"wins": 0, "losses": 0, "draws": 0, "gf": 0, "ga": 0}
     schedule: list[ScheduleGameOut] = []
     for game in games:
-        if game.home_team_id == team_id:
-            side = "home"
-            opponent = game.away_team
-        else:
-            side = "away"
-            opponent = game.home_team
+        home = game.home_team_id == team_id
+        side = "home" if home else "away"
+        opponent = game.away_team if home else game.home_team
+        goals_for = game.home_score if home else game.away_score
+        goals_against = game.away_score if home else game.home_score
+        completed = game.status == "COMPLETED" and goals_for is not None and goals_against is not None
+        team_result = _marker(goals_for, goals_against) if completed else None
+        if completed and team_result is not None and goals_for is not None and goals_against is not None:
+            overall[{"W": "wins", "D": "draws", "L": "losses"}[team_result]] += 1
+            if game.is_conference_game:
+                conference[{"W": "wins", "D": "draws", "L": "losses"}[team_result]] += 1
+                conference["gf"] += goals_for or 0
+                conference["ga"] += goals_against or 0
+        showcase = (not game.is_conference_game) or looks_like_showcase(game.event or "", game.venue_name or "")
+        venue_type = "Showcase" if showcase else ("Home" if home else "Away")
+        if filter == "home" and not home:
+            continue
+        if filter == "away" and home:
+            continue
         zone_name = game.timezone or "America/New_York"
         try:
             zone = ZoneInfo(zone_name)
         except Exception:
             zone = EASTERN
             zone_name = "America/New_York"
-        kickoff = game.starts_at.astimezone(zone)
         schedule.append(
             ScheduleGameOut(
                 id=game.id,
-                starts_at=kickoff,
+                starts_at=game.starts_at.astimezone(zone),
                 opponent=OpponentOut(id=opponent.id, name=opponent.name),
                 side=side,
                 venue_name=game.venue_name,
@@ -90,6 +113,26 @@ def team_schedule(
                 state=game.state,
                 timezone=zone_name,
                 event=game.event,
+                status=game.status if game.status in {"SCHEDULED", "COMPLETED", "POSTPONED", "CANCELLED"} else "SCHEDULED",
+                home_score=game.home_score,
+                away_score=game.away_score,
+                is_conference_game=game.is_conference_game,
+                venue_type=venue_type,
+                team_result=team_result,
             )
         )
-    return schedule
+
+    played = conference["wins"] + conference["losses"] + conference["draws"]
+    points = conference["wins"] * 3 + conference["draws"]
+    return ScheduleResponse(
+        team_record_summary=TeamRecordSummary(
+            overall_record=_record(overall["wins"], overall["losses"], overall["draws"]),
+            conference_record=_record(conference["wins"], conference["losses"], conference["draws"]),
+            goals_for=conference["gf"],
+            goals_against=conference["ga"],
+            ppg=round(points / played, 2) if played else 0.0,
+            conference_rank=conference_rank(session, team),
+            conference=short_conference(team.conference),
+        ),
+        games=schedule,
+    )
