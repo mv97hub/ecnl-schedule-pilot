@@ -12,6 +12,7 @@ export function AppHeader() {
   const schedules = path === "/";
   const standings = path.startsWith("/standings");
   const headToHead = path.startsWith("/head-to-head");
+  const profile = path.startsWith("/profile");
 
   return (
     <>
@@ -41,6 +42,13 @@ export function AppHeader() {
               className={`rounded-full px-3 py-1.5 ${headToHead ? "bg-white/15 text-white" : "text-emerald-100/80 hover:bg-white/10"}`}
             >
               Head-to-Head
+            </Link>
+            <Link
+              href="/profile"
+              aria-current={profile ? "page" : undefined}
+              className={`rounded-full px-3 py-1.5 ${profile ? "bg-white/15 text-white" : "text-emerald-100/80 hover:bg-white/10"}`}
+            >
+              Profile
             </Link>
           </nav>
           <button
