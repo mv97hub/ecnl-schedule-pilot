@@ -71,3 +71,4 @@ class StandingOut(BaseModel):
     goal_diff: int
     points: int
     points_per_game: float
+    form: list[Literal["W", "L", "D"]] = []

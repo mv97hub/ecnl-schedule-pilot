@@ -7,18 +7,20 @@ from sqlalchemy.orm import Session
 from app.database import get_session
 from app.models import ConferenceStanding
 from app.schemas import StandingOut
-from app.standings import ecnl_standings, normalize_age_group, normalize_tier, short_conference, sort_standings
+from app.standings import ecnl_standings, normalize_age_group, normalize_tier, recent_form, short_conference, sort_standings
 
 router = APIRouter()
 
 
-def _ranked(rows: list[dict[str, object]]) -> list[StandingOut]:
+def _ranked(rows: list[dict[str, object]], form_by_team: dict[int, list[str]]) -> list[StandingOut]:
     ranked: list[StandingOut] = []
     for index, row in enumerate(sort_standings(rows), start=1):
+        team_id = row["team_id"] if isinstance(row["team_id"], int) else None
+        form = [mark for mark in form_by_team.get(team_id or -1, []) if mark in {"W", "L", "D"}]
         ranked.append(
             StandingOut(
                 rank=index,
-                team_id=row["team_id"] if isinstance(row["team_id"], int) else None,
+                team_id=team_id,
                 team_name=str(row["team_name"]),
                 games_played=int(row["games_played"]),
                 wins=int(row["wins"]),
@@ -29,6 +31,7 @@ def _ranked(rows: list[dict[str, object]]) -> list[StandingOut]:
                 goal_diff=int(row["goal_diff"]),
                 points=int(row["points"]),
                 points_per_game=float(row["points_per_game"]),
+                form=form,
             )
         )
     return ranked
@@ -53,9 +56,10 @@ def list_standings(
     short = short_conference(conference)
     if not short:
         raise HTTPException(status_code=400, detail="conference is required")
+    form_by_team = recent_form(session, short, tier_name, age)
 
     if chosen == "calculated":
-        return _ranked(ecnl_standings(session, short, age, tier_name))
+        return _ranked(ecnl_standings(session, short, age, tier_name), form_by_team)
 
     records = session.scalars(
         select(ConferenceStanding).where(
@@ -80,5 +84,6 @@ def list_standings(
                 "points_per_game": record.points_per_game,
             }
             for record in records
-        ]
+        ],
+        form_by_team,
     )

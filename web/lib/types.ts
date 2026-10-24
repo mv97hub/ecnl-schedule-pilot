@@ -65,6 +65,7 @@ export type StandingRow = {
   goal_diff: number;
   points: number;
   points_per_game: number;
+  form?: Array<"W" | "L" | "D">;
 };
 
 export type StandingsMode = "official" | "calculated";

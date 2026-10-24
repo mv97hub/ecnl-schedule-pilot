@@ -4,13 +4,11 @@ import { LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { ResultMark } from "@/components/ResultMark";
 import { fetchStandings, fetchTeams } from "@/lib/api";
 import { AGE_GROUPS, CONFERENCES, PLAYOFF_SPOTS, TIERS } from "@/lib/leagues";
+import { rememberedSquad, shortConference } from "@/lib/selection";
 import type { StandingRow, StandingsMode, Team } from "@/lib/types";
-
-function shortConference(name: string): string {
-  return name.replace(/^ECNL(?:\s+RL)?\s+Boys\s+/i, "").replace(/\s+20\d{2}-\d{2}$/i, "").trim();
-}
 
 function readQuery() {
   const params = new URLSearchParams(window.location.search);
@@ -34,16 +32,27 @@ export function StandingsBoard() {
   const [ready, setReady] = useState(false);
   const [rlConferences, setRlConferences] = useState<string[]>([]);
   const [rows, setRows] = useState<StandingRow[]>([]);
+  const [highlightId, setHighlightId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
     const next = readQuery();
+    const remembered = rememberedSquad();
+    const teamParam = Number(params.get("team"));
     Promise.resolve().then(() => {
-      setConference(next.conference);
-      setTier(next.tier);
-      setAgeGroup(next.ageGroup);
+      if (!params.has("conference") && remembered) {
+        setConference(remembered.conference);
+        setTier(remembered.tier);
+        setAgeGroup(remembered.ageGroup);
+      } else {
+        setConference(next.conference);
+        setTier(next.tier);
+        setAgeGroup(next.ageGroup);
+      }
       setMode(next.mode);
+      setHighlightId(Number.isInteger(teamParam) && teamParam > 0 ? teamParam : (remembered?.id ?? null));
       setReady(true);
     });
   }, []);
@@ -163,9 +172,9 @@ export function StandingsBoard() {
           </label>
         </div>
 
-        <p className="mt-4 text-xs text-slate-500">A green bar marks the top {PLAYOFF_SPOTS} playoff spots.</p>
+        <p className="mt-4 text-xs text-stone-500">A bar on the left marks the top {PLAYOFF_SPOTS} playoff spots.</p>
 
-        {error && <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</p>}
+        {error && <p className="mt-4 rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-800">{error}</p>}
 
         {loading ? (
           <div className="mt-6 flex items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-slate-500">
@@ -177,12 +186,12 @@ export function StandingsBoard() {
             No {mode === "official" ? "official" : "played"} table for {tier} {conference} {ageGroup} yet.
           </div>
         ) : (
-          <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <table className="min-w-[760px] w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+          <div className="mt-4 overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm">
+            <table className="min-w-[880px] w-full text-left text-sm tabular-nums">
+              <thead className="bg-stone-50 text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
                 <tr>
-                  {["Rank", "Club / Team", "GP", "W-L-D", "GF", "GA", "GD", "PTS", "PPG"].map((heading) => (
-                    <th key={heading} className={`px-3 py-3 font-semibold ${heading === "PPG" ? "text-emerald-800" : ""}`}>
+                  {["Rank", "Club / Team", "GP", "W-L-D", "GF", "GA", "GD", "PTS", "PPG", "Form"].map((heading) => (
+                    <th key={heading} scope="col" className="px-4 py-3 font-medium">
                       {heading}
                     </th>
                   ))}
@@ -191,28 +200,40 @@ export function StandingsBoard() {
               <tbody>
                 {rows.map((row) => {
                   const qualifying = row.rank <= PLAYOFF_SPOTS;
+                  const selected = highlightId != null && row.team_id === highlightId;
                   const diff = row.goal_diff > 0 ? `+${row.goal_diff}` : String(row.goal_diff);
                   return (
-                    <tr key={`${row.rank}-${row.team_name}`} className={qualifying ? "border-l-4 border-l-emerald-600 bg-emerald-50/70" : "border-l-4 border-l-transparent"}>
-                      <td className="px-3 py-3 font-medium text-slate-500">{row.rank}</td>
-                      <td className="px-3 py-3 font-medium text-slate-900">
+                    <tr
+                      key={`${row.rank}-${row.team_name}`}
+                      data-selected={selected ? "true" : undefined}
+                      className={`border-l-4 ${qualifying ? "border-l-emerald-700" : "border-l-transparent"} ${selected ? "bg-stone-100" : "bg-white"}`}
+                    >
+                      <td className="px-4 py-4 text-stone-500">{row.rank}</td>
+                      <td className="px-4 py-4 font-medium text-stone-950">
                         {row.team_id == null ? (
                           row.team_name
                         ) : (
-                          <Link href={`/?team=${row.team_id}`} className="text-emerald-800 hover:underline">
+                          <Link href={`/?team=${row.team_id}`} className="underline-offset-4 hover:underline">
                             {row.team_name}
                           </Link>
                         )}
                       </td>
-                      <td className="px-3 py-3">{row.games_played}</td>
-                      <td className="px-3 py-3">
+                      <td className="px-4 py-4 text-stone-700">{row.games_played}</td>
+                      <td className="px-4 py-4 text-stone-700">
                         {row.wins}-{row.losses}-{row.draws}
                       </td>
-                      <td className="px-3 py-3">{row.goals_for}</td>
-                      <td className="px-3 py-3">{row.goals_against}</td>
-                      <td className="px-3 py-3">{diff}</td>
-                      <td className="px-3 py-3">{row.points}</td>
-                      <td className="px-3 py-3 font-bold text-emerald-800">{row.points_per_game.toFixed(2)}</td>
+                      <td className="px-4 py-4 text-stone-700">{row.goals_for}</td>
+                      <td className="px-4 py-4 text-stone-700">{row.goals_against}</td>
+                      <td className="px-4 py-4 text-stone-700">{diff}</td>
+                      <td className="px-4 py-4 text-stone-700">{row.points}</td>
+                      <td className="px-4 py-4 font-semibold text-stone-950">{row.points_per_game.toFixed(2)}</td>
+                      <td className="px-4 py-4">
+                        <div className="flex gap-1" aria-label={`Form for ${row.team_name}`}>
+                          {(row.form ?? []).map((mark, index) => (
+                            <ResultMark key={`${row.team_name}-${index}`} kind={mark} title={`${row.team_name} ${mark}`} />
+                          ))}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
