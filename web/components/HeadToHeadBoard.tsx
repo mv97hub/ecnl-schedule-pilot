@@ -278,6 +278,39 @@ function MeetingCard({ game, homeName, awayName }: { game: DirectMatch; homeName
   );
 }
 
+function playedByBoth(row: CommonOpponent): boolean {
+  return row.team_a_summary.gp > 0 && row.team_b_summary.gp > 0;
+}
+
+function rollupFromGames(games: CommonGame[]): Rollup {
+  let wins = 0;
+  let losses = 0;
+  let draws = 0;
+  let goalsFor = 0;
+  let goalsAgainst = 0;
+  for (const game of games) {
+    if (game.result !== "W" && game.result !== "L" && game.result !== "D") continue;
+    if (game.team_score == null || game.opponent_score == null) continue;
+    if (game.result === "W") wins += 1;
+    else if (game.result === "L") losses += 1;
+    else draws += 1;
+    goalsFor += game.team_score;
+    goalsAgainst += game.opponent_score;
+  }
+  const played = wins + losses + draws;
+  const points = wins * 3 + draws;
+  return {
+    gp: played,
+    w: wins,
+    l: losses,
+    d: draws,
+    gf: goalsFor,
+    ga: goalsAgainst,
+    gd: goalsFor - goalsAgainst,
+    ppg: played === 0 ? 0 : points / played,
+  };
+}
+
 function edgeLabel(row: CommonOpponent, left: string, right: string): string {
   if (row.advantage === "team_a") return `${left} edge`;
   if (row.advantage === "team_b") return `${right} edge`;
@@ -374,6 +407,7 @@ export function HeadToHeadBoard() {
   const [sideA, setSideA] = useState<Filters>(EMPTY_SIDE);
   const [sideB, setSideB] = useState<Filters>(EMPTY_SIDE);
   const [conferenceOnly, setConferenceOnly] = useState(false);
+  const [showAllCommon, setShowAllCommon] = useState(false);
   const [ready, setReady] = useState(false);
   const [report, setReport] = useState<HeadToHeadReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -502,7 +536,18 @@ export function HeadToHeadBoard() {
 
   const left = report?.team_a_stats;
   const right = report?.team_b_stats;
-  const rollupLead = report ? better(report.common_opponents_rollup.team_a_vs_common.ppg, report.common_opponents_rollup.team_b_vs_common.ppg, true) : null;
+  const commonRows = report ? (showAllCommon ? report.common_opponents : report.common_opponents.filter(playedByBoth)) : [];
+  const commonRollupA = report
+    ? showAllCommon
+      ? report.common_opponents_rollup.team_a_vs_common
+      : rollupFromGames(commonRows.flatMap((row) => row.team_a_games))
+    : null;
+  const commonRollupB = report
+    ? showAllCommon
+      ? report.common_opponents_rollup.team_b_vs_common
+      : rollupFromGames(commonRows.flatMap((row) => row.team_b_games))
+    : null;
+  const rollupLead = commonRollupA && commonRollupB ? better(commonRollupA.ppg, commonRollupB.ppg, true) : null;
 
   return (
     <div className="min-h-full bg-stone-100">
@@ -688,19 +733,41 @@ export function HeadToHeadBoard() {
             </section>
 
             <section className="rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Common opponents">
-              <h2 className="text-lg font-semibold text-stone-950">Common opponents</h2>
-              <div className="mt-3 rounded-xl bg-stone-50 px-3 py-3" aria-label="Performance vs Shared Opponents">
-                <p className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Performance vs shared opponents</p>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  <RollupLine name={left.name} row={report.common_opponents_rollup.team_a_vs_common} lead={rollupLead === "a"} />
-                  <RollupLine name={right.name} row={report.common_opponents_rollup.team_b_vs_common} lead={rollupLead === "b"} />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold text-stone-950">Common opponents</h2>
+                <div className="flex shrink-0 items-center gap-2 text-xs">
+                  <span className={showAllCommon ? "text-stone-400" : "font-medium text-stone-950"}>Played by both</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={showAllCommon}
+                    aria-label="All games"
+                    onClick={() => setShowAllCommon((current) => !current)}
+                    className={`flex h-6 w-11 items-center rounded-full p-0.5 transition-colors ${showAllCommon ? "bg-emerald-700" : "bg-stone-300"}`}
+                  >
+                    <span
+                      className={`size-5 rounded-full bg-white shadow-sm transition-transform ${showAllCommon ? "translate-x-5" : "translate-x-0"}`}
+                    />
+                  </button>
+                  <span className={showAllCommon ? "font-medium text-stone-950" : "text-stone-400"}>All games</span>
                 </div>
               </div>
-              {report.common_opponents.length === 0 ? (
-                <p className="mt-3 text-sm text-stone-500">No shared opponents yet.</p>
+              {commonRollupA && commonRollupB && (
+                <div className="mt-3 rounded-xl bg-stone-50 px-3 py-3" aria-label="Performance vs Shared Opponents">
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Performance vs shared opponents</p>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <RollupLine name={left.name} row={commonRollupA} lead={rollupLead === "a"} />
+                    <RollupLine name={right.name} row={commonRollupB} lead={rollupLead === "b"} />
+                  </div>
+                </div>
+              )}
+              {commonRows.length === 0 ? (
+                <p className="mt-3 text-sm text-stone-500">
+                  {showAllCommon ? "No shared opponents yet." : "No opponents both clubs have played yet."}
+                </p>
               ) : (
                 <ul className="mt-3 divide-y divide-stone-100">
-                  {report.common_opponents.map((row) => (
+                  {commonRows.map((row) => (
                     <li key={row.id} className="grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_11rem_minmax(0,1fr)] md:items-start">
                       <MeetingList games={row.team_a_games} summary={row.team_a_summary} align="end" />
                       <div className="text-sm md:text-center">
