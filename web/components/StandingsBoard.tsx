@@ -190,7 +190,7 @@ export function StandingsBoard() {
             <table className="min-w-[880px] w-full text-left text-sm tabular-nums">
               <thead className="bg-stone-50 text-xs font-medium uppercase tracking-[0.14em] text-stone-500">
                 <tr>
-                  {["Rank", "Club / Team", "GP", "W-L-D", "GF", "GA", "GD", "PTS", "PPG", "Form"].map((heading) => (
+                  {["Rank", "Club / Team", "GP", "W-L-D", "GF", "GA", "GD", "PTS", "PPG", "Form", "H2H"].map((heading) => (
                     <th key={heading} scope="col" className="px-4 py-3 font-medium">
                       {heading}
                     </th>
@@ -233,6 +233,18 @@ export function StandingsBoard() {
                             <ResultMark key={`${row.team_name}-${index}`} kind={mark} title={`${row.team_name} ${mark}`} />
                           ))}
                         </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        {highlightId != null && row.team_id != null && row.team_id !== highlightId ? (
+                          <Link
+                            href={`/head-to-head?teamA=${highlightId}&teamB=${row.team_id}`}
+                            className="text-xs font-medium text-emerald-800 underline-offset-4 hover:underline"
+                          >
+                            Compare
+                          </Link>
+                        ) : (
+                          <span className="text-stone-300">—</span>
+                        )}
                       </td>
                     </tr>
                   );

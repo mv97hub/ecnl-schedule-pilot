@@ -6,6 +6,7 @@ from sqlmodel import SQLModel
 
 from app.database import engine, ensure_result_columns
 from app.models import Base
+from app.routers.head_to_head import router as head_to_head_router
 from app.routers.ingest import router as ingest_router
 from app.routers.standings import router as standings_router
 from app.routers.teams import router as teams_router
@@ -31,6 +32,7 @@ app.add_middleware(
 
 app.include_router(teams_router)
 app.include_router(standings_router)
+app.include_router(head_to_head_router)
 app.include_router(ingest_router)
 
 

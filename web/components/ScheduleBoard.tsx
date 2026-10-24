@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { ScheduleCard } from "@/components/ScheduleCard";
+import { ScheduleCard, ScoutLink } from "@/components/ScheduleCard";
 import { easternStamp, easternToday, mapsUrl, teamScoreline } from "@/lib/format";
 import type { Game } from "@/lib/types";
 
@@ -50,7 +50,7 @@ export function ViewSwitch({ value, onChange }: { value: ScheduleView; onChange:
   );
 }
 
-function ListView({ games }: { games: Game[] }) {
+function ListView({ games, teamId }: { games: Game[]; teamId: number }) {
   const groups = useMemo(() => {
     const buckets = new Map<string, { label: string; games: Game[] }>();
     for (const game of games) {
@@ -87,6 +87,7 @@ function ListView({ games }: { games: Game[] }) {
                       >
                         {game.venue_name}
                       </a>
+                      <ScoutLink teamId={teamId} opponentId={game.opponent.id} />
                     </span>
                     <span className="text-right text-sm">
                       {scoreline ? (
@@ -208,12 +209,12 @@ export function CalendarView({ games, teamName }: { games: Game[]; teamName: str
   );
 }
 
-export function ScheduleBoard({ games, view, teamName }: { games: Game[]; view: ScheduleView; teamName: string }) {
-  if (view === "list") return <ListView games={games} />;
+export function ScheduleBoard({ games, view, teamName, teamId }: { games: Game[]; view: ScheduleView; teamName: string; teamId: number }) {
+  if (view === "list") return <ListView games={games} teamId={teamId} />;
   return (
     <div className="grid gap-3">
       {games.map((game) => (
-        <ScheduleCard key={game.id} game={game} teamName={teamName} />
+        <ScheduleCard key={game.id} game={game} teamName={teamName} teamId={teamId} />
       ))}
     </div>
   );

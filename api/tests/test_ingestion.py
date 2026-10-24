@@ -349,6 +349,78 @@ class EndpointTests(unittest.TestCase):
         sporting = next(row for row in standings.json() if row["team_name"] == "Sporting SA JAX")
         self.assertEqual(sporting["form"], ["W", "W", "D", "W", "L"])
 
+    def test_head_to_head_sporting_versus_parkland(self) -> None:
+        missing = self.client.get("/head-to-head")
+        self.assertEqual(missing.status_code, 400)
+        with engine.connect() as connection:
+            sporting = connection.execute(
+                text("SELECT id FROM team WHERE name = 'Sporting SA JAX' AND age_group = 'U13' AND tier = 'ECNL'")
+            ).scalar_one()
+            parkland = connection.execute(
+                text("SELECT id FROM team WHERE name = 'Parkland Soccer Club' AND age_group = 'U13' AND tier = 'ECNL'")
+            ).scalar_one()
+        same = self.client.get(f"/head-to-head?team_a_id={sporting}&team_b_id={sporting}")
+        self.assertEqual(same.status_code, 400)
+        unknown = self.client.get(f"/head-to-head?team_a_id={sporting}&team_b_id=99999999")
+        self.assertEqual(unknown.status_code, 404)
+
+        response = self.client.get(f"/head-to-head?team_a_id={sporting}&team_b_id={parkland}")
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        tape = body["team_a_stats"]
+        self.assertEqual(tape["name"], "Sporting SA JAX")
+        self.assertEqual(tape["overall_record"]["w"], 4)
+        self.assertEqual(tape["overall_record"]["l"], 1)
+        self.assertEqual(tape["overall_record"]["d"], 1)
+        self.assertEqual(tape["overall_record"]["gd"], 11)
+        self.assertEqual(tape["overall_record"]["ppg"], 2.17)
+        self.assertEqual(
+            tape["home_record"]["gp"] + tape["away_record"]["gp"],
+            tape["overall_record"]["gp"],
+        )
+        self.assertEqual([item["result"] for item in tape["last_5_form"]], ["W", "W", "D", "W", "L"])
+        self.assertEqual(tape["last_5_form"][-1]["score"], "1-2")
+        self.assertEqual(tape["last_5_form"][-1]["opponent_name"], "Parkland Soccer Club")
+
+        summary = body["direct_matches"]["summary"]
+        self.assertEqual(summary["team_a_wins"], 0)
+        self.assertEqual(summary["team_b_wins"], 1)
+        self.assertEqual(summary["draws"], 0)
+        self.assertEqual(summary["team_a_goals"], 1)
+        self.assertEqual(summary["team_b_goals"], 2)
+        meetings = body["direct_matches"]["games"]
+        self.assertEqual(len(meetings), 2)
+        self.assertEqual([game["date"] for game in meetings], ["2026-10-04", "2026-10-31"])
+        self.assertEqual(meetings[0]["status"], "COMPLETED")
+        self.assertEqual((meetings[0]["home_score"], meetings[0]["away_score"]), (1, 2))
+        self.assertEqual(meetings[0]["winner"], "team_b")
+        self.assertEqual(meetings[0]["venue_type"], "Home")
+        self.assertEqual(meetings[0]["complex_name"], "Veterans Park")
+        self.assertEqual(meetings[0]["kickoff_time"], "09:00")
+        self.assertIsNone(meetings[0]["field_number"])
+        self.assertEqual(meetings[1]["status"], "SCHEDULED")
+        self.assertEqual(meetings[1]["venue_type"], "Away")
+        self.assertEqual(meetings[1]["complex_name"], "Terramar Park")
+        self.assertIsNone(meetings[1]["winner"])
+
+        opponents = body["common_opponents"]
+        self.assertGreaterEqual(len(opponents), 3)
+        ppgs = [row["conference_ppg"] for row in opponents]
+        numeric = [value for value in ppgs if value is not None]
+        self.assertEqual(numeric, sorted(numeric, reverse=True))
+        self.assertTrue(all(row["team_a_games"] and row["team_b_games"] for row in opponents))
+        self.assertTrue(all(row["advantage"] in {"team_a", "team_b", "even", "incomplete"} for row in opponents))
+        self.assertGreater(body["common_opponents_rollup"]["team_a_vs_common"]["gp"], 0)
+        self.assertGreater(body["common_opponents_rollup"]["team_b_vs_common"]["gp"], 0)
+
+        conference = self.client.get(
+            f"/head-to-head?team_a_id={sporting}&team_b_id={parkland}&conference_only=true"
+        )
+        self.assertEqual(conference.status_code, 200, conference.text)
+        kept = conference.json()["direct_matches"]["games"]
+        self.assertEqual(kept[0]["status"], "COMPLETED")
+        self.assertGreaterEqual(len(conference.json()["common_opponents"]), 3)
+
     def test_empty_raw_text_is_400(self) -> None:
         response = self.client.post("/ingest/raw-text", json={"text": "   "})
         self.assertEqual(response.status_code, 400)

@@ -69,3 +69,129 @@ export type StandingRow = {
 };
 
 export type StandingsMode = "official" | "calculated";
+
+export type CountRecord = {
+  gp: number;
+  w: number;
+  l: number;
+  d: number;
+  gf: number;
+  ga: number;
+  gd: number;
+  pts: number;
+  ppg: number;
+};
+
+export type SplitRecord = {
+  gp: number;
+  w: number;
+  l: number;
+  d: number;
+  ppg: number;
+};
+
+export type FormGame = {
+  game_id: number;
+  date: string;
+  opponent_name: string;
+  result: "W" | "L" | "D";
+  score: string;
+  venue_type: VenueType;
+};
+
+export type TeamTape = {
+  team_id: number;
+  name: string;
+  age_group: string;
+  tier: string;
+  conference: string;
+  conference_rank: number | null;
+  official_ppg: number | null;
+  overall_record: CountRecord;
+  home_record: SplitRecord;
+  away_record: SplitRecord;
+  avg_gf: number;
+  avg_ga: number;
+  last_5_form: FormGame[];
+};
+
+export type DirectMatch = {
+  game_id: number;
+  date: string;
+  kickoff_time: string | null;
+  complex_name: string;
+  field_number: string | null;
+  city: string;
+  state: string;
+  status: GameStatus;
+  home_team_id: number;
+  away_team_id: number;
+  home_score: number | null;
+  away_score: number | null;
+  venue_type: VenueType;
+  team_a_result: "W" | "L" | "D" | null;
+  team_b_result: "W" | "L" | "D" | null;
+  winner: "team_a" | "team_b" | "draw" | null;
+};
+
+export type CommonGame = {
+  game_id: number;
+  date: string;
+  status: GameStatus;
+  venue_type: "H" | "A" | "N";
+  team_score: number | null;
+  opponent_score: number | null;
+  result: "W" | "L" | "D" | "Scheduled" | null;
+};
+
+export type OpponentMini = {
+  gp: number;
+  pts: number;
+  ppg: number;
+  gf: number;
+  ga: number;
+  gd: number;
+};
+
+export type CommonOpponent = {
+  id: number;
+  name: string;
+  conference_rank: number | null;
+  conference_ppg: number | null;
+  team_a_games: CommonGame[];
+  team_b_games: CommonGame[];
+  team_a_summary: OpponentMini;
+  team_b_summary: OpponentMini;
+  advantage: "team_a" | "team_b" | "even" | "incomplete";
+};
+
+export type Rollup = {
+  gp: number;
+  w: number;
+  l: number;
+  d: number;
+  gf: number;
+  ga: number;
+  gd: number;
+  ppg: number;
+};
+
+export type HeadToHeadReport = {
+  team_a_stats: TeamTape;
+  team_b_stats: TeamTape;
+  direct_matches: {
+    summary: {
+      team_a_wins: number;
+      team_b_wins: number;
+      draws: number;
+      team_a_goals: number;
+      team_b_goals: number;
+    };
+    games: DirectMatch[];
+  };
+  common_opponents: CommonOpponent[];
+  common_opponents_rollup: {
+    team_a_vs_common: Rollup;
+    team_b_vs_common: Rollup;
+  };
+};

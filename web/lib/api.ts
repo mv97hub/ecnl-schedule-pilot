@@ -1,4 +1,4 @@
-import type { ScheduleFilter, ScheduleResponse, StandingRow, StandingsMode, Team } from "@/lib/types";
+import type { HeadToHeadReport, ScheduleFilter, ScheduleResponse, StandingRow, StandingsMode, Team } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
@@ -19,6 +19,15 @@ export function fetchTeams(q?: string): Promise<Team[]> {
 
 export function fetchSchedule(teamId: number, filter: ScheduleFilter): Promise<ScheduleResponse> {
   return request<ScheduleResponse>(`/teams/${teamId}/schedule?filter=${filter}`);
+}
+
+export function fetchHeadToHead(teamAId: number, teamBId: number, conferenceOnly: boolean): Promise<HeadToHeadReport> {
+  const params = new URLSearchParams({
+    team_a_id: String(teamAId),
+    team_b_id: String(teamBId),
+    conference_only: conferenceOnly ? "true" : "false",
+  });
+  return request<HeadToHeadReport>(`/head-to-head?${params.toString()}`);
 }
 
 export function fetchStandings(
