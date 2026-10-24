@@ -25,12 +25,17 @@ class ScheduleTeam(Base):
             "age_group IN ('U13', 'U14', 'U15', 'U16', 'U17', 'U18/19')",
             name="ck_team_age_group",
         ),
+        CheckConstraint(
+            "tier IN ('ECNL', 'ECNL-RL')",
+            name="ck_team_tier",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
     age_group: Mapped[str] = mapped_column(String(8), nullable=False, index=True)
-    conference: Mapped[str] = mapped_column(String(80), nullable=False)
+    tier: Mapped[str] = mapped_column(String(16), nullable=False, default="ECNL", server_default="ECNL")
+    conference: Mapped[str] = mapped_column(String(120), nullable=False)
     city: Mapped[str] = mapped_column(String(80), nullable=False)
     state: Mapped[str] = mapped_column(String(2), nullable=False)
 

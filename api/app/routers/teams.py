@@ -90,7 +90,7 @@ def team_schedule(
                 conference[{"W": "wins", "D": "draws", "L": "losses"}[team_result]] += 1
                 conference["gf"] += goals_for or 0
                 conference["ga"] += goals_against or 0
-        showcase = (not game.is_conference_game) or looks_like_showcase(game.event or "", game.venue_name or "")
+        showcase = (not game.is_conference_game) or looks_like_showcase(game.event or "")
         venue_type = "Showcase" if showcase else ("Home" if home else "Away")
         if filter == "home" and not home:
             continue

@@ -4,7 +4,7 @@ import type { Team, TeamRecordSummary } from "@/lib/types";
 
 export function SeasonBanner({ team, summary }: { team: Team; summary: TeamRecordSummary }) {
   const rank = summary.conference_rank == null ? "—" : `#${summary.conference_rank}`;
-  const standingsHref = `/standings?conference=${encodeURIComponent(summary.conference)}&age_group=${encodeURIComponent(team.age_group)}&tier=ECNL`;
+  const standingsHref = `/standings?conference=${encodeURIComponent(summary.conference)}&age_group=${encodeURIComponent(team.age_group)}&tier=${encodeURIComponent(team.tier === "ECNL-RL" ? "ECNL-RL" : "ECNL")}`;
 
   return (
     <section className="mb-6 rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm" aria-label="Season summary">

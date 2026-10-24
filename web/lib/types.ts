@@ -7,6 +7,7 @@ export type Team = {
   conference: string;
   city: string;
   state: string;
+  tier?: string;
 };
 
 export type Opponent = {

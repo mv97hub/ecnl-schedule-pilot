@@ -19,7 +19,7 @@ from sqlmodel import SQLModel
 from app.database import engine, ensure_result_columns
 from app.ingestion.normalizer import looks_like_showcase
 from app.models import Base, ScheduleGame as Game, ScheduleTeam as Team
-from app.standings import replace_ecnl_standings, seed_rl_standings
+from app.standings import replace_ecnl_standings
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "ecnl_boys_2026_27.json"
 
@@ -48,11 +48,18 @@ def recreate_tables() -> None:
     ensure_result_columns()
 
 
-def _conference_game(event: str | None, venue: str) -> bool:
-    blob = f"{event or ''} {venue or ''}"
-    if looks_like_showcase(blob):
+def _conference_game(event: str | None, _venue: str) -> bool:
+    """League group play stays a conference game.
+
+    Venue names such as Festival Park are places, so only the event label
+    can mark a published match as a showcase, friendly, or invitational.
+    """
+
+    label = event or ""
+    if looks_like_showcase(label):
         return False
-    return "invitational" not in blob.lower()
+    lowered = label.casefold()
+    return "friendly" not in lowered and "invitational" not in lowered
 
 
 def _published_score(row: dict) -> tuple[str, int | None, int | None]:
@@ -81,6 +88,7 @@ def seed() -> dict[str, int]:
             row["source_id"]: Team(
                 name=row["name"],
                 age_group=row["age_group"],
+                tier=row.get("tier") or "ECNL",
                 conference=row["conference"],
                 city=row["city"],
                 state=row["state"],
@@ -117,8 +125,8 @@ def seed() -> dict[str, int]:
         session.add_all(games)
         session.commit()
 
-        ecnl_rows = replace_ecnl_standings(session)
-        rl_rows = seed_rl_standings(session)
+        ecnl_rows = replace_ecnl_standings(session, "ECNL")
+        rl_rows = replace_ecnl_standings(session, "ECNL-RL")
         team_count = int(session.scalar(select(func.count()).select_from(Team)) or 0)
         game_count = int(session.scalar(select(func.count()).select_from(Game)) or 0)
         completed = int(session.scalar(select(func.count()).select_from(Game).where(Game.status == "COMPLETED")) or 0)
@@ -150,7 +158,14 @@ def apply_published_scores() -> dict[str, int]:
     for row in payload["games"]:
         home = teams_by_source[row["home_source_id"]]
         away = teams_by_source[row["away_source_id"]]
-        key = (home["name"], away["name"], home["age_group"], _instant(datetime.fromisoformat(row["starts_at"])))
+        key = (
+            home["name"],
+            away["name"],
+            home["age_group"],
+            home.get("tier") or "ECNL",
+            home["conference"],
+            _instant(datetime.fromisoformat(row["starts_at"])),
+        )
         published.setdefault(key, []).append(row)
 
     updated = unmatched = ambiguous = 0
@@ -159,7 +174,7 @@ def apply_published_scores() -> dict[str, int]:
         for game in session.scalars(select(Game)).all():
             home = db_teams[game.home_team_id]
             away = db_teams[game.away_team_id]
-            key = (home.name, away.name, home.age_group, _instant(game.starts_at))
+            key = (home.name, away.name, home.age_group, home.tier, home.conference, _instant(game.starts_at))
             choices = published.get(key, [])
             if len(choices) > 1:
                 choices = [row for row in choices if row["venue_name"] == game.venue_name]

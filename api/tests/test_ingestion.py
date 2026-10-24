@@ -135,11 +135,14 @@ class EndpointTests(unittest.TestCase):
             game_columns = set(connection.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'game'")).scalars())
             team_count = connection.execute(text("SELECT count(*) FROM team")).scalar_one()
             game_count = connection.execute(text("SELECT count(*) FROM game")).scalar_one()
+            rl_teams = connection.execute(text("SELECT count(*) FROM team WHERE tier = 'ECNL-RL'")).scalar_one()
         self.assertIn("conference", team_columns)
+        self.assertIn("tier", team_columns)
         self.assertIn("home_score", game_columns)
         self.assertNotIn("match_key", game_columns)
-        self.assertEqual(team_count, 1038)
-        self.assertEqual(game_count, 9345)
+        self.assertEqual(team_count, 3271)
+        self.assertEqual(game_count, 27380)
+        self.assertEqual(rl_teams, 2233)
 
     def test_raw_text_reimport_updates_field_and_time(self) -> None:
         first = self.client.post(
@@ -326,7 +329,7 @@ class EndpointTests(unittest.TestCase):
     def test_schedule_payload_includes_record(self) -> None:
         with engine.connect() as connection:
             team_id = connection.execute(
-                text("SELECT id FROM team WHERE name = 'Sporting SA JAX' AND age_group = 'U13'")
+                text("SELECT id FROM team WHERE name = 'Sporting SA JAX' AND age_group = 'U13' AND tier = 'ECNL'")
             ).scalar_one()
         response = self.client.get(f"/teams/{team_id}/schedule")
         self.assertEqual(response.status_code, 200, response.text)
@@ -335,6 +338,11 @@ class EndpointTests(unittest.TestCase):
         self.assertRegex(body["team_record_summary"]["overall_record"], r"^\d+-\d+-\d+$")
         self.assertIn(body["games"][0]["venue_type"], ["Home", "Away", "Showcase"])
         self.assertIn(body["games"][0]["status"], ["SCHEDULED", "COMPLETED", "POSTPONED", "CANCELLED"])
+        october = {game["starts_at"][:10]: game for game in body["games"]}
+        self.assertEqual((october["2026-10-03"]["home_score"], october["2026-10-03"]["away_score"]), (1, 0))
+        self.assertEqual(october["2026-10-03"]["opponent"]["name"], "Athletic Club Florida")
+        self.assertEqual((october["2026-10-04"]["home_score"], october["2026-10-04"]["away_score"]), (1, 2))
+        self.assertEqual(october["2026-10-04"]["opponent"]["name"], "Parkland Soccer Club")
 
     def test_empty_raw_text_is_400(self) -> None:
         response = self.client.post("/ingest/raw-text", json={"text": "   "})

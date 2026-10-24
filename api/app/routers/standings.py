@@ -7,14 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_session
 from app.models import ConferenceStanding
 from app.schemas import StandingOut
-from app.standings import (
-    calculated_rl_standings,
-    ecnl_standings,
-    normalize_age_group,
-    normalize_tier,
-    short_conference,
-    sort_standings,
-)
+from app.standings import ecnl_standings, normalize_age_group, normalize_tier, short_conference, sort_standings
 
 router = APIRouter()
 
@@ -62,8 +55,7 @@ def list_standings(
         raise HTTPException(status_code=400, detail="conference is required")
 
     if chosen == "calculated":
-        rows = ecnl_standings(session, short, age) if tier_name == "ECNL" else calculated_rl_standings(session, short, age)
-        return _ranked(rows)
+        return _ranked(ecnl_standings(session, short, age, tier_name))
 
     records = session.scalars(
         select(ConferenceStanding).where(

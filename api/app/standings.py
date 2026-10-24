@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import hashlib
 import re
 from datetime import UTC, datetime
+from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, selectinload
 
 from app.ingestion.normalizer import standardize_team_name
-from app.models import ConferenceStanding, Game, ScheduleGame, ScheduleTeam, Team
+from app.models import ConferenceStanding, ScheduleGame, ScheduleTeam
 
 AGE_GROUPS = ("U13", "U14", "U15", "U16", "U17", "U18/19")
 TIERS = ("ECNL", "ECNL-RL")
@@ -45,31 +45,9 @@ _NAME_ALIASES = {
     "fort lauderdale united": "fort lauderdale united fc",
 }
 
-SOUTHEAST_RL = (
-    "GSA",
-    "Concorde Fire",
-    "NASA Tophat",
-    "United Futbol Academy",
-    "CESA Triumph",
-    "South Carolina United",
-    "Atlanta Fire United",
-    "South Carolina Surf",
-)
-FLORIDA_RL = (
-    "Sporting Jax",
-    "Florida Premier",
-    "Florida Kraze Krush",
-    "Fort Lauderdale United",
-    "Space Coast United",
-    "Palm Beach United",
-    "AC Florida West",
-    "Doral Soccer Club",
-)
-
-
 def short_conference(name: str) -> str:
     text = " ".join((name or "").split())
-    text = re.sub(r"^ECNL\s+Boys\s+", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"^ECNL(?:\s+RL)?\s+Boys\s+", "", text, flags=re.IGNORECASE)
     return re.sub(r"\s+20\d{2}-\d{2}$", "", text).strip()
 
 
@@ -101,25 +79,34 @@ def _canonical_name(name: str) -> str:
     return _NAME_ALIASES.get(standard, standard)
 
 
-def link_team_id(teams: list[ScheduleTeam], team_name: str, age_group: str, conference: str) -> int | None:
+def link_team_id(
+    teams: list[ScheduleTeam],
+    team_name: str,
+    age_group: str,
+    conference: str,
+    tier: str | None = None,
+) -> int | None:
     target = _canonical_name(team_name)
     short = short_conference(conference).casefold()
     matches = [
         team
         for team in teams
-        if team.age_group == age_group and _canonical_name(team.name) == target
+        if team.age_group == age_group and _canonical_name(team.name) == target and (tier is None or team.tier == tier)
     ]
     if not matches:
         return None
     preferred = [team for team in matches if short_conference(team.conference).casefold() == short]
-    chosen = preferred[0] if preferred else matches[0]
-    return chosen.id
+    if preferred:
+        return preferred[0].id
+    if len(matches) == 1:
+        return matches[0].id
+    return None
 
 
 def _ppg(points: int, games_played: int) -> float:
     if games_played <= 0:
         return 0.0
-    return round(points / games_played, 2)
+    return float((Decimal(points) / Decimal(games_played)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 def _row_from_parts(
@@ -173,7 +160,12 @@ def sort_standings(rows: list[dict[str, object]]) -> list[dict[str, object]]:
     )
 
 
-def ecnl_standings(session: Session, conference: str | None = None, age_group: str | None = None) -> list[dict[str, object]]:
+def ecnl_standings(
+    session: Session,
+    conference: str | None = None,
+    age_group: str | None = None,
+    tier: str = "ECNL",
+) -> list[dict[str, object]]:
     """Aggregate completed conference games. Teams with no results stay on the table at 0."""
 
     teams = list(session.scalars(select(ScheduleTeam)).all())
@@ -184,11 +176,13 @@ def ecnl_standings(session: Session, conference: str | None = None, age_group: s
             continue
         if age_group is not None and team.age_group != age_group:
             continue
+        if team.tier != tier:
+            continue
         if wanted is not None and short_conference(team.conference).casefold() != wanted:
             continue
         stats[team.id] = _row_from_parts(
             conference=short_conference(team.conference),
-            tier="ECNL",
+            tier=tier,
             age_group=team.age_group,
             team_id=team.id,
             team_name=team.name,
@@ -238,58 +232,6 @@ def _apply_result(stats: dict[int, dict[str, object]], team_id: int, goals_for: 
     row["points_per_game"] = _ppg(int(row["points"]), int(row["games_played"]))
 
 
-def calculated_rl_standings(session: Session, conference: str, age_group: str) -> list[dict[str, object]]:
-    short = short_conference(conference)
-    names = {
-        _canonical_name(name)
-        for name in session.scalars(
-            select(ConferenceStanding.team_name).where(
-                func.lower(ConferenceStanding.conference) == short.casefold(),
-                ConferenceStanding.tier == "ECNL-RL",
-                ConferenceStanding.age_group == age_group,
-            )
-        ).all()
-    }
-    ingest_teams = list(session.scalars(select(Team).where(Team.age_group == age_group, Team.tier == "ECNL-RL")).all())
-    by_id = {team.id: team for team in ingest_teams if team.id is not None}
-    if names:
-        by_id = {team_id: team for team_id, team in by_id.items() if _canonical_name(team.name) in names}
-    if not by_id:
-        return []
-
-    published = list(session.scalars(select(ScheduleTeam)).all())
-    stats: dict[int, dict[str, object]] = {}
-    for team_id, team in by_id.items():
-        stats[team_id] = _row_from_parts(
-            conference=short,
-            tier="ECNL-RL",
-            age_group=age_group,
-            team_id=link_team_id(published, team.name, age_group, short),
-            team_name=team.name,
-            games_played=0,
-            wins=0,
-            losses=0,
-            draws=0,
-            goals_for=0,
-            goals_against=0,
-        )
-    games = session.scalars(
-        select(Game).where(
-            Game.status == "COMPLETED",
-            Game.is_conference_game.is_(True),
-            Game.home_score.is_not(None),
-            Game.away_score.is_not(None),
-            or_(Game.home_team_id.in_(list(stats)), Game.away_team_id.in_(list(stats))),
-        )
-    ).all()
-    for game in games:
-        if game.home_team_id in stats:
-            _apply_result(stats, game.home_team_id, game.home_score or 0, game.away_score or 0)
-        if game.away_team_id in stats:
-            _apply_result(stats, game.away_team_id, game.away_score or 0, game.home_score or 0)
-    return [row for row in stats.values() if int(row["games_played"]) > 0]
-
-
 def upsert_standings(session: Session, rows: list[dict[str, object]]) -> int:
     if not rows:
         return 0
@@ -301,7 +243,7 @@ def upsert_standings(session: Session, rows: list[dict[str, object]]) -> int:
         conference = str(row["conference"])
         linked = row.get("team_id")
         if linked is None:
-            linked = link_team_id(teams, team_name, age_group, conference)
+            linked = link_team_id(teams, team_name, age_group, conference, tier=str(row["tier"]))
         item = {**row, "team_id": linked, "team_name": team_name}
         key = (conference, str(row["tier"]), age_group, team_name)
         previous = prepared_by_key.get(key)
@@ -335,42 +277,10 @@ def upsert_standings(session: Session, rows: list[dict[str, object]]) -> int:
     return len(prepared)
 
 
-def replace_ecnl_standings(session: Session) -> int:
-    rows = ecnl_standings(session)
-    session.execute(delete(ConferenceStanding).where(ConferenceStanding.tier == "ECNL"))
+def replace_ecnl_standings(session: Session, tier: str = "ECNL") -> int:
+    rows = ecnl_standings(session, tier=tier)
+    session.execute(delete(ConferenceStanding).where(ConferenceStanding.tier == tier))
     session.commit()
-    return upsert_standings(session, rows)
-
-
-def seed_rl_standings(session: Session) -> int:
-    rows: list[dict[str, object]] = []
-    for conference, clubs in (("Southeast", SOUTHEAST_RL), ("Florida", FLORIDA_RL)):
-        for age_group in AGE_GROUPS:
-            for club in clubs:
-                digest = hashlib.sha256(f"{conference}|{age_group}|{club}".encode()).digest()
-                games_played = 8
-                wins = 1 + digest[0] % 7
-                draws = digest[1] % 3
-                if wins + draws > games_played:
-                    wins = games_played - draws
-                losses = games_played - wins - draws
-                goals_for = wins * 2 + draws + digest[2] % 3
-                goals_against = losses * 2 + digest[3] % 2
-                rows.append(
-                    _row_from_parts(
-                        conference=conference,
-                        tier="ECNL-RL",
-                        age_group=age_group,
-                        team_id=None,
-                        team_name=club,
-                        games_played=games_played,
-                        wins=wins,
-                        losses=losses,
-                        draws=draws,
-                        goals_for=goals_for,
-                        goals_against=goals_against,
-                    )
-                )
     return upsert_standings(session, rows)
 
 
@@ -382,7 +292,7 @@ def conference_rank(session: Session, team: ScheduleTeam) -> int | None:
         session.scalars(
             select(ConferenceStanding).where(
                 func.lower(ConferenceStanding.conference) == short.casefold(),
-                ConferenceStanding.tier == "ECNL",
+                ConferenceStanding.tier == team.tier,
                 ConferenceStanding.age_group == team.age_group,
             )
         ).all()

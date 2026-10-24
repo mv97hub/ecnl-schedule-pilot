@@ -36,6 +36,20 @@ def ensure_result_columns() -> None:
                     """
                 )
             )
+        if connection.execute(text("SELECT to_regclass('public.team')")).scalar() is not None:
+            connection.execute(text("ALTER TABLE team ADD COLUMN IF NOT EXISTS tier varchar(16) NOT NULL DEFAULT 'ECNL'"))
+            connection.execute(text("ALTER TABLE team ALTER COLUMN conference TYPE varchar(120)"))
+            connection.execute(
+                text(
+                    """
+                    DO $$ BEGIN
+                      ALTER TABLE team ADD CONSTRAINT ck_team_tier
+                        CHECK (tier IN ('ECNL', 'ECNL-RL'));
+                    EXCEPTION WHEN duplicate_object THEN NULL;
+                    END $$
+                    """
+                )
+            )
 
 
 def get_session() -> Generator[Session, None, None]:

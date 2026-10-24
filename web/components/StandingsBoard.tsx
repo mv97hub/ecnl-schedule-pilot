@@ -4,9 +4,13 @@ import { LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { fetchStandings } from "@/lib/api";
+import { fetchStandings, fetchTeams } from "@/lib/api";
 import { AGE_GROUPS, CONFERENCES, PLAYOFF_SPOTS, TIERS } from "@/lib/leagues";
-import type { StandingRow, StandingsMode } from "@/lib/types";
+import type { StandingRow, StandingsMode, Team } from "@/lib/types";
+
+function shortConference(name: string): string {
+  return name.replace(/^ECNL(?:\s+RL)?\s+Boys\s+/i, "").replace(/\s+20\d{2}-\d{2}$/i, "").trim();
+}
 
 function readQuery() {
   const params = new URLSearchParams(window.location.search);
@@ -15,7 +19,7 @@ function readQuery() {
   const tier = params.get("tier");
   const mode = params.get("mode");
   return {
-    conference: CONFERENCES.includes(conference as (typeof CONFERENCES)[number]) ? conference! : "Southeast",
+    conference: conference || "Southeast",
     tier: tier === "ECNL-RL" ? "ECNL-RL" : "ECNL",
     ageGroup: AGE_GROUPS.some((item) => item.value === age) ? age! : "U13",
     mode: mode === "calculated" ? "calculated" : "official",
@@ -28,6 +32,7 @@ export function StandingsBoard() {
   const [ageGroup, setAgeGroup] = useState("U13");
   const [mode, setMode] = useState<StandingsMode>("official");
   const [ready, setReady] = useState(false);
+  const [rlConferences, setRlConferences] = useState<string[]>([]);
   const [rows, setRows] = useState<StandingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +46,24 @@ export function StandingsBoard() {
       setMode(next.mode);
       setReady(true);
     });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchTeams()
+      .then((teams: Team[]) => {
+        if (cancelled) return;
+        const names = [
+          ...new Set(teams.filter((team) => team.tier === "ECNL-RL").map((team) => shortConference(team.conference)).filter(Boolean)),
+        ].sort((a, b) => a.localeCompare(b));
+        setRlConferences(names);
+      })
+      .catch(() => {
+        if (!cancelled) setRlConferences([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -63,6 +86,8 @@ export function StandingsBoard() {
     };
   }, [ready, conference, tier, ageGroup, mode]);
 
+  const conferenceOptions = tier === "ECNL-RL" && rlConferences.length > 0 ? rlConferences : [...CONFERENCES];
+
   function choose<T>(setter: (value: T) => void, value: T) {
     setLoading(true);
     setError(null);
@@ -81,7 +106,14 @@ export function StandingsBoard() {
             <select
               aria-label="Tier"
               value={tier}
-              onChange={(event) => choose(setTier, event.target.value as (typeof TIERS)[number])}
+              onChange={(event) => {
+                const next = event.target.value === "ECNL-RL" ? "ECNL-RL" : "ECNL";
+                const options = next === "ECNL-RL" && rlConferences.length > 0 ? rlConferences : [...CONFERENCES];
+                setLoading(true);
+                setError(null);
+                setTier(next);
+                if (!options.includes(conference)) setConference(options[0]);
+              }}
               className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
             >
               {TIERS.map((item) => (
@@ -97,7 +129,7 @@ export function StandingsBoard() {
               onChange={(event) => choose(setConference, event.target.value)}
               className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
             >
-              {CONFERENCES.map((item) => (
+              {conferenceOptions.map((item) => (
                 <option key={item}>{item}</option>
               ))}
             </select>

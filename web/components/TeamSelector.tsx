@@ -11,9 +11,10 @@ type TeamSelectorProps = {
   selectedId: number | null;
   onSelect: (team: Team) => void;
   loading?: boolean;
+  placeholder?: string;
 };
 
-export function TeamSelector({ teams, selectedId, onSelect, loading }: TeamSelectorProps) {
+export function TeamSelector({ teams, selectedId, onSelect, loading, placeholder }: TeamSelectorProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -46,7 +47,7 @@ export function TeamSelector({ teams, selectedId, onSelect, loading }: TeamSelec
   }, []);
 
   return (
-    <div ref={rootRef} className="relative w-full max-w-xl">
+    <div ref={rootRef} className="relative w-full">
       <label htmlFor="team-search" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-emerald-200/80">
         Team
       </label>
@@ -69,7 +70,7 @@ export function TeamSelector({ teams, selectedId, onSelect, loading }: TeamSelec
             setQuery("");
             setOpen(true);
           }}
-          placeholder={loading ? "Loading teams…" : "Search teams in this conference…"}
+          placeholder={loading ? "Loading teams…" : placeholder ?? "Search teams in this conference…"}
           className="h-12 w-full rounded-xl border border-white/10 bg-white/10 pr-11 pl-10 text-sm text-white shadow-inner outline-none placeholder:text-emerald-100/50 focus:border-emerald-400/70 focus:bg-white/15"
         />
         <ChevronDown className="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 text-emerald-100/70" />

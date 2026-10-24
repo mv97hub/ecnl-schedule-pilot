@@ -14,6 +14,7 @@ class TeamOut(BaseModel):
     id: int
     name: str
     age_group: str
+    tier: str
     conference: str
     city: str
     state: str
