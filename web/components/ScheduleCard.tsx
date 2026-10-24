@@ -8,9 +8,9 @@ export function ScoutLink({ teamId, opponentId }: { teamId: number; opponentId: 
   return (
     <Link
       href={`/head-to-head?teamA=${teamId}&teamB=${opponentId}`}
-      className="text-xs font-medium text-emerald-800 underline-offset-4 hover:underline"
+      className="shrink-0 whitespace-nowrap text-xs font-medium text-emerald-800 underline-offset-4 hover:underline"
     >
-      Scout H2H
+      Matchup
     </Link>
   );
 }
@@ -31,11 +31,12 @@ export function ScheduleCard({ game, teamName, teamId }: { game: Game; teamName:
 
   return (
     <article className="rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-sm" data-result={game.team_result ?? game.status}>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-x-3">
         <div className="min-w-0 text-left">
           <p className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Home</p>
           <p className={`truncate text-sm font-semibold ${game.side === "home" ? "text-stone-950" : "text-stone-700"}`}>{homeName}</p>
         </div>
+        <ScoutLink teamId={teamId} opponentId={game.opponent.id} />
         <div className="min-w-0 text-right">
           <p className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Away</p>
           <p className={`truncate text-sm font-semibold ${game.side === "away" ? "text-stone-950" : "text-stone-700"}`}>{awayName}</p>
@@ -62,9 +63,6 @@ export function ScheduleCard({ game, teamName, teamId }: { game: Game; teamName:
         </span>
         <ExternalLink className="size-3 shrink-0 text-stone-400" />
       </a>
-      <p className="mt-1 text-center">
-        <ScoutLink teamId={teamId} opponentId={game.opponent.id} />
-      </p>
     </article>
   );
 }

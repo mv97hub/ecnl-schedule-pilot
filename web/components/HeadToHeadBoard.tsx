@@ -463,7 +463,7 @@ export function HeadToHeadBoard() {
             >
               Swap Teams
             </button>
-            <div className="flex flex-wrap justify-center gap-1" role="tablist" aria-label="Game scope">
+            <div className="flex flex-col items-stretch gap-1" role="tablist" aria-label="Game scope">
               <button
                 type="button"
                 role="tab"
@@ -472,7 +472,7 @@ export function HeadToHeadBoard() {
                   if (conferenceOnly && teamA && teamB && teamA !== teamB) setLoading(true);
                   setConferenceOnly(false);
                 }}
-                className={`rounded-full border px-3 py-1 text-xs font-medium ${conferenceOnly ? "border-stone-200 bg-white text-stone-700" : "border-emerald-700 bg-emerald-700 text-white"}`}
+                className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${conferenceOnly ? "border-stone-200 bg-white text-stone-700" : "border-emerald-700 bg-emerald-700 text-white"}`}
               >
                 All Games
               </button>
@@ -484,7 +484,7 @@ export function HeadToHeadBoard() {
                   if (!conferenceOnly && teamA && teamB && teamA !== teamB) setLoading(true);
                   setConferenceOnly(true);
                 }}
-                className={`rounded-full border px-3 py-1 text-xs font-medium ${conferenceOnly ? "border-emerald-700 bg-emerald-700 text-white" : "border-stone-200 bg-white text-stone-700"}`}
+                className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${conferenceOnly ? "border-emerald-700 bg-emerald-700 text-white" : "border-stone-200 bg-white text-stone-700"}`}
               >
                 Conference Games Only
               </button>

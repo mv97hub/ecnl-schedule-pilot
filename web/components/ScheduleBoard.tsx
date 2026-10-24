@@ -78,7 +78,10 @@ function ListView({ games, teamId }: { games: Game[]; teamId: number }) {
                   <li key={game.id} className="grid grid-cols-[5.5rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-stone-100 px-4 py-3 last:border-b-0">
                     <span className="text-sm text-stone-500">{stamp?.dateLabel ?? "TBD"}</span>
                     <span className="min-w-0">
-                      <span className="block truncate font-medium text-stone-900">{game.opponent.name}</span>
+                      <span className="flex min-w-0 items-baseline gap-2">
+                        <span className="truncate font-medium text-stone-900">{game.opponent.name}</span>
+                        <ScoutLink teamId={teamId} opponentId={game.opponent.id} />
+                      </span>
                       <a
                         href={mapsUrl(game.venue_name, game.city, game.state)}
                         target="_blank"
@@ -87,7 +90,6 @@ function ListView({ games, teamId }: { games: Game[]; teamId: number }) {
                       >
                         {game.venue_name}
                       </a>
-                      <ScoutLink teamId={teamId} opponentId={game.opponent.id} />
                     </span>
                     <span className="text-right text-sm">
                       {scoreline ? (
