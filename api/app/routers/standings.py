@@ -1,0 +1,84 @@
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.database import get_session
+from app.models import ConferenceStanding
+from app.schemas import StandingOut
+from app.standings import ecnl_standings, normalize_age_group, normalize_tier, short_conference, sort_standings
+
+router = APIRouter()
+
+
+def _ranked(rows: list[dict[str, object]]) -> list[StandingOut]:
+    ranked: list[StandingOut] = []
+    for index, row in enumerate(sort_standings(rows), start=1):
+        ranked.append(
+            StandingOut(
+                rank=index,
+                team_id=row["team_id"] if isinstance(row["team_id"], int) else None,
+                team_name=str(row["team_name"]),
+                games_played=int(row["games_played"]),
+                wins=int(row["wins"]),
+                losses=int(row["losses"]),
+                draws=int(row["draws"]),
+                goals_for=int(row["goals_for"]),
+                goals_against=int(row["goals_against"]),
+                goal_diff=int(row["goal_diff"]),
+                points=int(row["points"]),
+                points_per_game=float(row["points_per_game"]),
+            )
+        )
+    return ranked
+
+
+@router.get("/standings", response_model=list[StandingOut])
+def list_standings(
+    session: Annotated[Session, Depends(get_session)],
+    conference: str = Query(min_length=1),
+    tier: str = Query(),
+    age_group: str = Query(),
+    mode: str = Query(default="official"),
+) -> list[StandingOut]:
+    try:
+        tier_name = normalize_tier(tier)
+        age = normalize_age_group(age_group)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    chosen = mode.strip().casefold()
+    if chosen not in {"official", "calculated"}:
+        raise HTTPException(status_code=400, detail="mode must be official or calculated")
+    short = short_conference(conference)
+    if not short:
+        raise HTTPException(status_code=400, detail="conference is required")
+
+    if chosen == "calculated":
+        return _ranked(ecnl_standings(session, short, age, tier_name))
+
+    records = session.scalars(
+        select(ConferenceStanding).where(
+            func.lower(ConferenceStanding.conference) == short.casefold(),
+            ConferenceStanding.tier == tier_name,
+            ConferenceStanding.age_group == age,
+        )
+    ).all()
+    return _ranked(
+        [
+            {
+                "team_id": record.team_id,
+                "team_name": record.team_name,
+                "games_played": record.games_played,
+                "wins": record.wins,
+                "losses": record.losses,
+                "draws": record.draws,
+                "goals_for": record.goals_for,
+                "goals_against": record.goals_against,
+                "goal_diff": record.goal_diff,
+                "points": record.points,
+                "points_per_game": record.points_per_game,
+            }
+            for record in records
+        ]
+    )

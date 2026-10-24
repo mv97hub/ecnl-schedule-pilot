@@ -4,9 +4,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel
 
-from app.database import engine
+from app.database import engine, ensure_result_columns
 from app.models import Base
 from app.routers.ingest import router as ingest_router
+from app.routers.standings import router as standings_router
 from app.routers.teams import router as teams_router
 
 
@@ -14,6 +15,7 @@ from app.routers.teams import router as teams_router
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(engine)
     SQLModel.metadata.create_all(engine)
+    ensure_result_columns()
     yield
 
 
@@ -28,6 +30,7 @@ app.add_middleware(
 )
 
 app.include_router(teams_router)
+app.include_router(standings_router)
 app.include_router(ingest_router)
 
 

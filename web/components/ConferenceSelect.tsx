@@ -21,7 +21,7 @@ export function ConferenceSelect({ conferences, value, onChange, loading }: Conf
       <div className="relative">
         <select
           id="conference"
-          value={value ?? ""}
+          value={value && conferences.includes(value) ? value : ""}
           disabled={loading || conferences.length === 0}
           onChange={(event) => onChange(event.target.value)}
           className="h-12 w-full appearance-none rounded-xl border border-white/10 bg-white/10 pr-11 pl-4 text-sm text-white shadow-inner outline-none focus:border-emerald-400/70 focus:bg-white/15 disabled:text-emerald-100/50"
