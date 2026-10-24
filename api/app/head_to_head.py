@@ -28,6 +28,7 @@ from app.schemas import (
     TeamTapeOut,
 )
 from app.standings import _canonical_name, _ppg, conference_rank, short_conference
+from scouting import build_scouting_report
 
 EASTERN = ZoneInfo("America/New_York")
 
@@ -389,10 +390,15 @@ def compare_teams(session: Session, team_a: ScheduleTeam, team_b: ScheduleTeam, 
             )
         )
     opponents.sort(key=lambda row: (row.conference_ppg is None, -(row.conference_ppg or 0), row.name.casefold()))
+    tape_a = _tape(session, team_a, games_a)
+    tape_b = _tape(session, team_b, games_b)
+    direct = _direct(team_a, team_b, direct_games)
+    rollup = CommonRollupOut(team_a_vs_common=rollup_a.rollup(), team_b_vs_common=rollup_b.rollup())
     return HeadToHeadOut(
-        team_a_stats=_tape(session, team_a, games_a),
-        team_b_stats=_tape(session, team_b, games_b),
-        direct_matches=_direct(team_a, team_b, direct_games),
+        team_a_stats=tape_a,
+        team_b_stats=tape_b,
+        direct_matches=direct,
         common_opponents=opponents,
-        common_opponents_rollup=CommonRollupOut(team_a_vs_common=rollup_a.rollup(), team_b_vs_common=rollup_b.rollup()),
+        common_opponents_rollup=rollup,
+        scouting_report=build_scouting_report(tape_a, tape_b, rollup, direct),
     )

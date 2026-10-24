@@ -176,6 +176,23 @@ export type Rollup = {
   ppg: number;
 };
 
+export type ScoutingAdvantage = "team_a" | "team_b" | "even";
+
+export type ScoutingInsight = {
+  category: string;
+  advantage: ScoutingAdvantage;
+  headline: string;
+  detail: string;
+};
+
+export type ScoutingReport = {
+  verdict_headline: string;
+  favored_team: ScoutingAdvantage;
+  edge_meter: number;
+  projected_tempo: "High-Scoring" | "Tight Defensive Battle" | "Balanced Matchup";
+  insights: ScoutingInsight[];
+};
+
 export type HeadToHeadReport = {
   team_a_stats: TeamTape;
   team_b_stats: TeamTape;
@@ -194,4 +211,5 @@ export type HeadToHeadReport = {
     team_a_vs_common: Rollup;
     team_b_vs_common: Rollup;
   };
+  scouting_report: ScoutingReport;
 };

@@ -198,9 +198,25 @@ class CommonRollupOut(BaseModel):
     team_b_vs_common: RollupOut
 
 
+class ScoutingInsightOut(BaseModel):
+    category: str
+    advantage: Literal["team_a", "team_b", "even"]
+    headline: str
+    detail: str
+
+
+class ScoutingReportOut(BaseModel):
+    verdict_headline: str
+    favored_team: Literal["team_a", "team_b", "even"]
+    edge_meter: int
+    projected_tempo: Literal["High-Scoring", "Tight Defensive Battle", "Balanced Matchup"]
+    insights: list[ScoutingInsightOut]
+
+
 class HeadToHeadOut(BaseModel):
     team_a_stats: TeamTapeOut
     team_b_stats: TeamTapeOut
     direct_matches: DirectMeetingsOut
     common_opponents: list[CommonOpponentOut]
     common_opponents_rollup: CommonRollupOut
+    scouting_report: ScoutingReportOut

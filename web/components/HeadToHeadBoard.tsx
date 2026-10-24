@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ResultMark } from "@/components/ResultMark";
 import { fetchHeadToHead, fetchTeams } from "@/lib/api";
 import { AGE_GROUPS, TIERS } from "@/lib/leagues";
-import type { CommonGame, CommonOpponent, CountRecord, DirectMatch, HeadToHeadReport, OpponentMini, Rollup, SplitRecord, Team, TeamTape } from "@/lib/types";
+import type { CommonGame, CommonOpponent, CountRecord, DirectMatch, HeadToHeadReport, OpponentMini, Rollup, ScoutingReport, SplitRecord, Team, TeamTape } from "@/lib/types";
 
 type Side = "a" | "b" | null;
 
@@ -292,6 +292,64 @@ function RollupLine({ name, row, lead }: { name: string; row: Rollup; lead: bool
   );
 }
 
+function advantageName(advantage: ScoutingReport["favored_team"], teamA: string, teamB: string): string {
+  if (advantage === "team_a") return teamA;
+  if (advantage === "team_b") return teamB;
+  return "Even";
+}
+
+function ScoutingGauge({ meter, teamA, teamB, label }: { meter: number; teamA: string; teamB: string; label: string }) {
+  const lean = Math.max(-100, Math.min(100, meter));
+  const angle = (-lean / 100) * 90;
+  const toward = lean > 0 ? teamA : lean < 0 ? teamB : "the center";
+  return (
+    <div className="min-w-0">
+      <svg viewBox="0 0 200 118" className="mx-auto h-20 w-full" role="img" aria-label={`${label}. Needle leans toward ${toward}.`}>
+        <path d="M 22 100 A 78 78 0 0 1 178 100" fill="none" stroke="#e7e5e4" strokeWidth="12" strokeLinecap="round" />
+        <path d="M 100 22 L 100 100" stroke="#d6d3d1" strokeWidth="2" />
+        <line x1="100" y1="100" x2="100" y2="36" stroke="#047857" strokeWidth="3" strokeLinecap="round" transform={`rotate(${angle} 100 100)`} />
+        <circle cx="100" cy="100" r="5" fill="#1c1917" />
+      </svg>
+      <p className="text-center text-sm font-semibold tracking-tight text-stone-950">{label}</p>
+      <div className="mt-1 text-[10px] font-semibold leading-tight text-stone-950 lg:grid lg:grid-cols-2 lg:gap-x-2">
+        <p>{teamA}</p>
+        <p className="text-right">{teamB}</p>
+      </div>
+    </div>
+  );
+}
+
+function ScoutingCard({ report, teamA, teamB }: { report: ScoutingReport; teamA: string; teamB: string }) {
+  return (
+    <section className="rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-sm" aria-label="Game Predictor">
+      <h2 className="text-lg font-semibold text-stone-950">Game Predictor</h2>
+      <div className="mt-2 grid grid-cols-[8.25rem_minmax(0,1fr)] items-start gap-3 lg:grid-cols-[16rem_minmax(0,1fr)] lg:items-center">
+        <ScoutingGauge meter={report.edge_meter} teamA={teamA} teamB={teamB} label={report.verdict_headline} />
+        <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+          {report.insights.map((card) => (
+            <article key={card.category} className="min-w-0 rounded-xl border border-stone-200 bg-stone-50 px-2.5 py-1.5 lg:px-3 lg:py-2">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-stone-400">{card.category}</p>
+              <p className="mt-0.5 text-sm leading-snug text-stone-950">
+                <span
+                  className={`font-semibold text-xs lg:text-sm ${
+                    card.advantage === "team_a" ? "text-emerald-800" : card.advantage === "team_b" ? "text-stone-950" : "text-stone-500"
+                  }`}
+                >
+                  {advantageName(card.advantage, teamA, teamB)}
+                </span>
+                <span className="mt-0.5 block text-xs text-stone-600 lg:mt-0 lg:inline lg:text-sm">
+                  <span className="hidden lg:inline"> · </span>
+                  {card.headline} · {card.detail}
+                </span>
+              </p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 const EMPTY_SIDE: Filters = { tier: "ECNL", conference: "", ageGroup: "U13", teamId: null };
 
 function parseTeamId(value: string | null): number | null {
@@ -463,7 +521,7 @@ export function HeadToHeadBoard() {
             >
               Swap Teams
             </button>
-            <div className="flex flex-wrap justify-center gap-1" role="tablist" aria-label="Game scope">
+            <div className="flex flex-col items-stretch gap-1" role="tablist" aria-label="Game scope">
               <button
                 type="button"
                 role="tab"
@@ -472,7 +530,7 @@ export function HeadToHeadBoard() {
                   if (conferenceOnly && teamA && teamB && teamA !== teamB) setLoading(true);
                   setConferenceOnly(false);
                 }}
-                className={`rounded-full border px-3 py-1 text-xs font-medium ${conferenceOnly ? "border-stone-200 bg-white text-stone-700" : "border-emerald-700 bg-emerald-700 text-white"}`}
+                className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${conferenceOnly ? "border-stone-200 bg-white text-stone-700" : "border-emerald-700 bg-emerald-700 text-white"}`}
               >
                 All Games
               </button>
@@ -484,7 +542,7 @@ export function HeadToHeadBoard() {
                   if (!conferenceOnly && teamA && teamB && teamA !== teamB) setLoading(true);
                   setConferenceOnly(true);
                 }}
-                className={`rounded-full border px-3 py-1 text-xs font-medium ${conferenceOnly ? "border-emerald-700 bg-emerald-700 text-white" : "border-stone-200 bg-white text-stone-700"}`}
+                className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${conferenceOnly ? "border-emerald-700 bg-emerald-700 text-white" : "border-stone-200 bg-white text-stone-700"}`}
               >
                 Conference Games Only
               </button>
@@ -512,6 +570,7 @@ export function HeadToHeadBoard() {
 
         {report && left && right && !loading && (
           <div className="mt-6 space-y-4">
+            <ScoutingCard report={report.scouting_report} teamA={left.name} teamB={right.name} />
             <section className="rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Tale of the Tape">
               <h2 className="text-lg font-semibold text-stone-950">Tale of the Tape</h2>
               <div className="mt-3 grid grid-cols-2 gap-3">
