@@ -6,7 +6,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_session
-from app.models import Game, Team
+from app.models import ScheduleGame as Game, ScheduleTeam as Team
 from app.schemas import OpponentOut, ScheduleGameOut, TeamOut
 
 router = APIRouter()

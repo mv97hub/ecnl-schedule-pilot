@@ -1,14 +1,19 @@
-from datetime import datetime
+"""Schedule tables (`team`, `game`) and ingested schedules (`ingest_team`, `ingest_game`)."""
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Text
+from datetime import date as DateValue
+from datetime import datetime
+from datetime import time as TimeValue
+
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlmodel import Field, SQLModel
 
 
 class Base(DeclarativeBase):
     pass
 
 
-class Team(Base):
+class ScheduleTeam(Base):
     """Home city and state are the club's home location."""
 
     __tablename__ = "team"
@@ -26,11 +31,17 @@ class Team(Base):
     city: Mapped[str] = mapped_column(String(80), nullable=False)
     state: Mapped[str] = mapped_column(String(2), nullable=False)
 
-    home_games: Mapped[list["Game"]] = relationship(back_populates="home_team", foreign_keys="Game.home_team_id")
-    away_games: Mapped[list["Game"]] = relationship(back_populates="away_team", foreign_keys="Game.away_team_id")
+    home_games: Mapped[list["ScheduleGame"]] = relationship(
+        back_populates="home_team",
+        foreign_keys="ScheduleGame.home_team_id",
+    )
+    away_games: Mapped[list["ScheduleGame"]] = relationship(
+        back_populates="away_team",
+        foreign_keys="ScheduleGame.away_team_id",
+    )
 
 
-class Game(Base):
+class ScheduleGame(Base):
     __tablename__ = "game"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -43,5 +54,35 @@ class Game(Base):
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="America/New_York")
     event: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    home_team: Mapped[Team] = relationship(back_populates="home_games", foreign_keys=[home_team_id])
-    away_team: Mapped[Team] = relationship(back_populates="away_games", foreign_keys=[away_team_id])
+    home_team: Mapped[ScheduleTeam] = relationship(back_populates="home_games", foreign_keys=[home_team_id])
+    away_team: Mapped[ScheduleTeam] = relationship(back_populates="away_games", foreign_keys=[away_team_id])
+
+
+class Team(SQLModel, table=True):
+    """Club row created while importing a schedule. Separate from the published league table."""
+
+    __tablename__ = "ingest_team"
+    __table_args__ = (UniqueConstraint("name", "age_group", name="uq_ingest_team_name_age"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(max_length=160, index=True)
+    age_group: str = Field(default="Unknown", max_length=16, index=True)
+    tier: str | None = Field(default=None, max_length=40)
+    home_complex: str | None = Field(default=None, max_length=200)
+
+
+class Game(SQLModel, table=True):
+    """One imported match. `match_key` ignores kickoff and field so a re-import updates them."""
+
+    __tablename__ = "ingest_game"
+
+    id: int | None = Field(default=None, primary_key=True)
+    match_key: str = Field(max_length=64, unique=True, index=True)
+    date: DateValue = Field(index=True)
+    kickoff_time: TimeValue | None = None
+    home_team_id: int = Field(foreign_key="ingest_team.id", index=True)
+    away_team_id: int = Field(foreign_key="ingest_team.id", index=True)
+    complex_name: str = Field(default="", max_length=200)
+    field_number: str = Field(default="", max_length=40)
+    city_state: str = Field(default="", max_length=120)
+    is_showcase: bool = Field(default=False)
