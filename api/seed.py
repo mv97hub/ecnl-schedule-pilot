@@ -15,7 +15,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.database import engine
-from app.models import Base, Game, Team
+from app.models import Base, ScheduleGame as Game, ScheduleTeam as Team
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "ecnl_boys_2026_27.json"
 

@@ -1,0 +1,238 @@
+"""Checks for venue splitting and the three ingest endpoints."""
+
+from __future__ import annotations
+
+import sys
+import unittest
+from datetime import time
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from sqlalchemy import event, text
+from fastapi.testclient import TestClient
+
+from app.database import engine
+from app.ingestion.normalizer import split_venue, standardize_team_name
+from app.ingestion.parsing import extract_games_from_html, parse_ics
+from app.main import app
+
+ICS = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//ecnl-schedule-pilot//test//EN
+BEGIN:VEVENT
+UID:probe-ics-1
+DTSTART:20260913T140000
+SUMMARY:Probe Away at Probe Central
+LOCATION:Matt Park - Field 2, Jacksonville, FL
+DESCRIPTION:Florida Showcase
+END:VEVENT
+END:VCALENDAR
+"""
+
+HTML = """
+<table>
+  <tr><th>Date</th><th>Time</th><th>Home</th><th>Away</th><th>Venue</th><th>Location</th></tr>
+  <tr>
+    <td>2026-10-03</td><td>1:00 PM</td>
+    <td>Probe North ECNL B2013/14</td><td>Probe South</td>
+    <td>Central Park #3</td><td>Savannah, GA</td>
+  </tr>
+</table>
+"""
+
+PROSE_HTML = """
+<div>2026-10-04 2:00 PM Probe East vs Probe West @ Matt Park - Field 2, Tampa, FL</div>
+"""
+
+
+class NormalizerTests(unittest.TestCase):
+    def test_splits_hash_and_dashed_field(self) -> None:
+        self.assertEqual(split_venue("Central Park #3"), ("Central Park", "3"))
+        self.assertEqual(split_venue("Matt Park - Field 2"), ("Matt Park", "2"))
+        self.assertEqual(split_venue("Veterans Park"), ("Veterans Park", ""))
+
+    def test_standardizes_team_names(self) -> None:
+        self.assertEqual(standardize_team_name("  Sporting SA JAX ECNL B2013/14 "), "Sporting SA JAX")
+        self.assertEqual(standardize_team_name("GSA"), "GSA")
+
+    def test_ics_and_html_parsers(self) -> None:
+        ics_games = parse_ics(ICS, age_group="U13", tier=None)
+        self.assertEqual(ics_games[0].home_name, "Probe Central")
+        self.assertEqual(ics_games[0].away_name, "Probe Away")
+        self.assertEqual(ics_games[0].complex_name, "Matt Park")
+        self.assertEqual(ics_games[0].field_number, "2")
+        self.assertIsNone(parse_ics("BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART;VALUE=DATE:20260913\nSUMMARY:Probe Away at Probe Central\nEND:VEVENT\nEND:VCALENDAR", age_group="U13", tier=None)[0].kickoff_time)
+
+        html_games = extract_games_from_html(HTML, age_group="U13", tier=None)
+        self.assertEqual(html_games[0].home_name, "Probe North ECNL B2013/14")
+        self.assertEqual(html_games[0].complex_name, "Central Park")
+        self.assertEqual(html_games[0].field_number, "3")
+        self.assertEqual(html_games[0].city_state, "Savannah, GA")
+
+        prose_games = extract_games_from_html(PROSE_HTML, age_group="U14", tier=None)
+        self.assertEqual(prose_games[0].home_name, "Probe East")
+        self.assertEqual(prose_games[0].complex_name, "Matt Park")
+        self.assertEqual(prose_games[0].field_number, "2")
+        self.assertEqual(prose_games[0].city_state, "Tampa, FL")
+
+
+class EndpointTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._client_cm = TestClient(app)
+        cls.client = cls._client_cm.__enter__()
+        cls.statements: list[str] = []
+
+        def capture(_conn, _cursor, statement, _parameters, _context, _executemany) -> None:
+            if "ingest_game" in statement and "ON CONFLICT" in statement:
+                cls.statements.append(statement)
+
+        cls.capture = capture
+        event.listen(engine, "before_cursor_execute", capture)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        event.remove(engine, "before_cursor_execute", cls.capture)
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    DELETE FROM ingest_game
+                    WHERE home_team_id IN (SELECT id FROM ingest_team WHERE name LIKE 'Probe %')
+                       OR away_team_id IN (SELECT id FROM ingest_team WHERE name LIKE 'Probe %')
+                    """
+                )
+            )
+            connection.execute(text("DELETE FROM ingest_team WHERE name LIKE 'Probe %'"))
+        cls._client_cm.__exit__(None, None, None)
+
+    def setUp(self) -> None:
+        self.statements.clear()
+
+    def test_schedule_tables_are_unchanged(self) -> None:
+        with engine.connect() as connection:
+            team_columns = set(connection.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'team'")).scalars())
+            game_columns = set(connection.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'game'")).scalars())
+            team_count = connection.execute(text("SELECT count(*) FROM team")).scalar_one()
+            game_count = connection.execute(text("SELECT count(*) FROM game")).scalar_one()
+        self.assertIn("conference", team_columns)
+        self.assertNotIn("match_key", game_columns)
+        self.assertEqual(team_count, 1038)
+        self.assertEqual(game_count, 9345)
+
+    def test_raw_text_reimport_updates_field_and_time(self) -> None:
+        first = self.client.post(
+            "/ingest/raw-text",
+            json={
+                "age_group": "U13",
+                "text": "2026-09-12 | 9:00 AM | Probe Central ECNL B2013/14 | Probe Coastal | Central Park #3 | Jacksonville, FL |",
+            },
+        )
+        self.assertEqual(first.status_code, 200, first.text)
+        body = first.json()
+        self.assertEqual(body["inserted"], 1)
+        self.assertEqual(body["updated"], 0)
+        self.assertEqual(body["games"][0]["home_team"], "Probe Central")
+        self.assertEqual(body["games"][0]["field_number"], "3")
+        self.assertEqual(body["games"][0]["kickoff_time"], "09:00")
+        self.assertFalse(body["games"][0]["is_showcase"])
+        self.assertIn("ON CONFLICT", self.statements[-1])
+        self.assertIn("DO UPDATE", self.statements[-1])
+        self.assertIn("field_number", self.statements[-1])
+        self.assertIn("kickoff_time", self.statements[-1])
+
+        second = self.client.post(
+            "/ingest/raw-text",
+            json={
+                "age_group": "U13",
+                "text": "2026-09-12 | 10:30 AM | Probe Central | Probe Coastal | Central Park #4 | Jacksonville, FL | showcase",
+            },
+        )
+        self.assertEqual(second.status_code, 200, second.text)
+        updated = second.json()
+        self.assertEqual(updated["inserted"], 0)
+        self.assertEqual(updated["updated"], 1)
+        self.assertEqual(updated["games"][0]["id"], body["games"][0]["id"])
+        self.assertEqual(updated["games"][0]["match_key"], body["games"][0]["match_key"])
+        self.assertEqual(updated["games"][0]["field_number"], "4")
+        self.assertEqual(updated["games"][0]["kickoff_time"], "10:30")
+        self.assertTrue(updated["games"][0]["is_showcase"])
+        self.assertEqual(updated["games"][0]["kickoff_time"], time(10, 30).strftime("%H:%M"))
+
+        with engine.connect() as connection:
+            count = connection.execute(
+                text("SELECT count(*) FROM ingest_game WHERE match_key = :key"),
+                {"key": body["games"][0]["match_key"]},
+            ).scalar_one()
+        self.assertEqual(count, 1)
+
+    def test_ics_endpoint_upserts(self) -> None:
+        with patch("app.routers.ingest.fetch_calendar", new_callable=AsyncMock) as fetch_calendar:
+            fetch_calendar.return_value = ICS
+            response = self.client.post(
+                "/ingest/ics",
+                json={"url": "https://schedules.example.com/playmetrics.ics", "age_group": "U13"},
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["inserted"], 1)
+        self.assertEqual(body["games"][0]["home_team"], "Probe Central")
+        self.assertEqual(body["games"][0]["away_team"], "Probe Away")
+        self.assertEqual(body["games"][0]["complex_name"], "Matt Park")
+        self.assertEqual(body["games"][0]["field_number"], "2")
+        self.assertEqual(body["games"][0]["kickoff_time"], "14:00")
+        self.assertTrue(body["games"][0]["is_showcase"])
+        self.assertIn("ON CONFLICT", self.statements[-1])
+
+        with patch("app.routers.ingest.fetch_calendar", new_callable=AsyncMock) as fetch_calendar:
+            fetch_calendar.return_value = ICS.replace("Field 2", "Field 9").replace("T140000", "T153000")
+            again = self.client.post(
+                "/ingest/ics",
+                json={"url": "https://schedules.example.com/playmetrics.ics", "age_group": "U13"},
+            )
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertEqual(again.json()["updated"], 1)
+        self.assertEqual(again.json()["games"][0]["field_number"], "9")
+        self.assertEqual(again.json()["games"][0]["kickoff_time"], "15:30")
+        self.assertEqual(again.json()["games"][0]["id"], body["games"][0]["id"])
+
+    def test_url_endpoint_upserts_without_a_browser(self) -> None:
+        with patch("app.routers.ingest.fetch_rendered_html", new_callable=AsyncMock) as fetch_html:
+            fetch_html.return_value = HTML
+            response = self.client.post(
+                "/ingest/url",
+                json={"url": "https://schedules.example.com/gotsport", "age_group": "U15"},
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["games"][0]["home_team"], "Probe North")
+        self.assertEqual(body["games"][0]["field_number"], "3")
+        self.assertEqual(body["games"][0]["city_state"], "Savannah, GA")
+        self.assertIn("ON CONFLICT", self.statements[-1])
+
+        with patch("app.routers.ingest.fetch_rendered_html", new_callable=AsyncMock) as fetch_html:
+            fetch_html.return_value = HTML.replace("#3", "#8").replace("1:00 PM", "4:15 PM")
+            again = self.client.post(
+                "/ingest/url",
+                json={"url": "https://schedules.example.com/gotsport", "age_group": "U15"},
+            )
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertEqual(again.json()["updated"], 1)
+        self.assertEqual(again.json()["games"][0]["field_number"], "8")
+        self.assertEqual(again.json()["games"][0]["kickoff_time"], "16:15")
+
+    def test_private_urls_are_rejected(self) -> None:
+        ics = self.client.post("/ingest/ics", json={"url": "http://127.0.0.1/club.ics"})
+        page = self.client.post("/ingest/url", json={"url": "http://10.0.0.8/schedule"})
+        self.assertEqual(ics.status_code, 400)
+        self.assertEqual(page.status_code, 400)
+
+    def test_empty_raw_text_is_400(self) -> None:
+        response = self.client.post("/ingest/raw-text", json={"text": "   "})
+        self.assertEqual(response.status_code, 400)
+
+
+if __name__ == "__main__":
+    unittest.main()
