@@ -743,10 +743,10 @@ export function HeadToHeadBoard() {
                     aria-checked={showAllCommon}
                     aria-label="All games"
                     onClick={() => setShowAllCommon((current) => !current)}
-                    className={`relative h-6 w-11 rounded-full transition-colors ${showAllCommon ? "bg-emerald-700" : "bg-stone-300"}`}
+                    className={`flex h-6 w-11 items-center rounded-full p-0.5 transition-colors ${showAllCommon ? "bg-emerald-700" : "bg-stone-300"}`}
                   >
                     <span
-                      className={`absolute top-0.5 size-5 rounded-full bg-white shadow-sm transition-transform ${showAllCommon ? "translate-x-5" : "translate-x-0.5"}`}
+                      className={`size-5 rounded-full bg-white shadow-sm transition-transform ${showAllCommon ? "translate-x-5" : "translate-x-0"}`}
                     />
                   </button>
                   <span className={showAllCommon ? "font-medium text-stone-950" : "text-stone-400"}>All games</span>
