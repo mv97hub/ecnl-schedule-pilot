@@ -1,6 +1,7 @@
 "use client";
 
 import { LoaderCircle, Shield } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { BreadcrumbTrail } from "@/components/BreadcrumbTrail";
@@ -13,7 +14,7 @@ import { TeamHero } from "@/components/TeamHero";
 import { TeamSelector } from "@/components/TeamSelector";
 import { fetchSchedule, fetchTeams } from "@/lib/api";
 import { AGE_GROUPS, TIERS } from "@/lib/leagues";
-import { rememberSquad, shortConference } from "@/lib/selection";
+import { rememberSquad, rememberedSquad, shortConference } from "@/lib/selection";
 import type { Game, ScheduleFilter, Team, TeamRecordSummary } from "@/lib/types";
 
 function teamTier(team: Team): (typeof TIERS)[number] {
@@ -21,6 +22,7 @@ function teamTier(team: Team): (typeof TIERS)[number] {
 }
 
 export function Dashboard() {
+  const router = useRouter();
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(true);
   const [tier, setTier] = useState<(typeof TIERS)[number]>("ECNL");
@@ -42,7 +44,9 @@ export function Dashboard() {
         if (cancelled) return;
         setTeams(data);
         const requested = Number(new URLSearchParams(window.location.search).get("team"));
-        const requestedTeam = data.find((team) => team.id === requested);
+        const fromUrl = Number.isInteger(requested) && requested > 0 ? data.find((team) => team.id === requested) : undefined;
+        const memory = rememberedSquad();
+        const requestedTeam = fromUrl ?? (memory ? data.find((team) => team.id === memory.id) : undefined);
         const initialTier = requestedTeam ? teamTier(requestedTeam) : "ECNL";
         const tierTeams = data.filter((team) => teamTier(team) === initialTier);
         const names = [...new Set(tierTeams.map((team) => team.conference))].sort((a, b) => a.localeCompare(b));
@@ -77,6 +81,14 @@ export function Dashboard() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (selectedId == null || window.location.pathname !== "/") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("team") === String(selectedId)) return;
+    params.set("team", String(selectedId));
+    router.replace(`/?${params.toString()}`, { scroll: false });
+  }, [selectedId, router]);
 
   useEffect(() => {
     if (selectedId == null) return;
@@ -255,7 +267,7 @@ export function Dashboard() {
               ) : shownGames.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-slate-500">No games in this filter.</div>
               ) : (
-                <ScheduleBoard games={shownGames} view={view} teamName={visible.name} />
+                <ScheduleBoard games={shownGames} view={view} teamName={visible.name} teamId={visible.id} />
               )}
             </div>
             <aside className="min-w-0" aria-label="Season calendar">

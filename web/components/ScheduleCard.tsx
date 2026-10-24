@@ -1,7 +1,19 @@
 import { ExternalLink } from "lucide-react";
+import Link from "next/link";
 
 import { easternStamp, mapsUrl } from "@/lib/format";
 import type { Game } from "@/lib/types";
+
+export function ScoutLink({ teamId, opponentId }: { teamId: number; opponentId: number }) {
+  return (
+    <Link
+      href={`/head-to-head?teamA=${teamId}&teamB=${opponentId}`}
+      className="text-xs font-medium text-emerald-800 underline-offset-4 hover:underline"
+    >
+      Scout H2H
+    </Link>
+  );
+}
 
 const SCORE_STYLES = {
   W: "text-emerald-800",
@@ -9,7 +21,7 @@ const SCORE_STYLES = {
   L: "text-stone-500",
 } as const;
 
-export function ScheduleCard({ game, teamName }: { game: Game; teamName: string }) {
+export function ScheduleCard({ game, teamName, teamId }: { game: Game; teamName: string; teamId: number }) {
   const stamp = easternStamp(game.starts_at);
   const maps = mapsUrl(game.venue_name, game.city, game.state);
   const postponed = game.status === "POSTPONED" || game.status === "CANCELLED";
@@ -50,6 +62,9 @@ export function ScheduleCard({ game, teamName }: { game: Game; teamName: string 
         </span>
         <ExternalLink className="size-3 shrink-0 text-stone-400" />
       </a>
+      <p className="mt-1 text-center">
+        <ScoutLink teamId={teamId} opponentId={game.opponent.id} />
+      </p>
     </article>
   );
 }
