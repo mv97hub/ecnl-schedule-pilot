@@ -52,6 +52,17 @@ def ensure_result_columns() -> None:
             )
 
 
+def ensure_source_columns() -> None:
+    """Keep external league ids on databases created before upserts stored them."""
+
+    with engine.begin() as connection:
+        for table in ("team", "game"):
+            if connection.execute(text("SELECT to_regclass(:name)"), {"name": f"public.{table}"}).scalar() is None:
+                continue
+            connection.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS source_id integer"))
+            connection.execute(text(f"CREATE UNIQUE INDEX IF NOT EXISTS uq_{table}_source_id ON {table} (source_id)"))
+
+
 def get_session() -> Generator[Session, None, None]:
     session = SessionLocal()
     try:

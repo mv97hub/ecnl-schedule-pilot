@@ -213,6 +213,10 @@ class ScoutingReportOut(BaseModel):
     insights: list[ScoutingInsightOut]
 
 
+class DataRefreshOut(BaseModel):
+    last_successful_finish: datetime | None
+
+
 class HeadToHeadOut(BaseModel):
     team_a_stats: TeamTapeOut
     team_b_stats: TeamTapeOut

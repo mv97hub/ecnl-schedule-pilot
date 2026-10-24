@@ -25,6 +25,22 @@ export function formatKickoff(
   };
 }
 
+export function formatDataAsOf(iso: string | null): string {
+  if (!iso) return "Data has not been refreshed.";
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return "Data has not been refreshed.";
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(parsed);
+  return `Data as of ${formatted}`;
+}
+
 export function mapsUrl(venueName: string, city: string, state: string): string {
   const query = encodeURIComponent(`${venueName}, ${city}, ${state}`);
   return `https://www.google.com/maps/search/?api=1&query=${query}`;

@@ -10,6 +10,10 @@ async function request<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+export function fetchDataRefresh(): Promise<{ last_successful_finish: string | null }> {
+  return request("/data-refresh");
+}
+
 export function fetchTeams(q?: string): Promise<Team[]> {
   const params = new URLSearchParams();
   if (q?.trim()) params.set("q", q.trim());

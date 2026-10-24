@@ -12,7 +12,8 @@ import { CalendarView, ScheduleBoard, ViewSwitch, type ScheduleView } from "@/co
 import { SeasonTimeline } from "@/components/SeasonTimeline";
 import { TeamHero } from "@/components/TeamHero";
 import { TeamSelector } from "@/components/TeamSelector";
-import { fetchSchedule, fetchTeams } from "@/lib/api";
+import { fetchDataRefresh, fetchSchedule, fetchTeams } from "@/lib/api";
+import { formatDataAsOf } from "@/lib/format";
 import { AGE_GROUPS, TIERS } from "@/lib/leagues";
 import { rememberSquad, rememberedSquad, shortConference } from "@/lib/selection";
 import type { Game, ScheduleFilter, Team, TeamRecordSummary } from "@/lib/types";
@@ -36,6 +37,21 @@ export function Dashboard() {
   const [summary, setSummary] = useState<TeamRecordSummary | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dataAsOf, setDataAsOf] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchDataRefresh()
+      .then((payload) => {
+        if (!cancelled) setDataAsOf(formatDataAsOf(payload.last_successful_finish));
+      })
+      .catch(() => {
+        if (!cancelled) setDataAsOf(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -191,6 +207,7 @@ export function Dashboard() {
               <p className="mt-1 text-sm text-emerald-100/75">
                 {tier === "ECNL-RL" ? "ECNL-RL" : "ECNL"} Boys · 2026–27
               </p>
+              {dataAsOf && <p className="mt-1 text-sm text-emerald-100/75">{dataAsOf}</p>}
             </div>
             <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-emerald-100 sm:flex">
               <Shield className="size-3.5" />

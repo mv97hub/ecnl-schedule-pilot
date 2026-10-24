@@ -38,6 +38,7 @@ class ScheduleTeam(Base):
     conference: Mapped[str] = mapped_column(String(120), nullable=False)
     city: Mapped[str] = mapped_column(String(80), nullable=False)
     state: Mapped[str] = mapped_column(String(2), nullable=False)
+    source_id: Mapped[int | None] = mapped_column(Integer, nullable=True, unique=True)
 
     home_games: Mapped[list["ScheduleGame"]] = relationship(
         back_populates="home_team",
@@ -71,9 +72,31 @@ class ScheduleGame(Base):
     home_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     away_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_conference_game: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    source_id: Mapped[int | None] = mapped_column(Integer, nullable=True, unique=True)
 
     home_team: Mapped[ScheduleTeam] = relationship(back_populates="home_games", foreign_keys=[home_team_id])
     away_team: Mapped[ScheduleTeam] = relationship(back_populates="away_games", foreign_keys=[away_team_id])
+
+
+class DataRefresh(Base):
+    """One scheduled league refresh. A failure does not replace the last success."""
+
+    __tablename__ = "data_refresh"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'success', 'failure')",
+            name="ck_data_refresh_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    teams_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    games_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scores_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Team(SQLModel, table=True):
