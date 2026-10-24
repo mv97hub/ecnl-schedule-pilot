@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -20,11 +21,21 @@ async def lifespan(_app: FastAPI):
     yield
 
 
+def allowed_origins() -> list[str]:
+    """Local dev origins, plus comma-separated ALLOWED_ORIGINS when set."""
+    origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    for piece in os.environ.get("ALLOWED_ORIGINS", "").split(","):
+        origin = piece.strip()
+        if origin and origin != "*" and origin not in origins:
+            origins.append(origin)
+    return origins
+
+
 app = FastAPI(title="ECNL Boys Southeast Schedule", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
