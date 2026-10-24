@@ -1,0 +1,325 @@
+"""Download the published 2026-27 ECNL Boys conference schedule.
+
+Uses the public JSON API behind theecnl.com (api.athleteone.com). Writes
+api/data/ecnl_boys_2026_27.json for seed.py. This is the league schedule,
+not a hand-written sample. ECNL Regional League is not included.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import time
+import urllib.error
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+API = "https://api.athleteone.com/api"
+ORG_ID = 12
+SEASON = "2026-27"
+OUTPUT = Path(__file__).resolve().parent / "data" / "ecnl_boys_2026_27.json"
+SKIP_EVENT_IDS = {4423, 4424}  # QA and a non-US test event
+NAME_SUFFIX = re.compile(r"\s+ECNL\s+B\d.*$", re.IGNORECASE)
+
+STATE_TIMEZONE = {
+    "AL": "America/Chicago",
+    "AK": "America/Anchorage",
+    "AZ": "America/Phoenix",
+    "AR": "America/Chicago",
+    "CA": "America/Los_Angeles",
+    "CO": "America/Denver",
+    "CT": "America/New_York",
+    "DC": "America/New_York",
+    "DE": "America/New_York",
+    "FL": "America/New_York",
+    "GA": "America/New_York",
+    "HI": "Pacific/Honolulu",
+    "IA": "America/Chicago",
+    "ID": "America/Boise",
+    "IL": "America/Chicago",
+    "IN": "America/Indiana/Indianapolis",
+    "KS": "America/Chicago",
+    "KY": "America/New_York",
+    "LA": "America/Chicago",
+    "MA": "America/New_York",
+    "MD": "America/New_York",
+    "ME": "America/New_York",
+    "MI": "America/Detroit",
+    "MN": "America/Chicago",
+    "MO": "America/Chicago",
+    "MS": "America/Chicago",
+    "MT": "America/Denver",
+    "NC": "America/New_York",
+    "ND": "America/Chicago",
+    "NE": "America/Chicago",
+    "NH": "America/New_York",
+    "NJ": "America/New_York",
+    "NM": "America/Denver",
+    "NV": "America/Los_Angeles",
+    "NY": "America/New_York",
+    "OH": "America/New_York",
+    "OK": "America/Chicago",
+    "OR": "America/Los_Angeles",
+    "PA": "America/New_York",
+    "RI": "America/New_York",
+    "SC": "America/New_York",
+    "SD": "America/Chicago",
+    "TN": "America/Chicago",
+    "TX": "America/Chicago",
+    "UT": "America/Denver",
+    "VA": "America/New_York",
+    "VT": "America/New_York",
+    "WA": "America/Los_Angeles",
+    "WI": "America/Chicago",
+    "WV": "America/New_York",
+    "WY": "America/Denver",
+}
+
+
+def get_json(url: str) -> dict | list:
+    last_error: Exception | None = None
+    for attempt in range(4):
+        try:
+            request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "ecnl-schedule-pilot"})
+            with urllib.request.urlopen(request, timeout=60) as response:
+                payload = json.load(response)
+            if isinstance(payload, dict) and "data" in payload:
+                return payload["data"]
+            return payload
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            last_error = exc
+            time.sleep(1.5 * (attempt + 1))
+    raise RuntimeError(f"Failed {url}: {last_error}")
+
+
+def age_group(division_name: str) -> str:
+    label = division_name.strip().upper()
+    if label.startswith("B"):
+        label = label[1:]
+    if label not in {"U13", "U14", "U15", "U16", "U17", "U18/19"}:
+        raise RuntimeError(f"Unexpected division {division_name}")
+    return label
+
+
+def display_name(team_name: str) -> str:
+    cleaned = NAME_SUFFIX.sub("", team_name).strip()
+    return cleaned or team_name.strip()
+
+
+def conference_name(event_name: str) -> str:
+    return re.sub(r"\s+2026-27$", "", event_name).strip()
+
+
+def timezone_for(state: str, zip_code: str) -> str:
+    if state == "FL" and zip_code[:3] in {"324", "325"}:
+        return "America/Chicago"
+    if state == "TN" and zip_code[:3] in {str(n) for n in range(376, 386)}:
+        return "America/New_York"
+    if state == "TX" and zip_code[:3] in {"798", "799", "885"}:
+        return "America/Denver"
+    if state == "KY" and zip_code[:3] in {"420", "421", "422"}:
+        return "America/Chicago"
+    return STATE_TIMEZONE.get(state, "America/New_York")
+
+
+class ZipLookup:
+    """Resolve venue zips. A bad or unreachable zip is skipped and cached."""
+
+    def __init__(self) -> None:
+        self.cache: dict[str, tuple[str, str] | None] = {}
+        self.successes = 0
+        self.failures = 0
+        self.disabled = False
+
+    def lookup(self, zip_code: str) -> tuple[str, str] | None:
+        digits = "".join(ch for ch in str(zip_code) if ch.isdigit())[:5]
+        if len(digits) != 5:
+            return None
+        if digits in self.cache:
+            return self.cache[digits]
+        if self.disabled:
+            self.cache[digits] = None
+            self.failures += 1
+            return None
+        try:
+            request = urllib.request.Request(
+                f"https://api.zippopotam.us/us/{digits}",
+                headers={"Accept": "application/json", "User-Agent": "ecnl-schedule-pilot"},
+            )
+            with urllib.request.urlopen(request, timeout=2) as response:
+                payload = json.load(response)
+            places = payload.get("places") if isinstance(payload, dict) else None
+            if not places:
+                raise ValueError(f"no place for {digits}")
+            state = str(places[0].get("state abbreviation") or "")
+            city = str(places[0].get("place name") or "")
+            if len(state) != 2 or not city:
+                raise ValueError(f"incomplete place for {digits}")
+            found = (city, state)
+            self.cache[digits] = found
+            self.successes += 1
+            return found
+        except Exception:
+            self.cache[digits] = None
+            self.failures += 1
+            if self.successes == 0 and self.failures >= 3:
+                self.disabled = True
+                print("Zip lookup is not responding. Remaining zips will use the home club city.", flush=True)
+            return None
+
+
+def kickoff_iso(game_date: str, zone_name: str) -> str:
+    naive = game_date.split(".")[0]
+    if naive.endswith("Z"):
+        naive = naive[:-1]
+    if "T" not in naive:
+        raise RuntimeError(f"Unexpected kickoff {game_date}")
+    stamp = __import__("datetime").datetime.fromisoformat(naive)
+    aware = stamp.replace(tzinfo=ZoneInfo(zone_name))
+    return aware.isoformat()
+
+
+def event_label(match: dict) -> str | None:
+    if match.get("friendly") == 1:
+        return "Friendly"
+    kind = (match.get("type") or "").strip()
+    if kind and kind.lower() != "group play":
+        return kind
+    note = (match.get("publicNote") or "").strip()
+    return note or None
+
+
+def load() -> dict:
+    clubs = get_json(f"{API}/Event/get-org-club-list-by-orgID/{ORG_ID}")
+    club_home = {
+        club["clubID"]: {
+            "city": (club.get("city") or "").strip(),
+            "state": (club.get("stateCode") or "").strip(),
+        }
+        for club in clubs
+        if club.get("clubID")
+    }
+    event_ids = sorted({club["eventID"] for club in clubs if club.get("eventID") and club["eventID"] not in SKIP_EVENT_IDS})
+    events = []
+    for event_id in event_ids:
+        details = get_json(f"{API}/team/get-event-details-by-eventid/{event_id}")
+        name = details["name"]
+        if SEASON not in name or not name.startswith("ECNL Boys"):
+            continue
+        events.append({"id": event_id, "name": name, "conference": conference_name(name)})
+
+    flights: list[tuple[dict, dict]] = []
+    for event in events:
+        divisions = get_json(f"{API}/Event/get-event-schedule-or-standings/{event['id']}")
+        for division in divisions.get("boysDivAndFlightList", []):
+            group = age_group(division["divisionName"])
+            for flight in division.get("flightList", []):
+                flights.append((event, {"id": flight["flightID"], "age_group": group, "teams": flight.get("teamsCount")}))
+
+    def fetch_flight(item: tuple[dict, dict]) -> list[dict]:
+        event, flight = item
+        rows = get_json(f"{API}/Event/get-schedules-by-flight/{event['id']}/{flight['id']}/0")
+        if not isinstance(rows, list):
+            return []
+        for row in rows:
+            row["_conference"] = event["conference"]
+            row["_age_group"] = flight["age_group"]
+        return rows
+
+    print(f"Fetching {len(events)} conferences, {len(flights)} age-group schedules.", flush=True)
+    matches: list[dict] = []
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = [pool.submit(fetch_flight, item) for item in flights]
+        for future in as_completed(futures):
+            matches.extend(future.result())
+
+    unique_matches: dict[int, dict] = {}
+    for match in matches:
+        match_id = match.get("matchID")
+        if match_id is None or match.get("isactive") == 0:
+            continue
+        if not match.get("hometeamID") or not match.get("awayteamID"):
+            continue
+        unique_matches[match_id] = match
+
+    print(f"Loaded {len(unique_matches)} matches. Resolving venue zips.", flush=True)
+    zip_lookup = ZipLookup()
+    teams: dict[int, dict] = {}
+    games = []
+    missing_place = 0
+    for match in unique_matches.values():
+        for side, team_key, club_key in (
+            ("home", "hometeamID", "homeTeamClubID"),
+            ("away", "awayteamID", "awayTeamClubID"),
+        ):
+            team_id = match[team_key]
+            if team_id in teams:
+                continue
+            club = club_home.get(match.get(club_key), {})
+            teams[team_id] = {
+                "source_id": team_id,
+                "name": display_name(match["homeTeam"] if side == "home" else match["awayTeam"]),
+                "age_group": match["_age_group"],
+                "conference": match["_conference"],
+                "city": club.get("city") or "",
+                "state": club.get("state") or "",
+            }
+
+        zip_code = "".join(ch for ch in str(match.get("zip") or "") if ch.isdigit())[:5]
+        place = zip_lookup.lookup(zip_code) if zip_code else None
+        home = teams[match["hometeamID"]]
+        if place:
+            city, state = place
+        else:
+            missing_place += 1
+            city, state = home["city"] or "Unknown", home["state"] or "FL"
+        zone = timezone_for(state, zip_code)
+        games.append(
+            {
+                "source_id": match["matchID"],
+                "home_source_id": match["hometeamID"],
+                "away_source_id": match["awayteamID"],
+                "starts_at": kickoff_iso(match["gameDate"], zone),
+                "timezone": zone,
+                "venue_name": (match.get("complex") or "TBD").strip(),
+                "city": city,
+                "state": state,
+                "event": event_label(match),
+            }
+        )
+
+    for team in teams.values():
+        if team["city"] and team["state"]:
+            continue
+        home_games = [game for game in games if game["home_source_id"] == team["source_id"]]
+        if home_games:
+            team["city"] = team["city"] or home_games[0]["city"]
+            team["state"] = team["state"] or home_games[0]["state"]
+        if not team["city"]:
+            team["city"] = "Unknown"
+        if not team["state"]:
+            team["state"] = "NA"
+
+    payload = {
+        "league": "ECNL Boys",
+        "season": SEASON,
+        "source": "api.athleteone.com",
+        "teams": sorted(teams.values(), key=lambda team: (team["conference"], team["age_group"], team["name"], team["source_id"])),
+        "games": sorted(games, key=lambda game: (game["starts_at"], game["source_id"])),
+    }
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    OUTPUT.write_text(json.dumps(payload))
+    jax = [team for team in payload["teams"] if "jax" in team["name"].lower()]
+    print(
+        f"Wrote {OUTPUT.name}: conferences={len({team['conference'] for team in payload['teams']})} "
+        f"teams={len(payload['teams'])} games={len(payload['games'])} "
+        f"zips_ok={zip_lookup.successes} zips_skipped={zip_lookup.failures} venue_fallbacks={missing_place}"
+    )
+    print("Sporting JAX teams:", ", ".join(f"{team['name']} {team['age_group']} {team['city']}, {team['state']}" for team in jax) or "none")
+    return payload
+
+
+if __name__ == "__main__":
+    load()
