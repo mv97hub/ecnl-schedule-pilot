@@ -735,25 +735,21 @@ export function HeadToHeadBoard() {
             <section className="rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Common opponents">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold text-stone-950">Common opponents</h2>
-                <div className="flex gap-1" role="tablist" aria-label="Common opponents shown">
+                <div className="flex shrink-0 items-center gap-2 text-xs">
+                  <span className={showAllCommon ? "text-stone-400" : "font-medium text-stone-950"}>Played by both</span>
                   <button
                     type="button"
-                    role="tab"
-                    aria-selected={!showAllCommon}
-                    onClick={() => setShowAllCommon(false)}
-                    className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${showAllCommon ? "border-stone-200 bg-white text-stone-700" : "border-emerald-700 bg-emerald-700 text-white"}`}
+                    role="switch"
+                    aria-checked={showAllCommon}
+                    aria-label="All games"
+                    onClick={() => setShowAllCommon((current) => !current)}
+                    className={`relative h-6 w-11 rounded-full transition-colors ${showAllCommon ? "bg-emerald-700" : "bg-stone-300"}`}
                   >
-                    Played by both
+                    <span
+                      className={`absolute top-0.5 size-5 rounded-full bg-white shadow-sm transition-transform ${showAllCommon ? "translate-x-5" : "translate-x-0.5"}`}
+                    />
                   </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={showAllCommon}
-                    onClick={() => setShowAllCommon(true)}
-                    className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${showAllCommon ? "border-emerald-700 bg-emerald-700 text-white" : "border-stone-200 bg-white text-stone-700"}`}
-                  >
-                    All games
-                  </button>
+                  <span className={showAllCommon ? "font-medium text-stone-950" : "text-stone-400"}>All games</span>
                 </div>
               </div>
               {commonRollupA && commonRollupB && (
