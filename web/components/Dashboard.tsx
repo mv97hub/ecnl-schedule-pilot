@@ -3,15 +3,17 @@
 import { LoaderCircle, Shield } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { BreadcrumbTrail } from "@/components/BreadcrumbTrail";
 import { ConferenceSelect } from "@/components/ConferenceSelect";
 import { FilterPills } from "@/components/FilterPills";
 import { HeaderSelect } from "@/components/HeaderSelect";
-import { ScheduleCard } from "@/components/ScheduleCard";
-import { SeasonBanner } from "@/components/SeasonBanner";
+import { CalendarView, ScheduleBoard, ViewSwitch, type ScheduleView } from "@/components/ScheduleBoard";
+import { SeasonTimeline } from "@/components/SeasonTimeline";
+import { TeamHero } from "@/components/TeamHero";
 import { TeamSelector } from "@/components/TeamSelector";
 import { fetchSchedule, fetchTeams } from "@/lib/api";
-import { teamLabel } from "@/lib/format";
 import { AGE_GROUPS, TIERS } from "@/lib/leagues";
+import { rememberSquad, shortConference } from "@/lib/selection";
 import type { Game, ScheduleFilter, Team, TeamRecordSummary } from "@/lib/types";
 
 function teamTier(team: Team): (typeof TIERS)[number] {
@@ -27,6 +29,7 @@ export function Dashboard() {
   const [clubName, setClubName] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [filter, setFilter] = useState<ScheduleFilter>("all");
+  const [view, setView] = useState<ScheduleView>("scorecard");
   const [games, setGames] = useState<Game[]>([]);
   const [summary, setSummary] = useState<TeamRecordSummary | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
@@ -56,6 +59,12 @@ export function Dashboard() {
           setClubName(firstTeam.name);
           setScheduleLoading(true);
           setSelectedId(firstTeam.id);
+          rememberSquad({
+            id: firstTeam.id,
+            tier: teamTier(firstTeam),
+            conference: shortConference(firstTeam.conference),
+            ageGroup: firstTeam.age_group,
+          });
         }
       })
       .catch((err: unknown) => {
@@ -72,7 +81,7 @@ export function Dashboard() {
   useEffect(() => {
     if (selectedId == null) return;
     let cancelled = false;
-    fetchSchedule(selectedId, filter)
+    fetchSchedule(selectedId, "all")
       .then((payload) => {
         if (!cancelled) {
           setGames(payload.games);
@@ -91,7 +100,7 @@ export function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [selectedId, filter]);
+  }, [selectedId]);
 
   const tierTeams = useMemo(() => teams.filter((team) => teamTier(team) === tier), [teams, tier]);
   const conferences = useMemo(
@@ -104,9 +113,19 @@ export function Dashboard() {
   );
   const selected = teams.find((team) => team.id === selectedId) ?? null;
   const visible = selected && teamTier(selected) === tier && selected.conference === conference && selected.age_group === ageGroup ? selected : null;
+  const ageLabel = AGE_GROUPS.find((item) => item.value === ageGroup)?.label ?? ageGroup;
+  const shownGames = games.filter((game) => (filter === "all" ? true : game.side === filter));
 
   function selectTeam(nextTeam: Team | undefined) {
-    if (nextTeam) setClubName(nextTeam.name);
+    if (nextTeam) {
+      setClubName(nextTeam.name);
+      rememberSquad({
+        id: nextTeam.id,
+        tier: teamTier(nextTeam),
+        conference: shortConference(nextTeam.conference),
+        ageGroup: nextTeam.age_group,
+      });
+    }
     setGames([]);
     setSummary(null);
     setError(null);
@@ -205,55 +224,49 @@ export function Dashboard() {
       </header>
 
       <main className="mx-auto max-w-6xl px-6 py-8">
-        {visible && summary && <SeasonBanner team={visible} summary={summary} />}
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <FilterPills
-            value={filter}
-            onChange={(next) => {
-              if (next === filter) return;
-              setScheduleLoading(true);
-              setGames([]);
-              setError(null);
-              setFilter(next);
-            }}
-          />
-          {visible && (
-            <p className="text-sm text-slate-500">
-              {scheduleLoading ? "Updating schedule…" : `${games.length} game${games.length === 1 ? "" : "s"}`}
-              {" · "}
-              {visible.conference}
-              {" · "}
-              {teamLabel(visible.name, visible.age_group)}
-              {" · "}
-              {visible.city}, {visible.state}
-            </p>
-          )}
-        </div>
+        {visible && conference && <BreadcrumbTrail items={[tier, conference, visible.name, ageLabel]} />}
+        {visible && summary && <TeamHero team={visible} summary={summary} games={games} ageLabel={ageLabel} />}
+        {visible && games.length > 0 && <SeasonTimeline games={games} />}
 
         {error && (
-          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <div className="mt-4 rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-800">
             {error}. Confirm Postgres and the FastAPI server are running on port 8000.
           </div>
         )}
 
-        {scheduleLoading && games.length === 0 ? (
-          <div className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-slate-500">
-            <LoaderCircle className="size-4 animate-spin" />
-            Loading schedule
+        {visible && (
+          <div className="mt-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_26rem]">
+            <div className="min-w-0">
+              <div className="mb-3 flex flex-nowrap items-center gap-1.5 overflow-x-auto">
+                <ViewSwitch value={view} onChange={setView} />
+                <FilterPills
+                  value={filter}
+                  onChange={(next) => {
+                    if (next === filter) return;
+                    setFilter(next);
+                  }}
+                />
+              </div>
+              {scheduleLoading && games.length === 0 ? (
+                <div className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-slate-500">
+                  <LoaderCircle className="size-4 animate-spin" />
+                  Loading schedule
+                </div>
+              ) : shownGames.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-slate-500">No games in this filter.</div>
+              ) : (
+                <ScheduleBoard games={shownGames} view={view} teamName={visible.name} />
+              )}
+            </div>
+            <aside className="min-w-0" aria-label="Season calendar">
+              <CalendarView games={shownGames} teamName={visible.name} />
+            </aside>
           </div>
-        ) : games.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-slate-500">
-            {visible
-              ? "No games in this filter. Try All Games to include the Florida Showcase weekend."
-              : tier === "ECNL-RL"
-                ? "No ECNL-RL schedule is loaded yet."
-                : "Choose a conference, then a team."}
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {games.map((game) => (
-              <ScheduleCard key={game.id} game={game} ageGroup={visible?.age_group ?? ""} />
-            ))}
+        )}
+
+        {!visible && !scheduleLoading && (
+          <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-slate-500">
+            {tier === "ECNL-RL" ? "No ECNL-RL schedule is loaded yet." : "Choose a conference, then a team."}
           </div>
         )}
       </main>

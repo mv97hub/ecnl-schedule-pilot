@@ -284,6 +284,51 @@ def replace_ecnl_standings(session: Session, tier: str = "ECNL") -> int:
     return upsert_standings(session, rows)
 
 
+def _result_mark(goals_for: int, goals_against: int) -> str:
+    if goals_for > goals_against:
+        return "W"
+    if goals_for < goals_against:
+        return "L"
+    return "D"
+
+
+def recent_form(session: Session, conference: str, tier: str, age_group: str) -> dict[int, list[str]]:
+    """Last five completed conference results, oldest first, for each squad in the table."""
+
+    short = short_conference(conference).casefold()
+    teams = [
+        team
+        for team in session.scalars(select(ScheduleTeam).where(ScheduleTeam.tier == tier, ScheduleTeam.age_group == age_group)).all()
+        if team.id is not None and short_conference(team.conference).casefold() == short
+    ]
+    ids = [int(team.id) for team in teams]
+    if not ids:
+        return {}
+    games = session.scalars(
+        select(ScheduleGame)
+        .where(
+            ScheduleGame.status == "COMPLETED",
+            ScheduleGame.is_conference_game.is_(True),
+            ScheduleGame.home_score.is_not(None),
+            ScheduleGame.away_score.is_not(None),
+            or_(ScheduleGame.home_team_id.in_(ids), ScheduleGame.away_team_id.in_(ids)),
+        )
+        .order_by(ScheduleGame.starts_at, ScheduleGame.id)
+    ).all()
+    marks: dict[int, list[str]] = {team_id: [] for team_id in ids}
+    known = set(ids)
+    for game in games:
+        home_score = game.home_score
+        away_score = game.away_score
+        if home_score is None or away_score is None:
+            continue
+        if game.home_team_id in known:
+            marks[game.home_team_id].append(_result_mark(home_score, away_score))
+        if game.away_team_id in known:
+            marks[game.away_team_id].append(_result_mark(away_score, home_score))
+    return {team_id: results[-5:] for team_id, results in marks.items()}
+
+
 def conference_rank(session: Session, team: ScheduleTeam) -> int | None:
     if team.id is None:
         return None

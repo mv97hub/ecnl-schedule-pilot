@@ -323,6 +323,7 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual(rows[0]["points_per_game"], 2.25)
         self.assertEqual(rows[0]["goal_diff"], 6)
         self.assertEqual(rows[0]["rank"], 1)
+        self.assertEqual(rows[0]["form"], [])
         rejected = self.client.get("/standings?conference=Probe%20Conference&tier=ECNL&age_group=U13&mode=nope")
         self.assertEqual(rejected.status_code, 400)
 
@@ -343,6 +344,10 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual(october["2026-10-03"]["opponent"]["name"], "Athletic Club Florida")
         self.assertEqual((october["2026-10-04"]["home_score"], october["2026-10-04"]["away_score"]), (1, 2))
         self.assertEqual(october["2026-10-04"]["opponent"]["name"], "Parkland Soccer Club")
+        standings = self.client.get("/standings?conference=Florida&tier=ECNL&age_group=U13")
+        self.assertEqual(standings.status_code, 200, standings.text)
+        sporting = next(row for row in standings.json() if row["team_name"] == "Sporting SA JAX")
+        self.assertEqual(sporting["form"], ["W", "W", "D", "W", "L"])
 
     def test_empty_raw_text_is_400(self) -> None:
         response = self.client.post("/ingest/raw-text", json={"text": "   "})
