@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from sqlmodel import SQLModel
 
 from app.database import engine, ensure_result_columns
-from app.ingestion.normalizer import looks_like_showcase
+from app.ingestion.normalizer import counts_as_conference
 from app.models import Base, ScheduleGame as Game, ScheduleTeam as Team
 from app.standings import replace_ecnl_standings
 
@@ -55,11 +55,7 @@ def _conference_game(event: str | None, _venue: str) -> bool:
     can mark a published match as a showcase, friendly, or invitational.
     """
 
-    label = event or ""
-    if looks_like_showcase(label):
-        return False
-    lowered = label.casefold()
-    return "friendly" not in lowered and "invitational" not in lowered
+    return counts_as_conference(event or "")
 
 
 def _published_score(row: dict) -> tuple[str, int | None, int | None]:
@@ -92,6 +88,8 @@ def seed() -> dict[str, int]:
                 conference=row["conference"],
                 city=row["city"],
                 state=row["state"],
+                gender=row.get("gender") or "boys",
+                club_id=row.get("club_id"),
             )
             for row in payload["teams"]
         }
@@ -102,7 +100,7 @@ def seed() -> dict[str, int]:
         for row in payload["games"]:
             home = teams.get(row["home_source_id"])
             away = teams.get(row["away_source_id"])
-            if home is None or away is None or home.age_group != away.age_group:
+            if home is None or away is None or home.age_group != away.age_group or home.gender != away.gender:
                 continue
             starts_at = datetime.fromisoformat(row["starts_at"])
             status, home_score, away_score = _published_score(row)
@@ -119,7 +117,15 @@ def seed() -> dict[str, int]:
                     status=status,
                     home_score=home_score,
                     away_score=away_score,
-                    is_conference_game=_conference_game(row.get("event"), row["venue_name"]),
+                    is_conference_game=row["is_conference_game"] if "is_conference_game" in row else _conference_game(row.get("event"), row["venue_name"]),
+                    venue_address=row.get("venue_address"),
+                    venue_zip=row.get("venue_zip"),
+                    venue_lat=row.get("venue_lat"),
+                    venue_lng=row.get("venue_lng"),
+                    field_name=row.get("field_name"),
+                    stream_link=row.get("stream_link"),
+                    field_surface=row.get("field_surface"),
+                    postponement_reason=row.get("postponement_reason"),
                 )
             )
         session.add_all(games)

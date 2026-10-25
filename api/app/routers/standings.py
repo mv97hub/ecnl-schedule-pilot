@@ -66,6 +66,7 @@ def list_standings(
             func.lower(ConferenceStanding.conference) == short.casefold(),
             ConferenceStanding.tier == tier_name,
             ConferenceStanding.age_group == age,
+            ConferenceStanding.gender == "boys",
         )
     ).all()
     return _ranked(

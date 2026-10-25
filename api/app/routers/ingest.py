@@ -285,6 +285,7 @@ def ingest_standings(body: StandingsIn, session: Annotated[Session, Depends(get_
             func.lower(ConferenceStanding.conference) == conference.casefold(),
             ConferenceStanding.tier == tier,
             ConferenceStanding.age_group == age_group,
+            ConferenceStanding.gender == "boys",
             ConferenceStanding.team_name.in_([str(row["team_name"]) for row in rows]),
         )
     ).all()

@@ -13,6 +13,7 @@ import argparse
 import sys
 from datetime import UTC, datetime
 
+from app.capture import capture_live
 from app.refresh import complete_refresh, fail_refresh, open_refresh, public_error, upsert_published
 from load_league import load
 
@@ -26,8 +27,13 @@ def run(full_pass: bool = False) -> int:
     print(f"League refresh start {_stamp(started)}", flush=True)
     run_id: int | None = None
     try:
-        run_id = open_refresh(started)
-        counts = upsert_published(load(), full_pass=full_pass)
+        run_id = open_refresh(started, job="schedule")
+        payload = load()
+        counts = upsert_published(payload, full_pass=full_pass)
+        try:
+            capture_live(payload)
+        except Exception as exc:
+            print(f"League context skipped {public_error(exc)}", flush=True)
         finished = datetime.now(UTC)
         complete_refresh(run_id, finished, counts)
         print(f"teams={counts.teams} games={counts.games} scores={counts.scores}", flush=True)

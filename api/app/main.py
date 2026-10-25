@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel
 
-from app.database import engine, ensure_result_columns, ensure_source_columns
+from app.database import engine, ensure_capture_columns, ensure_result_columns, ensure_source_columns
 from app.models import Base
 from app.routers.data_refresh import router as data_refresh_router
 from app.routers.head_to_head import router as head_to_head_router
@@ -20,6 +20,7 @@ async def lifespan(_app: FastAPI):
     SQLModel.metadata.create_all(engine)
     ensure_result_columns()
     ensure_source_columns()
+    ensure_capture_columns()
     yield
 
 

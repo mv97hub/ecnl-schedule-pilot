@@ -13,7 +13,7 @@ from sqlalchemy import event, text
 from sqlalchemy.orm import Session
 from sqlmodel import SQLModel
 
-from app.database import engine, ensure_result_columns, ensure_source_columns
+from app.database import engine, ensure_capture_columns, ensure_result_columns, ensure_source_columns
 from app.models import Base, ScheduleGame, ScheduleTeam
 from app.routers.teams import list_teams, team_schedule
 
@@ -54,6 +54,11 @@ class StartupSchemaTests(unittest.TestCase):
             )
 
     def test_cold_start_reads_committed_rows_during_refresh_transaction(self) -> None:
+        Base.metadata.create_all(engine)
+        SQLModel.metadata.create_all(engine)
+        ensure_result_columns()
+        ensure_source_columns()
+        ensure_capture_columns()
         with Session(engine) as session:
             home = ScheduleTeam(
                 name="Probe Startup Home",
@@ -106,6 +111,7 @@ class StartupSchemaTests(unittest.TestCase):
             SQLModel.metadata.create_all(engine)
             ensure_result_columns()
             ensure_source_columns()
+            ensure_capture_columns()
             with Session(engine) as session:
                 teams = list_teams(session, q=None, age_group=None)
                 match = next(team for team in teams if team.source_id == HOME_SOURCE)

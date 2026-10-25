@@ -34,6 +34,15 @@ _AGE_ALIASES = {
     "B2008": "U18/19",
     "B2008/07": "U18/19",
     "B2007": "U18/19",
+    "G2013": "U13",
+    "G2012": "U14",
+    "G2011": "U15",
+    "G2010": "U16",
+    "G2010-11": "U16",
+    "G2009": "U17",
+    "G2008": "U18/19",
+    "G2008/07": "U18/19",
+    "G2007": "U18/19",
 }
 _NAME_ALIASES = {
     "sporting jax": "sporting sa jax",
@@ -85,13 +94,17 @@ def link_team_id(
     age_group: str,
     conference: str,
     tier: str | None = None,
+    gender: str | None = None,
 ) -> int | None:
     target = _canonical_name(team_name)
     short = short_conference(conference).casefold()
     matches = [
         team
         for team in teams
-        if team.age_group == age_group and _canonical_name(team.name) == target and (tier is None or team.tier == tier)
+        if team.age_group == age_group
+        and _canonical_name(team.name) == target
+        and (tier is None or team.tier == tier)
+        and (gender is None or (team.gender or "boys") == gender)
     ]
     if not matches:
         return None
@@ -125,6 +138,8 @@ def _row_from_parts(
     goal_diff: int | None = None,
     points: int | None = None,
     points_per_game: float | None = None,
+    gender: str = "boys",
+    capped_goal_diff: int | None = None,
 ) -> dict[str, object]:
     played = max(games_played, 0)
     earned = wins * 3 + draws if points is None else points
@@ -142,6 +157,8 @@ def _row_from_parts(
         "goals_for": goals_for,
         "goals_against": goals_against,
         "goal_diff": difference,
+        "capped_goal_diff": capped_goal_diff,
+        "gender": gender if gender in {"boys", "girls"} else "boys",
         "points": earned,
         "points_per_game": _ppg(earned, played) if points_per_game is None else round(float(points_per_game), 2),
         "updated_at": datetime.now(UTC),
@@ -165,6 +182,7 @@ def ecnl_standings(
     conference: str | None = None,
     age_group: str | None = None,
     tier: str = "ECNL",
+    gender: str = "boys",
 ) -> list[dict[str, object]]:
     """Aggregate completed conference games. Teams with no results stay on the table at 0."""
 
@@ -178,12 +196,15 @@ def ecnl_standings(
             continue
         if team.tier != tier:
             continue
+        if (team.gender or "boys") != gender:
+            continue
         if wanted is not None and short_conference(team.conference).casefold() != wanted:
             continue
         stats[team.id] = _row_from_parts(
             conference=short_conference(team.conference),
             tier=tier,
             age_group=team.age_group,
+            gender=gender,
             team_id=team.id,
             team_name=team.name,
             games_played=0,
@@ -242,14 +263,17 @@ def upsert_standings(session: Session, rows: list[dict[str, object]]) -> int:
         age_group = str(row["age_group"])
         conference = str(row["conference"])
         linked = row.get("team_id")
+        gender = str(row.get("gender") or "boys")
         if linked is None:
-            linked = link_team_id(teams, team_name, age_group, conference, tier=str(row["tier"]))
-        item = {**row, "team_id": linked, "team_name": team_name}
-        key = (conference, str(row["tier"]), age_group, team_name)
+            linked = link_team_id(teams, team_name, age_group, conference, tier=str(row["tier"]), gender=gender)
+        item = {**row, "team_id": linked, "team_name": team_name, "gender": gender}
+        if "capped_goal_diff" not in item:
+            item["capped_goal_diff"] = None
+        key = (conference, str(row["tier"]), gender, age_group, team_name)
         previous = prepared_by_key.get(key)
         if previous is not None and previous.get("team_id") != linked:
             item["team_name"] = f"{team_name} #{linked}"[:160]
-            key = (conference, str(row["tier"]), age_group, str(item["team_name"]))
+            key = (conference, str(row["tier"]), gender, age_group, str(item["team_name"]))
         prepared_by_key[key] = item
     prepared = list(prepared_by_key.values())
 
@@ -257,7 +281,7 @@ def upsert_standings(session: Session, rows: list[dict[str, object]]) -> int:
     excluded = statement.excluded
     session.execute(
         statement.on_conflict_do_update(
-            index_elements=["conference", "tier", "age_group", "team_name"],
+            index_elements=["conference", "tier", "gender", "age_group", "team_name"],
             set_={
                 "team_id": excluded.team_id,
                 "games_played": excluded.games_played,
@@ -267,6 +291,7 @@ def upsert_standings(session: Session, rows: list[dict[str, object]]) -> int:
                 "goals_for": excluded.goals_for,
                 "goals_against": excluded.goals_against,
                 "goal_diff": excluded.goal_diff,
+                "capped_goal_diff": excluded.capped_goal_diff,
                 "points": excluded.points,
                 "points_per_game": excluded.points_per_game,
                 "updated_at": excluded.updated_at,
@@ -278,10 +303,13 @@ def upsert_standings(session: Session, rows: list[dict[str, object]]) -> int:
 
 
 def replace_ecnl_standings(session: Session, tier: str = "ECNL") -> int:
-    rows = ecnl_standings(session, tier=tier)
-    session.execute(delete(ConferenceStanding).where(ConferenceStanding.tier == tier))
-    session.commit()
-    return upsert_standings(session, rows)
+    written = 0
+    for gender in ("boys", "girls"):
+        rows = ecnl_standings(session, tier=tier, gender=gender)
+        session.execute(delete(ConferenceStanding).where(ConferenceStanding.tier == tier, ConferenceStanding.gender == gender))
+        session.commit()
+        written += upsert_standings(session, rows)
+    return written
 
 
 def _result_mark(goals_for: int, goals_against: int) -> str:
@@ -298,7 +326,13 @@ def recent_form(session: Session, conference: str, tier: str, age_group: str) ->
     short = short_conference(conference).casefold()
     teams = [
         team
-        for team in session.scalars(select(ScheduleTeam).where(ScheduleTeam.tier == tier, ScheduleTeam.age_group == age_group)).all()
+        for team in session.scalars(
+            select(ScheduleTeam).where(
+                ScheduleTeam.tier == tier,
+                ScheduleTeam.age_group == age_group,
+                ScheduleTeam.gender == "boys",
+            )
+        ).all()
         if team.id is not None and short_conference(team.conference).casefold() == short
     ]
     ids = [int(team.id) for team in teams]
@@ -339,6 +373,7 @@ def conference_rank(session: Session, team: ScheduleTeam) -> int | None:
                 func.lower(ConferenceStanding.conference) == short.casefold(),
                 ConferenceStanding.tier == team.tier,
                 ConferenceStanding.age_group == team.age_group,
+                ConferenceStanding.gender == (team.gender or "boys"),
             )
         ).all()
     )
