@@ -20,7 +20,7 @@ from app.main import app
 from app.models import ConferenceStanding, DataRefresh, Player, ScheduleGame, ScheduleTeam
 from app.refresh import ensure_refresh_tables, upsert_published
 from app.standings import _row_from_parts, ecnl_standings, short_conference, upsert_standings
-from load_league import age_group
+from load_league import age_group, field_name_for
 
 HOME = 910000821
 AWAY = 910000822
@@ -49,6 +49,12 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(age_group("BU19"), "U18/19")
         self.assertEqual(age_group("U19"), "U18/19")
         self.assertEqual(age_group("GU18/19"), "U18/19")
+
+    def test_blank_venue_keeps_a_trailing_field_number(self) -> None:
+        self.assertEqual(field_name_for("Field 2", "Silverlakes Complex"), "Field 2")
+        self.assertEqual(field_name_for("", "Crocker Amazon Soccer Field 3"), "Field 3")
+        self.assertEqual(field_name_for(None, "Pleasant Valley Fields"), None)
+        self.assertIsNone(field_name_for("  ", "Surf Sports Park"))
 
     def test_playoff_and_scout_are_not_conference_games(self) -> None:
         self.assertFalse(counts_as_conference("Playoff"))

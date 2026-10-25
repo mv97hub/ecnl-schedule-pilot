@@ -105,6 +105,24 @@ def get_json(url: str) -> dict | list:
     raise RuntimeError(f"Failed {url}: {last_error}")
 
 
+_EMBEDDED_FIELD = re.compile(
+    r"(?P<field>(?:field|fld|pitch|court)\s*#?\s*\d+[A-Za-z]?|#\s*\d+[A-Za-z]?)\s*$",
+    re.IGNORECASE,
+)
+
+
+def field_name_for(venue: object, complex_name: object) -> str | None:
+    """Keep AthleteOne's venue text. If that is blank, keep a trailing field number on the complex."""
+
+    saved = _text(venue, 160)
+    if saved:
+        return saved
+    match = _EMBEDDED_FIELD.search(str(complex_name or "").strip())
+    if match is None:
+        return None
+    return _text(match.group("field"), 160)
+
+
 def age_group(division_name: str) -> str:
     label = division_name.strip().upper()
     if label[:1] in {"B", "G"}:
@@ -537,7 +555,7 @@ def download_league(league: dict) -> dict:
                 "home_score": home_score,
                 "away_score": away_score,
                 "is_conference_game": bool(match.get("_conference_game")),
-                "field_name": _text(match.get("venue"), 160),
+                "field_name": field_name_for(match.get("venue"), match.get("complex")),
                 "venue_zip": zip_code or None,
                 "venue_address": _text(match.get("address") if "address" in match else match.get("venueAddress")),
                 "venue_lat": _float_field(match, "latitude", "lat", "venueLat"),

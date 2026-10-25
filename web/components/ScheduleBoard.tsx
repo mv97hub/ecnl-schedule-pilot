@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { ScheduleCard, ScoutLink } from "@/components/ScheduleCard";
+import { FieldBadge, ScheduleCard, ScoutLink, fieldLabel } from "@/components/ScheduleCard";
 import { easternStamp, easternToday, mapsUrl, teamScoreline } from "@/lib/format";
 import type { Game } from "@/lib/types";
 
@@ -74,6 +74,7 @@ function ListView({ games, teamId }: { games: Game[]; teamId: number }) {
                 const stamp = easternStamp(game.starts_at);
                 const scoreline = teamScoreline(game);
                 const postponed = game.status === "POSTPONED" || game.status === "CANCELLED";
+                const field = fieldLabel(game.field_name);
                 return (
                   <li key={game.id} className="grid grid-cols-[5.5rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-stone-100 px-4 py-3 last:border-b-0">
                     <span className="text-sm text-stone-500">{stamp?.dateLabel ?? "TBD"}</span>
@@ -82,14 +83,17 @@ function ListView({ games, teamId }: { games: Game[]; teamId: number }) {
                         <span className="truncate font-medium text-stone-900">{game.opponent.name}</span>
                         <ScoutLink teamId={teamId} opponentId={game.opponent.id} />
                       </span>
-                      <a
-                        href={mapsUrl(game.venue_name, game.city, game.state)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block truncate text-sm text-stone-500 underline-offset-4 hover:underline"
-                      >
-                        {game.venue_name}
-                      </a>
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <a
+                          href={mapsUrl(game.venue_name, game.city, game.state)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="min-w-0 truncate text-sm text-stone-500 underline-offset-4 hover:underline"
+                        >
+                          {game.venue_name}
+                        </a>
+                        {field ? <FieldBadge name={field} /> : null}
+                      </span>
                     </span>
                     <span className="text-right text-sm">
                       {scoreline ? (
@@ -180,6 +184,7 @@ export function CalendarView({ games, teamName }: { games: Game[]; teamName: str
                     {dayGames.map((game) => {
                       const stamp = easternStamp(game.starts_at);
                       const postponed = game.status === "POSTPONED" || game.status === "CANCELLED";
+                      const field = fieldLabel(game.field_name);
                       const completed = game.status === "COMPLETED" && game.home_score != null && game.away_score != null;
                       const homeName = game.side === "home" ? teamName : game.opponent.name;
                       const awayName = game.side === "home" ? game.opponent.name : teamName;
@@ -194,8 +199,9 @@ export function CalendarView({ games, teamName }: { games: Game[]; teamName: str
                           ) : (
                             <p className="text-stone-500">{postponed ? (game.status === "POSTPONED" ? "Postponed" : "Cancelled") : stamp?.clock}</p>
                           )}
-                          <p className="truncate text-stone-500" title={`${game.venue_name}, ${game.city}, ${game.state}`}>
-                            {game.venue_name}
+                          <p className="min-w-0 text-stone-500" title={`${game.venue_name}${field ? ` · ${field}` : ""}, ${game.city}, ${game.state}`}>
+                            <span className="block truncate">{game.venue_name}</span>
+                            {field ? <FieldBadge name={field} className="mt-0.5" /> : null}
                           </p>
                         </div>
                       );

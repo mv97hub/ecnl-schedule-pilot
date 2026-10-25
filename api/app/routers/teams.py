@@ -120,6 +120,7 @@ def team_schedule(
                 venue_name=game.venue_name,
                 city=game.city,
                 state=game.state,
+                field_name=(game.field_name or "").strip() or None,
                 timezone=zone_name,
                 event=game.event,
                 status=game.status if game.status in {"SCHEDULED", "COMPLETED", "POSTPONED", "CANCELLED"} else "SCHEDULED",

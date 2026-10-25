@@ -33,6 +33,7 @@ class ScheduleGameOut(BaseModel):
     venue_name: str
     city: str
     state: str
+    field_name: str | None = None
     timezone: str
     event: str | None
     status: GameStatus

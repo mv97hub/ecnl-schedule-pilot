@@ -95,6 +95,7 @@ class StartupSchemaTests(unittest.TestCase):
                     away_score=None,
                     is_conference_game=True,
                     source_id=GAME_SOURCE,
+                    field_name="Field 4",
                 )
             )
             session.commit()
@@ -119,6 +120,7 @@ class StartupSchemaTests(unittest.TestCase):
                 schedule = team_schedule(home_id, session, filter="all")
             self.assertEqual(len(schedule.games), 1)
             self.assertEqual(schedule.games[0].venue_name, "Probe Park")
+            self.assertEqual(schedule.games[0].field_name, "Field 4")
         finally:
             event.remove(engine, "checkout", _limit_lock_wait)
             transaction.rollback()
