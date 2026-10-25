@@ -5,10 +5,11 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { genderFromSearch, useLeagueGender } from "@/components/GenderProvider";
 import { ResultMark } from "@/components/ResultMark";
 import { ShareMatchup } from "@/components/ShareMatchup";
 import { fetchHeadToHead, fetchTeams } from "@/lib/api";
-import { AGE_GROUPS, TIERS } from "@/lib/leagues";
+import { TIERS, ageGroupsFor, type LeagueGender } from "@/lib/leagues";
 import type { CommonGame, CommonOpponent, CountRecord, DirectMatch, HeadToHeadReport, OpponentMini, Rollup, ScoutingReport, SplitRecord, Team, TeamTape } from "@/lib/types";
 
 type Side = "a" | "b" | null;
@@ -119,6 +120,7 @@ function SideSelect({
   legend,
   side,
   teams,
+  ages,
   prefer,
   onChange,
 }: {
@@ -126,6 +128,7 @@ function SideSelect({
   legend: string;
   side: Filters;
   teams: Team[];
+  ages: { value: string; label: string }[];
   prefer: { tier: (typeof TIERS)[number]; ageGroup: string } | null;
   onChange: (next: Filters) => void;
 }) {
@@ -219,7 +222,7 @@ function SideSelect({
       <label htmlFor={`${prefix}-age`} className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
         Age group
         <select id={`${prefix}-age`} value={side.ageGroup} onChange={(event) => onChange(chooseAge(side, event.target.value, teams))} className={field}>
-          {AGE_GROUPS.map((age) => (
+          {ages.map((age) => (
             <option key={age.value} value={age.value}>
               {age.label}
             </option>
@@ -400,9 +403,13 @@ function sideNeeds(id: number | null, currentId: number | null, conference: stri
 export function HeadToHeadBoard() {
   const router = useRouter();
   const search = useSearchParams();
+  const { gender, ready: genderReady, setGender } = useLeagueGender();
   const queryA = search.get("teamA");
   const queryB = search.get("teamB");
   const queryOnly = search.get("conferenceOnly") === "1" || search.get("conference_only") === "true";
+  const dictated = genderFromSearch(new URLSearchParams(search.toString()));
+  const activeGender: LeagueGender | null = genderReady ? gender : dictated;
+  const ages = ageGroupsFor(activeGender ?? "boys");
   const [teams, setTeams] = useState<Team[]>([]);
   const [sideA, setSideA] = useState<Filters>(EMPTY_SIDE);
   const [sideB, setSideB] = useState<Filters>(EMPTY_SIDE);
@@ -416,14 +423,44 @@ export function HeadToHeadBoard() {
   const teamB = sideB.teamId;
   const sideRef = useRef({ a: teamA, b: teamB, conferenceA: sideA.conference, conferenceB: sideB.conference, only: conferenceOnly });
   const applyingQuery = useRef(false);
+  const appliedSearch = useRef<string | null>(null);
+  const genderLock = useRef<LeagueGender | null>(null);
+  const suppressQueryTeams = useRef(false);
 
   useEffect(() => {
     sideRef.current = { a: teamA, b: teamB, conferenceA: sideA.conference, conferenceB: sideB.conference, only: conferenceOnly };
   }, [teamA, teamB, sideA.conference, sideB.conference, conferenceOnly]);
 
   useEffect(() => {
+    const key = search.toString();
+    if (appliedSearch.current === key) return;
+    appliedSearch.current = key;
+    if (dictated && dictated !== gender) setGender(dictated);
+  }, [search, dictated, gender, setGender]);
+
+  useEffect(() => {
+    if (!activeGender) return;
+    if (genderLock.current == null) {
+      genderLock.current = activeGender;
+      return;
+    }
+    if (genderLock.current === activeGender) return;
+    genderLock.current = activeGender;
+    suppressQueryTeams.current = true;
+    setSideA((current) => ({ ...current, conference: "", teamId: null }));
+    setSideB((current) => ({ ...current, conference: "", teamId: null }));
+    setReport(null);
+    setError(null);
+    const params = new URLSearchParams();
+    if (activeGender === "girls") params.set("gender", "girls");
+    const next = params.toString();
+    router.replace(next ? `/head-to-head?${next}` : "/head-to-head", { scroll: false });
+  }, [activeGender, router]);
+
+  useEffect(() => {
+    if (!activeGender) return;
     let cancelled = false;
-    fetchTeams()
+    fetchTeams(undefined, activeGender)
       .then((data) => {
         if (!cancelled) setTeams(data);
       })
@@ -433,18 +470,27 @@ export function HeadToHeadBoard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeGender]);
 
   useEffect(() => {
     const a = parseTeamId(queryA);
     const b = parseTeamId(queryB);
+    if (suppressQueryTeams.current) {
+      if (!queryA && !queryB) suppressQueryTeams.current = false;
+      else return;
+    }
     const current = sideRef.current;
-    const aNeeds = sideNeeds(a, current.a, current.conferenceA, teams);
-    const bNeeds = sideNeeds(b, current.b, current.conferenceB, teams);
+    const loaded = teams.length > 0;
+    const resolvedA = a != null ? filtersFrom(teams, a) : null;
+    const resolvedB = b != null ? filtersFrom(teams, b) : null;
+    const aForeign = loaded && ((a != null && resolvedA == null) || (current.a != null && filtersFrom(teams, current.a) == null));
+    const bForeign = loaded && ((b != null && resolvedB == null) || (current.b != null && filtersFrom(teams, current.b) == null));
+    const aNeeds = !aForeign && sideNeeds(a, aForeign ? null : current.a, current.conferenceA, teams);
+    const bNeeds = !bForeign && sideNeeds(b, bForeign ? null : current.b, current.conferenceB, teams);
     const onlyNeeds = queryOnly !== current.only;
-    const seedB = b == null && current.b == null && current.conferenceB === "" && a != null && teams.length > 0 && filtersFrom(teams, a) != null;
+    const seedB = !bForeign && b == null && current.b == null && current.conferenceB === "" && a != null && resolvedA != null;
     let cancelled = false;
-    if (!aNeeds && !bNeeds && !onlyNeeds && !seedB) {
+    if (!aNeeds && !bNeeds && !onlyNeeds && !seedB && !aForeign && !bForeign) {
       Promise.resolve().then(() => {
         if (!cancelled) setReady(true);
       });
@@ -456,14 +502,14 @@ export function HeadToHeadBoard() {
     applyingQuery.current = true;
     Promise.resolve().then(() => {
       if (cancelled) return;
-      if (aNeeds && a != null) {
-        const resolved = filtersFrom(teams, a);
-        if (resolved) setSideA(resolved);
+      if (aForeign) setSideA((cur) => ({ ...cur, conference: "", teamId: null }));
+      else if (aNeeds && a != null) {
+        if (resolvedA) setSideA(resolvedA);
         else setSideA((cur) => ({ ...cur, teamId: a }));
       }
-      if (bNeeds && b != null) {
-        const resolved = filtersFrom(teams, b);
-        if (resolved) setSideB(resolved);
+      if (bForeign) setSideB((cur) => ({ ...cur, conference: "", teamId: null }));
+      else if (bNeeds && b != null) {
+        if (resolvedB) setSideB(resolvedB);
         else setSideB((cur) => ({ ...cur, teamId: b }));
       } else if (seedB && a != null) {
         const base = filtersFrom(teams, a);
@@ -481,17 +527,20 @@ export function HeadToHeadBoard() {
   }, [queryA, queryB, queryOnly, teams]);
 
   useEffect(() => {
-    if (!ready || applyingQuery.current) return;
+    if (!ready || !genderReady || applyingQuery.current || suppressQueryTeams.current) return;
     const a = parseTeamId(queryA);
     const b = parseTeamId(queryB);
-    if (a === teamA && b === teamB && queryOnly === conferenceOnly) return;
+    const urlGirls = search.get("gender") === "girls";
+    const wantGirls = gender === "girls";
+    if (a === teamA && b === teamB && queryOnly === conferenceOnly && urlGirls === wantGirls) return;
     const params = new URLSearchParams();
     if (teamA) params.set("teamA", String(teamA));
     if (teamB) params.set("teamB", String(teamB));
     if (conferenceOnly) params.set("conferenceOnly", "1");
+    if (wantGirls) params.set("gender", "girls");
     const next = params.toString();
     router.replace(next ? `/head-to-head?${next}` : "/head-to-head", { scroll: false });
-  }, [ready, teamA, teamB, conferenceOnly, queryA, queryB, queryOnly, router]);
+  }, [ready, genderReady, gender, teamA, teamB, conferenceOnly, queryA, queryB, queryOnly, router, search]);
 
   useEffect(() => {
     if (!ready) return;
@@ -563,7 +612,7 @@ export function HeadToHeadBoard() {
         </div>
 
         <div className="mt-6 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
-          <SideSelect prefix="team-a" legend="Team A" side={sideA} teams={teams} prefer={null} onChange={(next) => commit(setSideA, sideA, next, teamB)} />
+          <SideSelect prefix="team-a" legend="Team A" side={sideA} teams={teams} ages={ages} prefer={null} onChange={(next) => commit(setSideA, sideA, next, teamB)} />
           <div className="flex flex-col items-center gap-2 pt-6">
             <p className="rounded-full bg-stone-900 px-3 py-1 text-xs font-semibold tracking-[0.2em] text-white">VS</p>
             <button
@@ -606,6 +655,7 @@ export function HeadToHeadBoard() {
             legend="Team B"
             side={sideB}
             teams={teams}
+            ages={ages}
             prefer={{ tier: sideA.tier, ageGroup: sideA.ageGroup }}
             onChange={(next) => commit(setSideB, sideB, next, teamA)}
           />

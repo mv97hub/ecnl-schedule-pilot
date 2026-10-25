@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
 import { AppHeader } from "@/components/AppHeader";
+import { GenderProvider } from "@/components/GenderProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ECNL Boys Schedule",
-  description: "Southeast Conference schedules for ECNL Boys teams",
+  title: "ECNL Schedule",
+  description: "Conference schedules for ECNL teams",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -26,8 +27,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans">
-        <AppHeader />
-        {children}
+        <GenderProvider>
+          <AppHeader />
+          {children}
+        </GenderProvider>
       </body>
     </html>
   );

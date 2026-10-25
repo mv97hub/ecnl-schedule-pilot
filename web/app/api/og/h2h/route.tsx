@@ -38,11 +38,11 @@ function shell(children: ReactNode) {
   );
 }
 
-function fallbackCard() {
+function fallbackCard(mark: string) {
   return graphic(
     shell(
       <div style={{ display: "flex", flexDirection: "column", flexGrow: 1, justifyContent: "center", border: "2px solid #34d399", borderRadius: 28, padding: "48px" }}>
-        <div style={{ display: "flex", fontSize: 22, letterSpacing: 3, color: "#6ee7b7" }}>ECNL BOYS</div>
+        <div style={{ display: "flex", fontSize: 22, letterSpacing: 3, color: "#6ee7b7" }}>{mark}</div>
         <div style={{ display: "flex", marginTop: 16, fontSize: 64, fontWeight: 700 }}>Head-to-Head</div>
         <div style={{ display: "flex", marginTop: 18, fontSize: 28, color: "#cbd5e1" }}>Choose two teams to preview a matchup.</div>
       </div>,
@@ -107,7 +107,7 @@ function predictorGauge(meter: number, caption: string, club: string | null) {
   );
 }
 
-function matchupCard(data: HeadToHeadReport) {
+function matchupCard(data: HeadToHeadReport, mark: string) {
   const left = data.team_a_stats;
   const right = data.team_b_stats;
   const shared = data.common_opponents_rollup;
@@ -121,7 +121,10 @@ function matchupCard(data: HeadToHeadReport) {
     shell(
       <div style={{ display: "flex", flexDirection: "column", width: 1144 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: 1144 }}>
-          <div style={{ display: "flex", fontSize: 16, color: "#94a3b8" }}>{leagueBadge(data)}</div>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", fontSize: 14, letterSpacing: 2, color: "#6ee7b7" }}>{mark}</div>
+            <div style={{ display: "flex", marginTop: 4, fontSize: 16, color: "#94a3b8" }}>{leagueBadge(data)}</div>
+          </div>
           <div style={{ display: "flex", fontSize: 16, color: "#e2e8f0" }}>{upcoming ? upcomingLabel(upcoming) : ""}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: 1144, marginTop: 10 }}>
@@ -165,20 +168,21 @@ function teamId(value: string | null): string | null {
 }
 
 export async function GET(request: NextRequest) {
+  const mark = request.nextUrl.searchParams.get("gender") === "girls" ? "ECNL GIRLS" : "ECNL BOYS";
   const teamA = teamId(request.nextUrl.searchParams.get("teamA"));
   const teamB = teamId(request.nextUrl.searchParams.get("teamB"));
   const conferenceOnly = request.nextUrl.searchParams.get("conferenceOnly");
-  if (!teamA || !teamB || teamA === teamB) return fallbackCard();
+  if (!teamA || !teamB || teamA === teamB) return fallbackCard(mark);
   const conference = conferenceOnly === "1" || conferenceOnly === "true" ? "true" : "false";
   const api = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
   try {
     const response = await fetch(`${api}/head-to-head?team_a_id=${teamA}&team_b_id=${teamB}&conference_only=${conference}`, { cache: "no-store" });
-    if (!response.ok) return fallbackCard();
+    if (!response.ok) return fallbackCard(mark);
     const data = (await response.json()) as HeadToHeadReport;
-    if (!data.team_a_stats?.name || !data.team_b_stats?.name || !data.scouting_report) return fallbackCard();
-    return matchupCard(data);
+    if (!data.team_a_stats?.name || !data.team_b_stats?.name || !data.scouting_report) return fallbackCard(mark);
+    return matchupCard(data, mark);
   } catch (error) {
     rethrowNext(error);
-    return fallbackCard();
+    return fallbackCard(mark);
   }
 }

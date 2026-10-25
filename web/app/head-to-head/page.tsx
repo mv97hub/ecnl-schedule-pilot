@@ -11,6 +11,7 @@ type HeadToHeadQuery = {
   teamB?: string;
   conferenceOnly?: string;
   conference_only?: string;
+  gender?: string;
 };
 
 function teamId(value: string | undefined): number | null {
@@ -22,16 +23,20 @@ function conferenceOnly(query: HeadToHeadQuery): boolean {
   return query.conferenceOnly === "1" || query.conference_only === "true";
 }
 
+function shareGender(query: HeadToHeadQuery): "boys" | "girls" {
+  return query.gender === "girls" ? "girls" : "boys";
+}
+
 export async function generateMetadata({ searchParams }: { searchParams: Promise<HeadToHeadQuery> }): Promise<Metadata> {
   const query = await searchParams;
   const teamA = teamId(query.teamA);
   const teamB = teamId(query.teamB);
   if (teamA == null || teamB == null || teamA === teamB) {
-    return { title: "Head-to-Head | ECNL Boys" };
+    return { title: "Head-to-Head | ECNL" };
   }
   try {
     const data = await fetchHeadToHead(teamA, teamB, conferenceOnly(query));
-    const image = `/api/og/h2h?${matchupSearch(teamA, teamB, conferenceOnly(query))}`;
+    const image = `/api/og/h2h?${matchupSearch(teamA, teamB, conferenceOnly(query), shareGender(query))}`;
     const title = `${data.team_a_stats.name} vs ${data.team_b_stats.name} | ECNL H2H Scouting`;
     const description = matchupDescription(data);
     return {
@@ -41,7 +46,7 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
       twitter: { card: "summary_large_image", title, description, images: [image] },
     };
   } catch {
-    return { title: "Head-to-Head | ECNL Boys" };
+    return { title: "Head-to-Head | ECNL" };
   }
 }
 

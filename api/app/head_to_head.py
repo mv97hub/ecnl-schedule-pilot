@@ -7,11 +7,11 @@ from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.ingestion.normalizer import looks_like_showcase, split_venue
-from app.models import ConferenceStanding, ScheduleGame, ScheduleTeam
+from app.models import ScheduleGame, ScheduleTeam
 from app.schemas import (
     CommonGameOut,
     CommonOpponentOut,
@@ -27,7 +27,7 @@ from app.schemas import (
     SplitRecord,
     TeamTapeOut,
 )
-from app.standings import _canonical_name, _ppg, conference_rank, short_conference
+from app.standings import _canonical_name, _ppg, conference_rank, official_standings, short_conference
 from scouting import build_scouting_report
 
 EASTERN = ZoneInfo("America/New_York")
@@ -102,15 +102,7 @@ def _games_for(session: Session, team_id: int, conference_only: bool) -> list[Sc
 
 
 def _official_ppg(session: Session, team: ScheduleTeam) -> float | None:
-    short = short_conference(team.conference).casefold()
-    rows = session.scalars(
-        select(ConferenceStanding).where(
-            func.lower(ConferenceStanding.conference) == short,
-            ConferenceStanding.tier == team.tier,
-            ConferenceStanding.age_group == team.age_group,
-            ConferenceStanding.gender == "boys",
-        )
-    ).all()
+    rows = official_standings(session, team.conference, team.tier, team.age_group, team.gender or "boys")
     for row in rows:
         if row.team_id == team.id or _canonical_name(row.team_name) == _canonical_name(team.name):
             return float(row.points_per_game)

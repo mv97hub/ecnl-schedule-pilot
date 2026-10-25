@@ -9,7 +9,7 @@ from app.database import get_session
 from app.ingestion.normalizer import looks_like_showcase
 from app.models import ScheduleGame as Game, ScheduleTeam as Team
 from app.schemas import OpponentOut, ScheduleGameOut, ScheduleResponse, TeamOut, TeamRecordSummary
-from app.standings import conference_rank, short_conference
+from app.standings import conference_rank, normalize_gender, short_conference
 
 router = APIRouter()
 
@@ -23,16 +23,25 @@ def _contains(value: str) -> str:
     return f"%{escaped}%"
 
 
+def _gender(value: str) -> str:
+    try:
+        return normalize_gender(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/teams", response_model=list[TeamOut])
 def list_teams(
     session: Annotated[Session, Depends(get_session)],
     q: str | None = Query(default=None, description="Case-insensitive substring of the team name"),
     age_group: str | None = Query(default=None, description="U13 or U14"),
+    gender: str = Query(default="boys"),
 ) -> list[Team]:
     if age_group is not None and age_group not in AGE_GROUPS:
         raise HTTPException(status_code=400, detail="age_group must be U13, U14, U15, U16, U17, or U18/19")
+    chosen = _gender(gender)
 
-    statement = select(Team).where(Team.gender == "boys")
+    statement = select(Team).where(Team.gender == chosen)
     if q and q.strip():
         statement = statement.where(Team.name.ilike(_contains(q.strip()), escape="\\"))
     if age_group is not None:
@@ -63,7 +72,7 @@ def team_schedule(
         raise HTTPException(status_code=400, detail="filter must be one of: all, home, away")
 
     team = session.get(Team, team_id)
-    if team is None or team.gender != "boys":
+    if team is None or (team.gender or "boys") not in {"boys", "girls"}:
         raise HTTPException(status_code=404, detail="Team not found")
 
     games = session.scalars(

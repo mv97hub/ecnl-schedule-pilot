@@ -1,13 +1,11 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_session
-from app.models import ConferenceStanding
 from app.schemas import StandingOut
-from app.standings import ecnl_standings, normalize_age_group, normalize_tier, recent_form, short_conference, sort_standings
+from app.standings import ecnl_standings, normalize_age_group, normalize_gender, normalize_tier, official_standings, recent_form, short_conference, sort_standings
 
 router = APIRouter()
 
@@ -44,10 +42,12 @@ def list_standings(
     tier: str = Query(),
     age_group: str = Query(),
     mode: str = Query(default="official"),
+    gender: str = Query(default="boys"),
 ) -> list[StandingOut]:
     try:
         tier_name = normalize_tier(tier)
         age = normalize_age_group(age_group)
+        chosen_gender = normalize_gender(gender)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     chosen = mode.strip().casefold()
@@ -56,19 +56,12 @@ def list_standings(
     short = short_conference(conference)
     if not short:
         raise HTTPException(status_code=400, detail="conference is required")
-    form_by_team = recent_form(session, short, tier_name, age)
+    form_by_team = recent_form(session, short, tier_name, age, chosen_gender)
 
     if chosen == "calculated":
-        return _ranked(ecnl_standings(session, short, age, tier_name), form_by_team)
+        return _ranked(ecnl_standings(session, short, age, tier_name, chosen_gender), form_by_team)
 
-    records = session.scalars(
-        select(ConferenceStanding).where(
-            func.lower(ConferenceStanding.conference) == short.casefold(),
-            ConferenceStanding.tier == tier_name,
-            ConferenceStanding.age_group == age,
-            ConferenceStanding.gender == "boys",
-        )
-    ).all()
+    records = official_standings(session, short, tier_name, age, chosen_gender)
     return _ranked(
         [
             {
