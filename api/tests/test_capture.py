@@ -45,6 +45,10 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(age_group("GU13"), "U13")
         self.assertEqual(age_group("BU15"), "U15")
         self.assertEqual(age_group("U14"), "U14")
+        self.assertEqual(age_group("GU19"), "U18/19")
+        self.assertEqual(age_group("BU19"), "U18/19")
+        self.assertEqual(age_group("U19"), "U18/19")
+        self.assertEqual(age_group("GU18/19"), "U18/19")
 
     def test_playoff_and_scout_are_not_conference_games(self) -> None:
         self.assertFalse(counts_as_conference("Playoff"))

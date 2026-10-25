@@ -109,6 +109,8 @@ def age_group(division_name: str) -> str:
     label = division_name.strip().upper()
     if label[:1] in {"B", "G"}:
         label = label[1:]
+    if label in {"U18", "U19"}:
+        return "U18/19"
     if label not in {"U13", "U14", "U15", "U16", "U17", "U18/19"}:
         raise RuntimeError(f"Unexpected division {division_name}")
     return label
