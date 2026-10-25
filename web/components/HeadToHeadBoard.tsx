@@ -1,6 +1,6 @@
 "use client";
 
-import { LoaderCircle } from "lucide-react";
+import { ChevronRight, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -143,13 +143,15 @@ function SideSelect({
   const others = (prefer ? inConference.filter((team) => !preferred.some((item) => item.id === team.id)) : pool).sort(byName);
   const visibleIds = new Set([...preferred, ...others, ...pool].map((team) => team.id));
   const listed = side.teamId && !visibleIds.has(side.teamId) ? teams.filter((team) => team.id === side.teamId) : [];
-  const field = "mt-1 h-10 w-full rounded-xl border border-stone-200 bg-white px-2 text-sm text-stone-900";
+  const field = "h-9 min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2 text-sm text-stone-900";
+  const row = "flex items-center gap-2 text-xs font-medium text-stone-600";
+  const title = "w-[5.75rem] shrink-0";
 
   return (
-    <fieldset className="min-w-0 space-y-2">
-      <legend className="text-sm font-semibold text-stone-800">{legend}</legend>
-      <label htmlFor={`${prefix}-tier`} className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
-        Tier
+    <fieldset className="min-w-0 space-y-1.5">
+      <legend className="mb-1 text-sm font-semibold text-stone-800">{legend}</legend>
+      <label htmlFor={`${prefix}-tier`} className={row}>
+        <span className={title}>Tier</span>
         <select id={`${prefix}-tier`} value={side.tier} onChange={(event) => onChange(chooseTier(side, event.target.value === "ECNL-RL" ? "ECNL-RL" : "ECNL", teams))} className={field}>
           {TIERS.map((tier) => (
             <option key={tier} value={tier}>
@@ -158,8 +160,8 @@ function SideSelect({
           ))}
         </select>
       </label>
-      <label htmlFor={`${prefix}-conference`} className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
-        Conference
+      <label htmlFor={`${prefix}-conference`} className={row}>
+        <span className={title}>Conference</span>
         <select
           id={`${prefix}-conference`}
           value={conferences.includes(side.conference) ? side.conference : ""}
@@ -173,8 +175,8 @@ function SideSelect({
           ))}
         </select>
       </label>
-      <label htmlFor={`${prefix}-team`} className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
-        Team
+      <label htmlFor={`${prefix}-team`} className={row}>
+        <span className={title}>Team</span>
         <select
           id={`${prefix}-team`}
           value={side.teamId ?? ""}
@@ -219,8 +221,8 @@ function SideSelect({
           )}
         </select>
       </label>
-      <label htmlFor={`${prefix}-age`} className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
-        Age group
+      <label htmlFor={`${prefix}-age`} className={row}>
+        <span className={title}>Age group</span>
         <select id={`${prefix}-age`} value={side.ageGroup} onChange={(event) => onChange(chooseAge(side, event.target.value, teams))} className={field}>
           {ages.map((age) => (
             <option key={age.value} value={age.value}>
@@ -414,6 +416,10 @@ export function HeadToHeadBoard() {
   const [sideA, setSideA] = useState<Filters>(EMPTY_SIDE);
   const [sideB, setSideB] = useState<Filters>(EMPTY_SIDE);
   const [conferenceOnly, setConferenceOnly] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draftA, setDraftA] = useState<Filters>(EMPTY_SIDE);
+  const [draftB, setDraftB] = useState<Filters>(EMPTY_SIDE);
+  const [draftOnly, setDraftOnly] = useState(false);
   const [showAllCommon, setShowAllCommon] = useState(false);
   const [ready, setReady] = useState(false);
   const [report, setReport] = useState<HeadToHeadReport | null>(null);
@@ -570,6 +576,38 @@ export function HeadToHeadBoard() {
     };
   }, [ready, teamA, teamB, conferenceOnly]);
 
+  const linkedA = parseTeamId(queryA);
+  const linkedB = parseTeamId(queryB);
+  const awaitingLink = linkedA != null && linkedB != null && linkedA !== linkedB && teamA == null && teamB == null;
+  const finished = (teamA != null && teamB != null && teamA !== teamB) || awaitingLink;
+  const editingMatchup = editing && finished;
+  const formA = editingMatchup ? draftA : sideA;
+  const formB = editingMatchup ? draftB : sideB;
+  const formOnly = editingMatchup ? draftOnly : conferenceOnly;
+
+  useEffect(() => {
+    if (!finished) setEditing(false);
+  }, [finished]);
+
+  function openFilters() {
+    setDraftA(sideA);
+    setDraftB(sideB);
+    setDraftOnly(conferenceOnly);
+    setEditing(true);
+  }
+
+  function submitFilters() {
+    const nextA = draftA.teamId;
+    const nextB = draftB.teamId;
+    const changed = nextA !== teamA || nextB !== teamB || draftOnly !== conferenceOnly;
+    if (changed && nextA && nextB && nextA !== nextB) setLoading(true);
+    setSideA(draftA);
+    setSideB(draftB);
+    setConferenceOnly(draftOnly);
+    setEditing(false);
+    setError(null);
+  }
+
   function commit(setter: (next: Filters) => void, current: Filters, next: Filters, otherId: number | null) {
     setError(null);
     if (next.teamId && otherId && next.teamId !== otherId && next.teamId !== current.teamId) setLoading(true);
@@ -585,6 +623,11 @@ export function HeadToHeadBoard() {
 
   const left = report?.team_a_stats;
   const right = report?.team_b_stats;
+  const appliedName = (id: number | null, statsName?: string) => statsName ?? teams.find((team) => team.id === id)?.name ?? "Team";
+  const crumbIdA = teamA ?? linkedA;
+  const crumbIdB = teamB ?? linkedB;
+  const crumbA = appliedName(crumbIdA, left && left.team_id === crumbIdA ? left.name : undefined);
+  const crumbB = appliedName(crumbIdB, right && right.team_id === crumbIdB ? right.name : undefined);
   const commonRows = report ? (showAllCommon ? report.common_opponents : report.common_opponents.filter(playedByBoth)) : [];
   const commonRollupA = report
     ? showAllCommon
@@ -603,22 +646,59 @@ export function HeadToHeadBoard() {
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-stone-950">Head-to-Head</h1>
-            <p className="mt-1 text-sm text-stone-500">Direct meetings and how each club did against the same opponents.</p>
+            <h1 className="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">Head-to-Head</h1>
+            {!finished && <p className="mt-1 text-sm text-stone-500">Direct meetings and how each club did against the same opponents.</p>}
           </div>
           {report && !loading && teamA && teamB && report.team_a_stats.team_id === teamA && report.team_b_stats.team_id === teamB ? (
             <ShareMatchup report={report} teamA={teamA} teamB={teamB} conferenceOnly={conferenceOnly} />
           ) : null}
         </div>
 
-        <div className="mt-6 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
-          <SideSelect prefix="team-a" legend="Team A" side={sideA} teams={teams} ages={ages} prefer={null} onChange={(next) => commit(setSideA, sideA, next, teamB)} />
-          <div className="flex flex-col items-center gap-2 pt-6">
+        {finished && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <nav aria-label="Current matchup" className="min-w-0">
+              <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-stone-700">
+                <li className="font-medium text-stone-950">{crumbA}</li>
+                <li aria-hidden="true">
+                  <ChevronRight className="size-3.5 text-stone-400" />
+                </li>
+                <li className="font-medium text-stone-950">{crumbB}</li>
+              </ol>
+            </nav>
+            <button
+              type="button"
+              onClick={editingMatchup ? submitFilters : openFilters}
+              className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-white"
+            >
+              {editingMatchup ? "Submit" : "Reset"}
+            </button>
+          </div>
+        )}
+
+        {(!finished || editingMatchup) && (
+        <div className="mt-3 grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+          <SideSelect
+            prefix="team-a"
+            legend="Team A"
+            side={formA}
+            teams={teams}
+            ages={ages}
+            prefer={null}
+            onChange={(next) => (editingMatchup ? setDraftA(next) : commit(setSideA, sideA, next, teamB))}
+          />
+          <div className="flex flex-col items-center gap-2 lg:pt-6">
             <p className="rounded-full bg-stone-900 px-3 py-1 text-xs font-semibold tracking-[0.2em] text-white">VS</p>
             <button
               type="button"
-              onClick={swap}
-              disabled={!teamA || !teamB}
+              onClick={() => {
+                if (!editingMatchup) {
+                  swap();
+                  return;
+                }
+                setDraftA(draftB);
+                setDraftB(draftA);
+              }}
+              disabled={!formA.teamId || !formB.teamId}
               className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-800 disabled:text-stone-400"
             >
               Swap Teams
@@ -627,24 +707,32 @@ export function HeadToHeadBoard() {
               <button
                 type="button"
                 role="tab"
-                aria-selected={!conferenceOnly}
+                aria-selected={!formOnly}
                 onClick={() => {
+                  if (editingMatchup) {
+                    setDraftOnly(false);
+                    return;
+                  }
                   if (conferenceOnly && teamA && teamB && teamA !== teamB) setLoading(true);
                   setConferenceOnly(false);
                 }}
-                className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${conferenceOnly ? "border-stone-200 bg-white text-stone-700" : "border-emerald-700 bg-emerald-700 text-white"}`}
+                className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${formOnly ? "border-stone-200 bg-white text-stone-700" : "border-emerald-700 bg-emerald-700 text-white"}`}
               >
                 All Games
               </button>
               <button
                 type="button"
                 role="tab"
-                aria-selected={conferenceOnly}
+                aria-selected={formOnly}
                 onClick={() => {
+                  if (editingMatchup) {
+                    setDraftOnly(true);
+                    return;
+                  }
                   if (!conferenceOnly && teamA && teamB && teamA !== teamB) setLoading(true);
                   setConferenceOnly(true);
                 }}
-                className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${conferenceOnly ? "border-emerald-700 bg-emerald-700 text-white" : "border-stone-200 bg-white text-stone-700"}`}
+                className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${formOnly ? "border-emerald-700 bg-emerald-700 text-white" : "border-stone-200 bg-white text-stone-700"}`}
               >
                 Conference Games Only
               </button>
@@ -653,13 +741,14 @@ export function HeadToHeadBoard() {
           <SideSelect
             prefix="team-b"
             legend="Team B"
-            side={sideB}
+            side={formB}
             teams={teams}
             ages={ages}
-            prefer={{ tier: sideA.tier, ageGroup: sideA.ageGroup }}
-            onChange={(next) => commit(setSideB, sideB, next, teamA)}
+            prefer={{ tier: formA.tier, ageGroup: formA.ageGroup }}
+            onChange={(next) => (editingMatchup ? setDraftB(next) : commit(setSideB, sideB, next, teamA))}
           />
         </div>
+        )}
 
         {teamA != null && teamA === teamB && <p className="mt-4 text-sm text-stone-600">Choose two different teams.</p>}
         {error && <p className="mt-4 rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-800">{error}</p>}
@@ -669,10 +758,10 @@ export function HeadToHeadBoard() {
             Comparing clubs
           </div>
         )}
-        {!loading && !report && !error && <p className="mt-6 text-sm text-stone-500">Choose two teams to compare.</p>}
+        {!loading && !report && !error && !finished && <p className="mt-6 text-sm text-stone-500">Choose two teams to compare.</p>}
 
         {report && left && right && !loading && (
-          <div className="mt-6 space-y-4">
+          <div className={`${finished && !editingMatchup ? "mt-3" : "mt-4"} space-y-4`}>
             <ScoutingCard report={report.scouting_report} teamA={left.name} teamB={right.name} />
             <section className="rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Tale of the Tape">
               <h2 className="text-lg font-semibold text-stone-950">Tale of the Tape</h2>
