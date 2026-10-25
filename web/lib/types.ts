@@ -13,6 +13,7 @@ export type Team = {
 export type Opponent = {
   id: number;
   name: string;
+  logo_url?: string | null;
 };
 
 export type GameStatus = "SCHEDULED" | "COMPLETED" | "POSTPONED" | "CANCELLED";
@@ -50,6 +51,7 @@ export type TeamRecordSummary = {
 
 export type ScheduleResponse = {
   team_record_summary: TeamRecordSummary;
+  logo_url?: string | null;
   games: Game[];
 };
 
@@ -103,6 +105,7 @@ export type FormGame = {
 export type TeamTape = {
   team_id: number;
   name: string;
+  logo_url?: string | null;
   age_group: string;
   tier: string;
   conference: string;

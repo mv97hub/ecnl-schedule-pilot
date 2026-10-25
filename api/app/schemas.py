@@ -23,6 +23,7 @@ class TeamOut(BaseModel):
 class OpponentOut(BaseModel):
     id: int
     name: str
+    logo_url: str | None = None
 
 
 class ScheduleGameOut(BaseModel):
@@ -56,6 +57,7 @@ class TeamRecordSummary(BaseModel):
 
 class ScheduleResponse(BaseModel):
     team_record_summary: TeamRecordSummary
+    logo_url: str | None = None
     games: list[ScheduleGameOut]
 
 
@@ -107,6 +109,7 @@ class FormGameOut(BaseModel):
 class TeamTapeOut(BaseModel):
     team_id: int
     name: str
+    logo_url: str | None = None
     age_group: str
     tier: str
     conference: str

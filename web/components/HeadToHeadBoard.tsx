@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { ClubMark } from "@/components/ClubMark";
 import { genderFromSearch, useLeagueGender } from "@/components/GenderProvider";
 import { ResultMark } from "@/components/ResultMark";
 import { ShareMatchup } from "@/components/ShareMatchup";
@@ -623,11 +624,19 @@ export function HeadToHeadBoard() {
 
   const left = report?.team_a_stats;
   const right = report?.team_b_stats;
-  const appliedName = (id: number | null, statsName?: string) => statsName ?? teams.find((team) => team.id === id)?.name ?? "Team";
   const crumbIdA = teamA ?? linkedA;
   const crumbIdB = teamB ?? linkedB;
-  const crumbA = appliedName(crumbIdA, left && left.team_id === crumbIdA ? left.name : undefined);
-  const crumbB = appliedName(crumbIdB, right && right.team_id === crumbIdB ? right.name : undefined);
+  const genderWord = activeGender === "girls" ? "Girls" : activeGender === "boys" ? "Boys" : "";
+  const appliedCrumb = (id: number | null, stats: TeamTape | undefined, side: Filters) => {
+    const fromStats = stats && id != null && stats.team_id === id ? stats : undefined;
+    const fromList = id != null ? teams.find((team) => team.id === id) : undefined;
+    const name = fromStats?.name ?? fromList?.name ?? "Team";
+    const age = fromStats?.age_group ?? fromList?.age_group ?? (side.teamId === id ? side.ageGroup : "");
+    return { name, mark: genderWord && age ? `${genderWord} ${age}` : "" };
+  };
+  const crumbA = appliedCrumb(crumbIdA, left, sideA);
+  const crumbB = appliedCrumb(crumbIdB, right, sideB);
+  const sharedMark = crumbA.mark && crumbA.mark === crumbB.mark ? crumbA.mark : "";
   const commonRows = report ? (showAllCommon ? report.common_opponents : report.common_opponents.filter(playedByBoth)) : [];
   const commonRollupA = report
     ? showAllCommon
@@ -657,12 +666,18 @@ export function HeadToHeadBoard() {
         {finished && (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <nav aria-label="Current matchup" className="min-w-0">
-              <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-stone-700">
-                <li className="font-medium text-stone-950">{crumbA}</li>
+              <ol className="flex flex-nowrap items-center gap-x-1.5 text-xs text-stone-700 sm:text-sm">
+                <li className="font-medium whitespace-nowrap text-stone-950">
+                  {crumbA.name}
+                  {sharedMark ? "" : crumbA.mark ? ` · ${crumbA.mark}` : ""}
+                </li>
                 <li aria-hidden="true">
                   <ChevronRight className="size-3.5 text-stone-400" />
                 </li>
-                <li className="font-medium text-stone-950">{crumbB}</li>
+                <li className="font-medium whitespace-nowrap text-stone-950">
+                  {crumbB.name}
+                  {sharedMark ? ` · ${sharedMark}` : crumbB.mark ? ` · ${crumbB.mark}` : ""}
+                </li>
               </ol>
             </nav>
             <button
@@ -763,16 +778,19 @@ export function HeadToHeadBoard() {
         {report && left && right && !loading && (
           <div className={`${finished && !editingMatchup ? "mt-3" : "mt-4"} space-y-4`}>
             <ScoutingCard report={report.scouting_report} teamA={left.name} teamB={right.name} />
-            <section className="rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Tale of the Tape">
-              <h2 className="text-lg font-semibold text-stone-950">Tale of the Tape</h2>
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                <div>
+            <section className="rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Direct Match Up">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2">
+                <ClubMark name={left.name} src={left.logo_url} align="start" />
+                <h2 className="text-center text-lg font-semibold text-stone-950">Direct Match Up</h2>
+                <ClubMark name={right.name} src={right.logo_url} align="end" />
+                <div className="min-w-0">
                   <p className="font-semibold text-stone-950">{left.name}</p>
                   <p className="text-xs text-stone-500">
                     {left.age_group} · {left.tier} · {left.conference}
                   </p>
                 </div>
-                <div className="text-right">
+                <div />
+                <div className="min-w-0 text-right">
                   <p className="font-semibold text-stone-950">{right.name}</p>
                   <p className="text-xs text-stone-500">
                     {right.age_group} · {right.tier} · {right.conference}

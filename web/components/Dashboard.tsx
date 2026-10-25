@@ -67,6 +67,7 @@ export function Dashboard() {
   const [view, setView] = useState<ScheduleView>("scorecard");
   const [games, setGames] = useState<Game[]>([]);
   const [summary, setSummary] = useState<TeamRecordSummary | null>(null);
+  const [teamLogo, setTeamLogo] = useState<string | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dataAsOf, setDataAsOf] = useState<string | null>(null);
@@ -156,6 +157,7 @@ export function Dashboard() {
         if (selectedRef.current !== team.id) {
           setGames([]);
           setSummary(null);
+          setTeamLogo(null);
           setScheduleLoading(true);
         }
         setSelectedId(team.id);
@@ -195,6 +197,7 @@ export function Dashboard() {
         if (!cancelled) {
           setGames(payload.games);
           setSummary(payload.team_record_summary);
+          setTeamLogo(payload.logo_url ?? null);
         }
       })
       .catch((err: unknown) => {
@@ -202,6 +205,7 @@ export function Dashboard() {
         setError(err instanceof Error ? err.message : "Failed to load schedule");
         setGames([]);
         setSummary(null);
+        setTeamLogo(null);
       })
       .finally(() => {
         if (!cancelled) setScheduleLoading(false);
@@ -238,6 +242,7 @@ export function Dashboard() {
     }
     setGames([]);
     setSummary(null);
+    setTeamLogo(null);
     setError(null);
     setScheduleLoading(Boolean(nextTeam));
     setSelectedId(nextTeam?.id ?? null);
@@ -339,7 +344,7 @@ export function Dashboard() {
 
       <main className="mx-auto max-w-6xl px-6 py-8">
         {visible && conference && <BreadcrumbTrail items={[tier, conference, visible.name, ageLabel]} />}
-        {visible && summary && <TeamHero team={visible} summary={summary} games={games} ageLabel={ageLabel} />}
+        {visible && summary && <TeamHero team={visible} summary={summary} games={games} ageLabel={ageLabel} logoUrl={teamLogo} />}
         {visible && games.length > 0 && <SeasonTimeline games={games} />}
 
         {error && (
@@ -369,7 +374,7 @@ export function Dashboard() {
               ) : shownGames.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-slate-500">No games in this filter.</div>
               ) : (
-                <ScheduleBoard games={shownGames} view={view} teamName={visible.name} teamId={visible.id} />
+                <ScheduleBoard games={shownGames} view={view} teamName={visible.name} teamId={visible.id} teamLogo={teamLogo} />
               )}
             </div>
             <aside className="min-w-0" aria-label="Season calendar">

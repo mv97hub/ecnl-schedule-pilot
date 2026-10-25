@@ -11,6 +11,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.ingestion.normalizer import looks_like_showcase, split_venue
+from app.logos import club_logo
 from app.models import ScheduleGame, ScheduleTeam
 from app.schemas import (
     CommonGameOut,
@@ -207,6 +208,7 @@ def _tape(session: Session, team: ScheduleTeam, games: list[ScheduleGame]) -> Te
     return TeamTapeOut(
         team_id=team.id,
         name=team.name,
+        logo_url=club_logo(session, team),
         age_group=team.age_group,
         tier=team.tier,
         conference=short_conference(team.conference),
