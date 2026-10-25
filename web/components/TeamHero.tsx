@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { ClubMark } from "@/components/ClubMark";
 import { ResultMark } from "@/components/ResultMark";
 import { easternStamp, goalDifference } from "@/lib/format";
 import type { Game, Team, TeamRecordSummary } from "@/lib/types";
@@ -22,11 +23,13 @@ export function TeamHero({
   summary,
   games,
   ageLabel,
+  logoUrl,
 }: {
   team: Team;
   summary: TeamRecordSummary;
   games: Game[];
   ageLabel: string;
+  logoUrl?: string | null;
 }) {
   const recent = lastResults(games);
   const upcoming = nextMatch(games);
@@ -38,14 +41,17 @@ export function TeamHero({
   return (
     <section className="rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-sm" aria-label="Team summary">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
-        <div className="min-w-0">
-          <h2 className="text-xl font-semibold tracking-tight text-stone-950">
-            {team.name}
-            <span className="ml-2 text-sm font-medium text-stone-500">{ageLabel}</span>
-          </h2>
-          <p className="text-xs text-stone-500">
-            {team.city}, {team.state}
-          </p>
+        <div className="flex min-w-0 items-center gap-3">
+          <ClubMark name={team.name} src={logoUrl} />
+          <div className="min-w-0">
+            <h2 className="text-xl font-semibold tracking-tight text-stone-950">
+              {team.name}
+              <span className="ml-2 text-sm font-medium text-stone-500">{ageLabel}</span>
+            </h2>
+            <p className="text-xs text-stone-500">
+              {team.city}, {team.state}
+            </p>
+          </div>
         </div>
         <dl className="flex flex-wrap items-end gap-x-5 gap-y-1">
           <div>

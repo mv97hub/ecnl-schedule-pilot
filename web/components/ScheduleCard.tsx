@@ -1,6 +1,7 @@
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 
+import { ClubMark } from "@/components/ClubMark";
 import { easternStamp, mapsUrl } from "@/lib/format";
 import type { Game } from "@/lib/types";
 
@@ -38,7 +39,7 @@ export function FieldBadge({ name, className = "" }: { name: string; className?:
   );
 }
 
-export function ScheduleCard({ game, teamName, teamId }: { game: Game; teamName: string; teamId: number }) {
+export function ScheduleCard({ game, teamName, teamId, teamLogo }: { game: Game; teamName: string; teamId: number; teamLogo?: string | null }) {
   const stamp = easternStamp(game.starts_at);
   const maps = mapsUrl(game.venue_name, game.city, game.state);
   const field = fieldLabel(game.field_name);
@@ -46,42 +47,60 @@ export function ScheduleCard({ game, teamName, teamId }: { game: Game; teamName:
   const completed = game.status === "COMPLETED" && game.home_score != null && game.away_score != null;
   const homeName = game.side === "home" ? teamName : game.opponent.name;
   const awayName = game.side === "home" ? game.opponent.name : teamName;
+  const homeLogo = game.side === "home" ? teamLogo : game.opponent.logo_url;
+  const awayLogo = game.side === "away" ? teamLogo : game.opponent.logo_url;
+
+  const scoreText = completed
+    ? `${game.home_score}\u2013${game.away_score}`
+    : postponed
+      ? game.status === "POSTPONED"
+        ? "Postponed"
+        : "Cancelled"
+      : stamp?.clock ?? "Kickoff TBD";
 
   return (
     <article className="min-w-0 rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-sm" data-result={game.team_result ?? game.status}>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-x-3">
-        <div className="min-w-0 text-left">
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)] items-center gap-x-3 gap-y-1">
+        <div className="min-w-0 self-end text-left">
           <p className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Home</p>
           <p className={`truncate text-sm font-semibold ${game.side === "home" ? "text-stone-950" : "text-stone-700"}`}>{homeName}</p>
         </div>
-        <ScoutLink teamId={teamId} opponentId={game.opponent.id} />
-        <div className="min-w-0 text-right">
+        <div className="flex justify-center self-end">
+          <ScoutLink teamId={teamId} opponentId={game.opponent.id} />
+        </div>
+        <div className="min-w-0 self-end text-right">
           <p className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Away</p>
           <p className={`truncate text-sm font-semibold ${game.side === "away" ? "text-stone-950" : "text-stone-700"}`}>{awayName}</p>
         </div>
+        <ClubMark name={homeName} src={homeLogo} />
+        <div className="flex min-w-0 flex-col items-center justify-center text-center">
+          <p
+            className={`text-2xl font-semibold leading-none tracking-tight ${
+              completed && game.team_result ? SCORE_STYLES[game.team_result] : "text-stone-700"
+            }`}
+          >
+            {scoreText}
+          </p>
+          {stamp && (
+            <p className="mt-0.5 text-xs leading-tight text-stone-500">{completed || postponed ? stamp.dateLabel : `${stamp.weekday}, ${stamp.dateLabel}`}</p>
+          )}
+          <a
+            href={maps}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Open ${game.venue_name}${field ? `, ${field}` : ""} in Google Maps`}
+            className="mt-0.5 flex w-full min-w-0 items-center justify-center gap-1.5 text-xs font-medium leading-tight text-stone-600 underline-offset-4 hover:underline"
+          >
+            <span className="min-w-0 truncate">
+              {game.venue_name}
+              <span className="text-stone-400"> · {game.city}, {game.state}</span>
+            </span>
+            {field ? <FieldBadge name={field} /> : null}
+            <ExternalLink className="size-3 shrink-0 text-stone-400" />
+          </a>
+        </div>
+        <ClubMark name={awayName} src={awayLogo} align="end" />
       </div>
-      <p
-        className={`mt-2 text-center text-2xl font-semibold tracking-tight ${
-          completed && game.team_result ? SCORE_STYLES[game.team_result] : "text-stone-700"
-        }`}
-      >
-        {completed ? `${game.home_score}\u2013${game.away_score}` : postponed ? (game.status === "POSTPONED" ? "Postponed" : "Cancelled") : stamp?.clock ?? "Kickoff TBD"}
-      </p>
-      {stamp && <p className="text-center text-xs text-stone-500">{completed || postponed ? stamp.dateLabel : `${stamp.weekday}, ${stamp.dateLabel}`}</p>}
-      <a
-        href={maps}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label={`Open ${game.venue_name}${field ? `, ${field}` : ""} in Google Maps`}
-        className="mt-1 flex items-center justify-center gap-1.5 text-center text-xs font-medium text-stone-600 underline-offset-4 hover:underline"
-      >
-        <span className="min-w-0 truncate">
-          {game.venue_name}
-          <span className="text-stone-400"> · {game.city}, {game.state}</span>
-        </span>
-        {field ? <FieldBadge name={field} /> : null}
-        <ExternalLink className="size-3 shrink-0 text-stone-400" />
-      </a>
     </article>
   );
 }

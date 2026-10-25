@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_session
 from app.ingestion.normalizer import looks_like_showcase
+from app.logos import club_logos
 from app.models import ScheduleGame as Game, ScheduleTeam as Team
 from app.schemas import OpponentOut, ScheduleGameOut, ScheduleResponse, TeamOut, TeamRecordSummary
 from app.standings import conference_rank, normalize_gender, short_conference
@@ -84,6 +85,8 @@ def team_schedule(
 
     overall = {"wins": 0, "losses": 0, "draws": 0}
     conference = {"wins": 0, "losses": 0, "draws": 0, "gf": 0, "ga": 0}
+    opponents = [game.away_team if game.home_team_id == team_id else game.home_team for game in games]
+    logos = club_logos(session, [team, *opponents])
     schedule: list[ScheduleGameOut] = []
     for game in games:
         home = game.home_team_id == team_id
@@ -115,7 +118,7 @@ def team_schedule(
             ScheduleGameOut(
                 id=game.id,
                 starts_at=game.starts_at.astimezone(zone),
-                opponent=OpponentOut(id=opponent.id, name=opponent.name),
+                opponent=OpponentOut(id=opponent.id, name=opponent.name, logo_url=logos.get(opponent.id)),
                 side=side,
                 venue_name=game.venue_name,
                 city=game.city,
@@ -144,5 +147,6 @@ def team_schedule(
             conference_rank=conference_rank(session, team),
             conference=short_conference(team.conference),
         ),
+        logo_url=logos.get(team.id),
         games=schedule,
     )

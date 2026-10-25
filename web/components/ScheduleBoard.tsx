@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { ClubMark } from "@/components/ClubMark";
 import { FieldBadge, ScheduleCard, ScoutLink, fieldLabel } from "@/components/ScheduleCard";
 import { easternStamp, easternToday, mapsUrl, teamScoreline } from "@/lib/format";
 import type { Game } from "@/lib/types";
@@ -78,7 +79,9 @@ function ListView({ games, teamId }: { games: Game[]; teamId: number }) {
                 return (
                   <li key={game.id} className="grid grid-cols-[5.5rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-stone-100 px-4 py-3 last:border-b-0">
                     <span className="text-sm text-stone-500">{stamp?.dateLabel ?? "TBD"}</span>
-                    <span className="min-w-0">
+                    <span className="flex min-w-0 items-center gap-3">
+                      <ClubMark name={game.opponent.name} src={game.opponent.logo_url} />
+                      <span className="min-w-0">
                       <span className="flex min-w-0 items-baseline gap-2">
                         <span className="truncate font-medium text-stone-900">{game.opponent.name}</span>
                         <ScoutLink teamId={teamId} opponentId={game.opponent.id} />
@@ -93,6 +96,7 @@ function ListView({ games, teamId }: { games: Game[]; teamId: number }) {
                           {game.venue_name}
                         </a>
                         {field ? <FieldBadge name={field} /> : null}
+                      </span>
                       </span>
                     </span>
                     <span className="text-right text-sm">
@@ -217,12 +221,24 @@ export function CalendarView({ games, teamName }: { games: Game[]; teamName: str
   );
 }
 
-export function ScheduleBoard({ games, view, teamName, teamId }: { games: Game[]; view: ScheduleView; teamName: string; teamId: number }) {
+export function ScheduleBoard({
+  games,
+  view,
+  teamName,
+  teamId,
+  teamLogo,
+}: {
+  games: Game[];
+  view: ScheduleView;
+  teamName: string;
+  teamId: number;
+  teamLogo?: string | null;
+}) {
   if (view === "list") return <ListView games={games} teamId={teamId} />;
   return (
     <div className="grid gap-3">
       {games.map((game) => (
-        <ScheduleCard key={game.id} game={game} teamName={teamName} teamId={teamId} />
+        <ScheduleCard key={game.id} game={game} teamName={teamName} teamId={teamId} teamLogo={teamLogo} />
       ))}
     </div>
   );
