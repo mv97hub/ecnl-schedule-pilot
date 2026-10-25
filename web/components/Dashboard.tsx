@@ -1,6 +1,6 @@
 "use client";
 
-import { LoaderCircle, Shield } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -216,21 +216,15 @@ export function Dashboard() {
     <div className="min-h-full bg-stone-100">
       <header className="bg-[#0f241c] text-white">
         <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-8">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300/80">
-                Elite Clubs National League
-              </p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight">ECNL {genderWord} Schedule</h1>
-              <p className="mt-1 text-sm text-emerald-100/75">
-                {tier} {genderWord} · 2026–27
-              </p>
-              {dataAsOf && <p className="mt-1 text-sm text-emerald-100/75">{dataAsOf}</p>}
-            </div>
-            <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-emerald-100 sm:flex">
-              <Shield className="size-3.5" />
-              Live from local API
-            </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300/80">
+              Elite Clubs National League
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight">ECNL {genderWord} Schedule</h1>
+            <p className="mt-1 text-sm text-emerald-100/75">
+              {tier} {genderWord} · 2026–27
+            </p>
+            {dataAsOf && <p className="mt-1 text-sm text-emerald-100/75">{dataAsOf}</p>}
           </div>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[11rem_minmax(14rem,18rem)_minmax(0,1fr)_14rem] xl:items-end">
             <HeaderSelect
