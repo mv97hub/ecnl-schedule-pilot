@@ -19,7 +19,7 @@ export function AppHeader() {
         <Link href="/" className="text-sm font-semibold tracking-tight">
           ECNL
         </Link>
-        <div className="flex items-center rounded-full border border-white/15 p-0.5 text-xs font-semibold" role="group" aria-label="Boys or girls">
+        <div className="flex shrink-0 items-center gap-0.5 rounded-lg bg-[#063226] p-1 ring-2 ring-emerald-300" role="group" aria-label="Boys or girls">
           {(["boys", "girls"] as const).map((value) => (
             <button
               key={value}
@@ -27,7 +27,7 @@ export function AppHeader() {
               data-gender={value}
               aria-pressed={gender === value}
               onClick={() => setGender(value)}
-              className={`rounded-full px-3 py-1 ${gender === value ? "bg-white text-[#0f241c]" : "text-emerald-100/80 hover:bg-white/10"}`}
+              className={`rounded-md px-3.5 py-1.5 text-sm font-bold ${gender === value ? "bg-emerald-300 text-[#04241a] shadow-sm" : "text-white hover:bg-emerald-800"}`}
             >
               {value === "boys" ? "Boys" : "Girls"}
             </button>
