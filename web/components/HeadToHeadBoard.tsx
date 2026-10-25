@@ -420,7 +420,6 @@ export function HeadToHeadBoard() {
   const [editing, setEditing] = useState(false);
   const [draftA, setDraftA] = useState<Filters>(EMPTY_SIDE);
   const [draftB, setDraftB] = useState<Filters>(EMPTY_SIDE);
-  const [draftOnly, setDraftOnly] = useState(false);
   const [showAllCommon, setShowAllCommon] = useState(false);
   const [ready, setReady] = useState(false);
   const [report, setReport] = useState<HeadToHeadReport | null>(null);
@@ -584,7 +583,6 @@ export function HeadToHeadBoard() {
   const editingMatchup = editing && finished;
   const formA = editingMatchup ? draftA : sideA;
   const formB = editingMatchup ? draftB : sideB;
-  const formOnly = editingMatchup ? draftOnly : conferenceOnly;
 
   useEffect(() => {
     if (!finished) setEditing(false);
@@ -593,20 +591,24 @@ export function HeadToHeadBoard() {
   function openFilters() {
     setDraftA(sideA);
     setDraftB(sideB);
-    setDraftOnly(conferenceOnly);
     setEditing(true);
   }
 
   function submitFilters() {
     const nextA = draftA.teamId;
     const nextB = draftB.teamId;
-    const changed = nextA !== teamA || nextB !== teamB || draftOnly !== conferenceOnly;
+    const changed = nextA !== teamA || nextB !== teamB;
     if (changed && nextA && nextB && nextA !== nextB) setLoading(true);
     setSideA(draftA);
     setSideB(draftB);
-    setConferenceOnly(draftOnly);
     setEditing(false);
     setError(null);
+  }
+
+  function setGameScope(nextOnly: boolean) {
+    if (nextOnly === conferenceOnly) return;
+    if (teamA && teamB && teamA !== teamB) setLoading(true);
+    setConferenceOnly(nextOnly);
   }
 
   function commit(setter: (next: Filters) => void, current: Filters, next: Filters, otherId: number | null) {
@@ -680,15 +682,38 @@ export function HeadToHeadBoard() {
                 </li>
               </ol>
             </nav>
-            <button
-              type="button"
-              onClick={editingMatchup ? submitFilters : openFilters}
-              className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-white"
-            >
-              {editingMatchup ? "Submit" : "Reset"}
-            </button>
+            {!editingMatchup && (
+              <button
+                type="button"
+                onClick={openFilters}
+                className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-white"
+              >
+                Reset
+              </button>
+            )}
           </div>
         )}
+
+        <div className="mt-3 flex flex-wrap gap-2" role="tablist" aria-label="Game scope">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={!conferenceOnly}
+            onClick={() => setGameScope(false)}
+            className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${conferenceOnly ? "border-stone-200 bg-white text-stone-700" : "border-emerald-700 bg-emerald-700 text-white"}`}
+          >
+            All Games
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={conferenceOnly}
+            onClick={() => setGameScope(true)}
+            className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${conferenceOnly ? "border-emerald-700 bg-emerald-700 text-white" : "border-stone-200 bg-white text-stone-700"}`}
+          >
+            Conference Games Only
+          </button>
+        </div>
 
         {(!finished || editingMatchup) && (
         <div className="mt-3 grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
@@ -718,40 +743,15 @@ export function HeadToHeadBoard() {
             >
               Swap Teams
             </button>
-            <div className="flex flex-col items-stretch gap-1" role="tablist" aria-label="Game scope">
+            {editingMatchup && (
               <button
                 type="button"
-                role="tab"
-                aria-selected={!formOnly}
-                onClick={() => {
-                  if (editingMatchup) {
-                    setDraftOnly(false);
-                    return;
-                  }
-                  if (conferenceOnly && teamA && teamB && teamA !== teamB) setLoading(true);
-                  setConferenceOnly(false);
-                }}
-                className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${formOnly ? "border-stone-200 bg-white text-stone-700" : "border-emerald-700 bg-emerald-700 text-white"}`}
+                onClick={submitFilters}
+                className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-white"
               >
-                All Games
+                Submit
               </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={formOnly}
-                onClick={() => {
-                  if (editingMatchup) {
-                    setDraftOnly(true);
-                    return;
-                  }
-                  if (!conferenceOnly && teamA && teamB && teamA !== teamB) setLoading(true);
-                  setConferenceOnly(true);
-                }}
-                className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${formOnly ? "border-emerald-700 bg-emerald-700 text-white" : "border-stone-200 bg-white text-stone-700"}`}
-              >
-                Conference Games Only
-              </button>
-            </div>
+            )}
           </div>
           <SideSelect
             prefix="team-b"
