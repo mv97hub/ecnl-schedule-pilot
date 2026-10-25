@@ -18,13 +18,22 @@ export const CONFERENCES = [
   "Texas",
 ] as const;
 
-export const AGE_GROUPS = [
-  { value: "U13", label: "U13 / B2013" },
-  { value: "U14", label: "U14 / B2012" },
-  { value: "U15", label: "U15 / B2011" },
-  { value: "U16", label: "U16 / B2010-11" },
-  { value: "U17", label: "U17 / B2009" },
-  { value: "U18/19", label: "U18/19 / B2008/07" },
+export type LeagueGender = "boys" | "girls";
+
+const BIRTH_YEARS = [
+  ["U13", "2013"],
+  ["U14", "2012"],
+  ["U15", "2011"],
+  ["U16", "2010-11"],
+  ["U17", "2009"],
+  ["U18/19", "2008/07"],
 ] as const;
+
+export function ageGroupsFor(gender: LeagueGender) {
+  const prefix = gender === "girls" ? "G" : "B";
+  return BIRTH_YEARS.map(([value, year]) => ({ value, label: `${value} / ${prefix}${year}` }));
+}
+
+export const AGE_GROUPS = ageGroupsFor("boys");
 
 export const PLAYOFF_SPOTS = 4;

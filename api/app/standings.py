@@ -56,8 +56,15 @@ _NAME_ALIASES = {
 
 def short_conference(name: str) -> str:
     text = " ".join((name or "").split())
-    text = re.sub(r"^ECNL(?:\s+RL)?\s+Boys\s+", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"^ECNL(?:\s+RL)?\s+(?:Boys|Girls)\s+", "", text, flags=re.IGNORECASE)
     return re.sub(r"\s+20\d{2}-\d{2}$", "", text).strip()
+
+
+def normalize_gender(value: str | None) -> str:
+    text = (value if value is not None else "boys").strip().casefold()
+    if text in {"boys", "girls"}:
+        return text
+    raise ValueError("gender must be boys or girls")
 
 
 def normalize_age_group(value: str) -> str:
@@ -320,7 +327,7 @@ def _result_mark(goals_for: int, goals_against: int) -> str:
     return "D"
 
 
-def recent_form(session: Session, conference: str, tier: str, age_group: str) -> dict[int, list[str]]:
+def recent_form(session: Session, conference: str, tier: str, age_group: str, gender: str = "boys") -> dict[int, list[str]]:
     """Last five completed conference results, oldest first, for each squad in the table."""
 
     short = short_conference(conference).casefold()
@@ -330,7 +337,7 @@ def recent_form(session: Session, conference: str, tier: str, age_group: str) ->
             select(ScheduleTeam).where(
                 ScheduleTeam.tier == tier,
                 ScheduleTeam.age_group == age_group,
-                ScheduleTeam.gender == "boys",
+                ScheduleTeam.gender == gender,
             )
         ).all()
         if team.id is not None and short_conference(team.conference).casefold() == short
@@ -363,20 +370,24 @@ def recent_form(session: Session, conference: str, tier: str, age_group: str) ->
     return {team_id: results[-5:] for team_id, results in marks.items()}
 
 
+def official_standings(session: Session, conference: str, tier: str, age_group: str, gender: str) -> list[ConferenceStanding]:
+    """Rows for one table. Stored names may still include Boys or Girls."""
+
+    short = short_conference(conference).casefold()
+    rows = session.scalars(
+        select(ConferenceStanding).where(
+            ConferenceStanding.tier == tier,
+            ConferenceStanding.age_group == age_group,
+            ConferenceStanding.gender == gender,
+        )
+    ).all()
+    return [row for row in rows if short_conference(row.conference).casefold() == short]
+
+
 def conference_rank(session: Session, team: ScheduleTeam) -> int | None:
     if team.id is None:
         return None
-    short = short_conference(team.conference)
-    peers = list(
-        session.scalars(
-            select(ConferenceStanding).where(
-                func.lower(ConferenceStanding.conference) == short.casefold(),
-                ConferenceStanding.tier == team.tier,
-                ConferenceStanding.age_group == team.age_group,
-                ConferenceStanding.gender == (team.gender or "boys"),
-            )
-        ).all()
-    )
+    peers = official_standings(session, team.conference, team.tier, team.age_group, team.gender or "boys")
     if not peers:
         return None
     ordered = sort_standings(

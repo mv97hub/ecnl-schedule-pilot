@@ -27,6 +27,7 @@ export type Game = {
   venue_name: string;
   city: string;
   state: string;
+  field_name: string | null;
   timezone: string;
   event: string | null;
   status: GameStatus;

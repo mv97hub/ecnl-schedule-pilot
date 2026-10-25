@@ -1,3 +1,4 @@
+import type { LeagueGender } from "@/lib/leagues";
 import type { HeadToHeadReport, ScheduleFilter, ScheduleResponse, StandingRow, StandingsMode, Team } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
@@ -14,9 +15,10 @@ export function fetchDataRefresh(): Promise<{ last_successful_finish: string | n
   return request("/data-refresh");
 }
 
-export function fetchTeams(q?: string): Promise<Team[]> {
+export function fetchTeams(q?: string, gender: LeagueGender = "boys"): Promise<Team[]> {
   const params = new URLSearchParams();
   if (q?.trim()) params.set("q", q.trim());
+  params.set("gender", gender);
   const query = params.toString();
   return request<Team[]>(`/teams${query ? `?${query}` : ""}`);
 }
@@ -39,8 +41,9 @@ export function fetchStandings(
   tier: string,
   ageGroup: string,
   mode: StandingsMode,
+  gender: LeagueGender = "boys",
 ): Promise<StandingRow[]> {
-  const params = new URLSearchParams({ conference, tier, age_group: ageGroup, mode });
+  const params = new URLSearchParams({ conference, tier, age_group: ageGroup, mode, gender });
   return request<StandingRow[]>(`/standings?${params.toString()}`);
 }
 

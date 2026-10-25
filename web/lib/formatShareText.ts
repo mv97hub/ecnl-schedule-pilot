@@ -1,13 +1,15 @@
+import type { LeagueGender } from "@/lib/leagues";
 import type { CommonGame, DirectMatch, HeadToHeadReport, SplitRecord, TeamTape } from "@/lib/types";
 
-export function matchupSearch(teamA: number, teamB: number, conferenceOnly: boolean): string {
+export function matchupSearch(teamA: number, teamB: number, conferenceOnly: boolean, gender?: LeagueGender): string {
   const params = new URLSearchParams({ teamA: String(teamA), teamB: String(teamB) });
   if (conferenceOnly) params.set("conferenceOnly", "1");
+  if (gender === "girls") params.set("gender", "girls");
   return params.toString();
 }
 
-export function matchupPath(teamA: number, teamB: number, conferenceOnly: boolean): string {
-  return `/head-to-head?${matchupSearch(teamA, teamB, conferenceOnly)}`;
+export function matchupPath(teamA: number, teamB: number, conferenceOnly: boolean, gender?: LeagueGender): string {
+  return `/head-to-head?${matchupSearch(teamA, teamB, conferenceOnly, gender)}`;
 }
 
 function ppg(value: number): string {

@@ -2,9 +2,10 @@
 
 import { LoaderCircle, Shield } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { BreadcrumbTrail } from "@/components/BreadcrumbTrail";
+import { useLeagueGender } from "@/components/GenderProvider";
 import { ConferenceSelect } from "@/components/ConferenceSelect";
 import { FilterPills } from "@/components/FilterPills";
 import { HeaderSelect } from "@/components/HeaderSelect";
@@ -14,7 +15,7 @@ import { TeamHero } from "@/components/TeamHero";
 import { TeamSelector } from "@/components/TeamSelector";
 import { fetchDataRefresh, fetchSchedule, fetchTeams } from "@/lib/api";
 import { formatDataAsOf } from "@/lib/format";
-import { AGE_GROUPS, TIERS } from "@/lib/leagues";
+import { AGE_GROUPS, TIERS, ageGroupsFor } from "@/lib/leagues";
 import { rememberSquad, rememberedSquad, shortConference } from "@/lib/selection";
 import type { Game, ScheduleFilter, Team, TeamRecordSummary } from "@/lib/types";
 
@@ -24,6 +25,9 @@ function teamTier(team: Team): (typeof TIERS)[number] {
 
 export function Dashboard() {
   const router = useRouter();
+  const { gender, ready: genderReady } = useLeagueGender();
+  const ageOptions = ageGroupsFor(gender);
+  const genderWord = gender === "girls" ? "Girls" : "Boys";
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(true);
   const [tier, setTier] = useState<(typeof TIERS)[number]>("ECNL");
@@ -38,6 +42,8 @@ export function Dashboard() {
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dataAsOf, setDataAsOf] = useState<string | null>(null);
+  const filtersRef = useRef({ tier, ageGroup });
+  filtersRef.current = { tier, ageGroup };
 
   useEffect(() => {
     let cancelled = false;
@@ -54,20 +60,30 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => {
+    if (!genderReady) return;
     let cancelled = false;
-    fetchTeams()
+    const kept = filtersRef.current;
+    setTeamsLoading(true);
+    setError(null);
+    setSelectedId(null);
+    setConference(null);
+    setGames([]);
+    setSummary(null);
+    fetchTeams(undefined, gender)
       .then((data) => {
         if (cancelled) return;
         setTeams(data);
         const requested = Number(new URLSearchParams(window.location.search).get("team"));
         const fromUrl = Number.isInteger(requested) && requested > 0 ? data.find((team) => team.id === requested) : undefined;
         const memory = rememberedSquad();
-        const requestedTeam = fromUrl ?? (memory ? data.find((team) => team.id === memory.id) : undefined);
-        const initialTier = requestedTeam ? teamTier(requestedTeam) : "ECNL";
+        const fromMemory = memory && memory.gender === gender ? data.find((team) => team.id === memory.id) : undefined;
+        const requestedTeam = fromUrl ?? fromMemory;
+        const initialTier = requestedTeam ? teamTier(requestedTeam) : kept.tier;
         const tierTeams = data.filter((team) => teamTier(team) === initialTier);
+        const initialAge = requestedTeam?.age_group ?? kept.ageGroup;
+        const ageConferences = [...new Set(tierTeams.filter((team) => team.age_group === initialAge).map((team) => team.conference))].sort((a, b) => a.localeCompare(b));
         const names = [...new Set(tierTeams.map((team) => team.conference))].sort((a, b) => a.localeCompare(b));
-        const initialConference = requestedTeam?.conference ?? names[0] ?? null;
-        const initialAge = requestedTeam?.age_group ?? AGE_GROUPS[0].value;
+        const initialConference = requestedTeam?.conference ?? ageConferences[0] ?? names[0] ?? null;
         const firstTeam =
           requestedTeam ??
           tierTeams.find((team) => team.conference === initialConference && team.age_group === initialAge) ??
@@ -84,6 +100,7 @@ export function Dashboard() {
             tier: teamTier(firstTeam),
             conference: shortConference(firstTeam.conference),
             ageGroup: firstTeam.age_group,
+            gender,
           });
         }
       })
@@ -96,7 +113,7 @@ export function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [genderReady, gender]);
 
   useEffect(() => {
     if (selectedId == null || window.location.pathname !== "/") return;
@@ -141,7 +158,7 @@ export function Dashboard() {
   );
   const selected = teams.find((team) => team.id === selectedId) ?? null;
   const visible = selected && teamTier(selected) === tier && selected.conference === conference && selected.age_group === ageGroup ? selected : null;
-  const ageLabel = AGE_GROUPS.find((item) => item.value === ageGroup)?.label ?? ageGroup;
+  const ageLabel = ageOptions.find((item) => item.value === ageGroup)?.label ?? ageGroup;
   const shownGames = games.filter((game) => (filter === "all" ? true : game.side === filter));
 
   function selectTeam(nextTeam: Team | undefined) {
@@ -152,6 +169,7 @@ export function Dashboard() {
         tier: teamTier(nextTeam),
         conference: shortConference(nextTeam.conference),
         ageGroup: nextTeam.age_group,
+        gender,
       });
     }
     setGames([]);
@@ -203,9 +221,9 @@ export function Dashboard() {
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300/80">
                 Elite Clubs National League
               </p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight">ECNL Boys Schedule</h1>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight">ECNL {genderWord} Schedule</h1>
               <p className="mt-1 text-sm text-emerald-100/75">
-                {tier === "ECNL-RL" ? "ECNL-RL" : "ECNL"} Boys · 2026–27
+                {tier} {genderWord} · 2026–27
               </p>
               {dataAsOf && <p className="mt-1 text-sm text-emerald-100/75">{dataAsOf}</p>}
             </div>
@@ -244,7 +262,7 @@ export function Dashboard() {
               id="age-group"
               label="Age group"
               value={ageGroup}
-              options={AGE_GROUPS.map((item) => ({ value: item.value, label: item.label }))}
+              options={ageOptions.map((item) => ({ value: item.value, label: item.label }))}
               onChange={chooseAge}
               disabled={teamsLoading}
             />

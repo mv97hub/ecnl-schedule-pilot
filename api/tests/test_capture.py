@@ -19,8 +19,8 @@ from app.ingestion.normalizer import counts_as_conference
 from app.main import app
 from app.models import ConferenceStanding, DataRefresh, Player, ScheduleGame, ScheduleTeam
 from app.refresh import ensure_refresh_tables, upsert_published
-from app.standings import _row_from_parts, ecnl_standings, upsert_standings
-from load_league import age_group
+from app.standings import _row_from_parts, ecnl_standings, short_conference, upsert_standings
+from load_league import age_group, field_name_for
 
 HOME = 910000821
 AWAY = 910000822
@@ -50,11 +50,24 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(age_group("U19"), "U18/19")
         self.assertEqual(age_group("GU18/19"), "U18/19")
 
+    def test_blank_venue_keeps_a_trailing_field_number(self) -> None:
+        self.assertEqual(field_name_for("Field 2", "Silverlakes Complex"), "Field 2")
+        self.assertEqual(field_name_for("", "Crocker Amazon Soccer Field 3"), "Field 3")
+        self.assertEqual(field_name_for(None, "Pleasant Valley Fields"), None)
+        self.assertIsNone(field_name_for("  ", "Surf Sports Park"))
+
     def test_playoff_and_scout_are_not_conference_games(self) -> None:
         self.assertFalse(counts_as_conference("Playoff"))
         self.assertFalse(counts_as_conference("Scout event"))
         self.assertFalse(counts_as_conference("Friendly"))
         self.assertTrue(counts_as_conference("Group Play"))
+
+    def test_short_conference_strips_boys_or_girls(self) -> None:
+        self.assertEqual(short_conference("ECNL Girls Far West"), "Far West")
+        self.assertEqual(short_conference("ECNL Boys Far West"), "Far West")
+        self.assertEqual(short_conference("ECNL RL Girls Texas"), short_conference("ECNL RL Boys Texas"))
+        self.assertEqual(short_conference("ECNL RL Boys Texas"), "Texas")
+        self.assertEqual(short_conference("ECNL Girls Southwest 2026-27"), "Southwest")
 
 
 class CaptureTests(unittest.TestCase):
@@ -79,7 +92,9 @@ class CaptureTests(unittest.TestCase):
                 )
             )
             session.execute(
-                delete(ConferenceStanding).where(ConferenceStanding.conference.in_(["Probe Capture Conf", "Probe Capture East"]))
+                delete(ConferenceStanding).where(
+                    ConferenceStanding.conference.in_(["Probe Capture Conf", "Probe Capture East", "ECNL Girls Probe Capture East"])
+                )
             )
             session.execute(delete(ScheduleTeam).where(ScheduleTeam.source_id.in_([HOME, AWAY, BOY, GIRL, SHOW_HOME, SHOW_AWAY])))
             session.execute(delete(Player).where(Player.source_id == PLAYER))
@@ -127,7 +142,7 @@ class CaptureTests(unittest.TestCase):
                         points_per_game=3.0,
                     ),
                     ConferenceStanding(
-                        conference="Probe Capture East",
+                        conference="ECNL Girls Probe Capture East",
                         tier="ECNL",
                         gender="girls",
                         age_group="U13",
@@ -142,6 +157,7 @@ class CaptureTests(unittest.TestCase):
                 )
             )
             session.commit()
+            boy_id = int(boy.id)
             girl_id = int(girl.id)
 
         with TestClient(app) as client:
@@ -151,7 +167,28 @@ class CaptureTests(unittest.TestCase):
                 params={"conference": "Probe Capture East", "tier": "ECNL", "age_group": "U13"},
             ).json()
             schedule = client.get(f"/teams/{girl_id}/schedule")
-            compared = client.get("/head-to-head", params={"team_a_id": girl_id, "team_b_id": girl_id + 1})
+            missing = client.get("/head-to-head", params={"team_a_id": girl_id, "team_b_id": 2147483646})
+            mixed = client.get("/head-to-head", params={"team_a_id": boy_id, "team_b_id": girl_id})
+            girls = client.get("/teams", params={"q": "ProbeCapture", "gender": "girls"}).json()
+            girls_table = client.get(
+                "/standings",
+                params={"conference": "Probe Capture East", "tier": "ECNL", "age_group": "U13", "gender": "girls"},
+            ).json()
+            calculated = client.get(
+                "/standings",
+                params={
+                    "conference": "Probe Capture East",
+                    "tier": "ECNL",
+                    "age_group": "U13",
+                    "gender": "girls",
+                    "mode": "calculated",
+                },
+            ).json()
+            rejected_teams = client.get("/teams", params={"gender": "coed"})
+            rejected_table = client.get(
+                "/standings",
+                params={"conference": "Probe Capture East", "tier": "ECNL", "age_group": "U13", "gender": "coed"},
+            )
 
         self.assertEqual([team["name"] for team in teams], ["ProbeCaptureBoy"])
         self.assertNotIn("gender", teams[0])
@@ -159,8 +196,15 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual([row["team_name"] for row in standings], ["ProbeCaptureBoy"])
         self.assertNotIn("gender", standings[0])
         self.assertNotIn("capped_goal_diff", standings[0])
-        self.assertEqual(schedule.status_code, 404)
-        self.assertEqual(compared.status_code, 404)
+        self.assertEqual(schedule.status_code, 200)
+        self.assertEqual(schedule.json()["games"], [])
+        self.assertEqual(missing.status_code, 404)
+        self.assertEqual(mixed.status_code, 404)
+        self.assertEqual([team["name"] for team in girls], ["ProbeCaptureGirl"])
+        self.assertEqual([row["team_name"] for row in girls_table], ["ProbeCaptureGirl"])
+        self.assertEqual([row["team_name"] for row in calculated], ["ProbeCaptureGirl"])
+        self.assertEqual(rejected_teams.status_code, 400)
+        self.assertEqual(rejected_table.status_code, 400)
 
     def test_standings_unique_key_includes_gender(self) -> None:
         with Session(engine) as session:

@@ -3,6 +3,7 @@
 import { Share2 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 
+import { useLeagueGender } from "@/components/GenderProvider";
 import { formatMatchupForChat, matchupPath, matchupSearch } from "@/lib/formatShareText";
 import type { HeadToHeadReport } from "@/lib/types";
 
@@ -19,8 +20,9 @@ export function ShareMatchup({ report, teamA, teamB, conferenceOnly }: ShareMatc
   const [linkCopied, setLinkCopied] = useState(false);
   const [shareNote, setShareNote] = useState<string | null>(null);
   const titleId = useId();
-  const path = matchupPath(teamA, teamB, conferenceOnly);
-  const imageSrc = `/api/og/h2h?${matchupSearch(teamA, teamB, conferenceOnly)}`;
+  const { gender } = useLeagueGender();
+  const path = matchupPath(teamA, teamB, conferenceOnly, gender);
+  const imageSrc = `/api/og/h2h?${matchupSearch(teamA, teamB, conferenceOnly, gender)}`;
   const filename = `ecnl-h2h-${teamA}-${teamB}.png`;
 
   useEffect(() => {
