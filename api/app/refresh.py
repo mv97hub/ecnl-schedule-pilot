@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,6 +20,7 @@ from app.models import Base, DataRefresh, ScheduleGame, ScheduleTeam
 from app.standings import replace_ecnl_standings
 
 _STATUSES = {"SCHEDULED", "COMPLETED", "POSTPONED", "CANCELLED"}
+_OLD_COMPLETED = timedelta(days=7)
 
 
 @dataclass(frozen=True)
@@ -255,17 +256,141 @@ def _assign_game(
     return schedule_changed, score_changed
 
 
-def upsert_published(payload: dict, *, refresh_standings: bool = True) -> RefreshCounts:
+def _remember_team(
+    by_source: dict[int, ScheduleTeam],
+    by_natural: dict[tuple[str, str, str, str], ScheduleTeam],
+    by_identity: dict[tuple[str, str, str], list[ScheduleTeam]],
+    team: ScheduleTeam,
+) -> None:
+    if team.source_id is not None:
+        by_source[team.source_id] = team
+    by_natural[(team.name, team.age_group, team.tier, team.conference)] = team
+    by_identity.setdefault((team.name, team.age_group, team.tier), []).append(team)
+
+
+def _drop_identity(
+    by_identity: dict[tuple[str, str, str], list[ScheduleTeam]],
+    key: tuple[str, str, str],
+    team: ScheduleTeam,
+) -> None:
+    remaining = [item for item in by_identity.get(key, []) if item is not team]
+    if remaining:
+        by_identity[key] = remaining
+    elif key in by_identity:
+        del by_identity[key]
+
+
+def _reindex_team(
+    by_source: dict[int, ScheduleTeam],
+    by_natural: dict[tuple[str, str, str, str], ScheduleTeam],
+    by_identity: dict[tuple[str, str, str], list[ScheduleTeam]],
+    team: ScheduleTeam,
+    row: dict,
+) -> bool:
+    old_source = team.source_id
+    old_natural = (team.name, team.age_group, team.tier, team.conference)
+    old_identity = (team.name, team.age_group, team.tier)
+    changed = _assign_team(team, row)
+    if team.source_id != old_source:
+        if old_source is not None and by_source.get(old_source) is team:
+            del by_source[old_source]
+        if team.source_id is not None:
+            by_source[team.source_id] = team
+    new_natural = (team.name, team.age_group, team.tier, team.conference)
+    if new_natural != old_natural:
+        if by_natural.get(old_natural) is team:
+            del by_natural[old_natural]
+        by_natural[new_natural] = team
+    new_identity = (team.name, team.age_group, team.tier)
+    if new_identity != old_identity:
+        _drop_identity(by_identity, old_identity, team)
+        by_identity.setdefault(new_identity, []).append(team)
+    return changed
+
+
+def _game_key(home_id: int, away_id: int, starts: datetime) -> tuple[int, int, datetime]:
+    return (home_id, away_id, _instant(starts))
+
+
+def _remember_game(
+    by_source: dict[int, ScheduleGame],
+    by_key: dict[tuple[int, int, datetime], list[ScheduleGame]],
+    game: ScheduleGame,
+) -> None:
+    if game.source_id is not None:
+        by_source[game.source_id] = game
+    if game.starts_at is not None:
+        by_key.setdefault(_game_key(game.home_team_id, game.away_team_id, game.starts_at), []).append(game)
+
+
+def _forget_game_key(
+    by_key: dict[tuple[int, int, datetime], list[ScheduleGame]],
+    game: ScheduleGame,
+    home_id: int,
+    away_id: int,
+    starts: datetime,
+) -> None:
+    key = _game_key(home_id, away_id, starts)
+    remaining = [item for item in by_key.get(key, []) if item is not game]
+    if remaining:
+        by_key[key] = remaining
+    elif key in by_key:
+        del by_key[key]
+
+
+def _reindex_game(
+    by_source: dict[int, ScheduleGame],
+    by_key: dict[tuple[int, int, datetime], list[ScheduleGame]],
+    game: ScheduleGame,
+    home_id: int,
+    away_id: int,
+    starts: datetime,
+    row: dict,
+    status: str,
+    home_score: int | None,
+    away_score: int | None,
+) -> tuple[bool, bool]:
+    old_source = game.source_id
+    old_home = game.home_team_id
+    old_away = game.away_team_id
+    old_starts = game.starts_at
+    schedule_changed, score_changed = _assign_game(game, home_id, away_id, starts, row, status, home_score, away_score)
+    if game.source_id != old_source:
+        if old_source is not None and by_source.get(old_source) is game:
+            del by_source[old_source]
+        if game.source_id is not None:
+            by_source[game.source_id] = game
+    old_key = None if old_starts is None else _game_key(old_home, old_away, old_starts)
+    new_key = None if game.starts_at is None else _game_key(game.home_team_id, game.away_team_id, game.starts_at)
+    if old_key != new_key:
+        if old_starts is not None:
+            _forget_game_key(by_key, game, old_home, old_away, old_starts)
+        if new_key is not None:
+            by_key.setdefault(new_key, []).append(game)
+    return schedule_changed, score_changed
+
+
+def _is_old_completed(game: ScheduleGame, now: datetime) -> bool:
+    return (
+        game.status == "COMPLETED"
+        and game.starts_at is not None
+        and _instant(game.starts_at) < _instant(now) - _OLD_COMPLETED
+    )
+
+
+def upsert_published(payload: dict, *, refresh_standings: bool = True, full_pass: bool = False) -> RefreshCounts:
     """Insert or update published teams, games, and scores. Does not drop tables."""
 
     ensure_refresh_tables()
     teams_written = games_written = scores_written = 0
+    examined = skipped_old = 0
+    print("Teams started", flush=True)
     with Session(engine) as session:
         stored_teams = list(session.scalars(select(ScheduleTeam)).all())
+        by_source, by_natural, by_identity = _index_teams(stored_teams)
         for row in payload.get("teams") or []:
             if row.get("source_id") is None:
                 continue
-            by_source, by_natural, by_identity = _index_teams(stored_teams)
             team = _find_team(by_source, by_natural, by_identity, row)
             if team is None:
                 team = ScheduleTeam(
@@ -279,58 +404,84 @@ def upsert_published(payload: dict, *, refresh_standings: bool = True) -> Refres
                 session.add(team)
                 stored_teams.append(team)
                 _assign_team(team, row)
+                _remember_team(by_source, by_natural, by_identity, team)
                 teams_written += 1
-            elif _assign_team(team, row):
+            elif _reindex_team(by_source, by_natural, by_identity, team, row):
                 teams_written += 1
+        print(f"Teams finished written={teams_written}", flush=True)
         session.flush()
 
         stored_games = list(session.scalars(select(ScheduleGame)).all())
+        games_by_source, games_by_key = _index_games(stored_games)
         source_to_team = {team.source_id: team for team in stored_teams if team.source_id is not None}
+        now = datetime.now(UTC)
+        print("Games started full pass" if full_pass else "Games started seven-day window", flush=True)
         for row in payload.get("games") or []:
             if row.get("source_id") is None or row.get("home_source_id") is None or row.get("away_source_id") is None:
                 continue
+            examined += 1
             home = source_to_team.get(int(row["home_source_id"]))
             away = source_to_team.get(int(row["away_source_id"]))
-            if home is None or away is None or home.id is None or away.id is None or home.age_group != away.age_group:
-                continue
-            starts = datetime.fromisoformat(row["starts_at"])
-            status, home_score, away_score = _score(row)
-            venue = (row.get("venue_name") or "TBD")[:160]
-            by_source, by_key = _index_games(stored_games)
-            game = _find_game(by_source, by_key, int(row["source_id"]), home.id, away.id, starts, venue)
-            if game is None:
-                game = ScheduleGame(
-                    home_team_id=home.id,
-                    away_team_id=away.id,
-                    starts_at=starts,
-                    venue_name=venue,
-                    city=(row.get("city") or "Unknown")[:80] or "Unknown",
-                    state=(row.get("state") or "NA")[:2] or "NA",
-                    timezone=(row.get("timezone") or "America/New_York")[:64],
-                    event=row.get("event"),
-                    status=status,
-                    home_score=home_score,
-                    away_score=away_score,
-                    is_conference_game=_conference(row.get("event")),
-                    source_id=int(row["source_id"]),
+            if home is not None and away is not None and home.id is not None and away.id is not None and home.age_group == away.age_group:
+                starts = datetime.fromisoformat(row["starts_at"])
+                status, home_score, away_score = _score(row)
+                venue = (row.get("venue_name") or "TBD")[:160]
+                game = _find_game(games_by_source, games_by_key, int(row["source_id"]), home.id, away.id, starts, venue)
+                if game is not None and not full_pass and _is_old_completed(game, now):
+                    skipped_old += 1
+                elif game is None:
+                    game = ScheduleGame(
+                        home_team_id=home.id,
+                        away_team_id=away.id,
+                        starts_at=starts,
+                        venue_name=venue,
+                        city=(row.get("city") or "Unknown")[:80] or "Unknown",
+                        state=(row.get("state") or "NA")[:2] or "NA",
+                        timezone=(row.get("timezone") or "America/New_York")[:64],
+                        event=row.get("event"),
+                        status=status,
+                        home_score=home_score,
+                        away_score=away_score,
+                        is_conference_game=_conference(row.get("event")),
+                        source_id=int(row["source_id"]),
+                    )
+                    session.add(game)
+                    _remember_game(games_by_source, games_by_key, game)
+                    games_written += 1
+                    if _has_result(status, home_score, away_score):
+                        scores_written += 1
+                else:
+                    schedule_changed, score_changed = _reindex_game(
+                        games_by_source,
+                        games_by_key,
+                        game,
+                        home.id,
+                        away.id,
+                        starts,
+                        row,
+                        status,
+                        home_score,
+                        away_score,
+                    )
+                    if schedule_changed:
+                        games_written += 1
+                    if score_changed:
+                        scores_written += 1
+            if examined % 5000 == 0:
+                print(
+                    f"Games progress examined={examined} written={games_written} skipped={skipped_old} old completed games",
+                    flush=True,
                 )
-                session.add(game)
-                stored_games.append(game)
-                games_written += 1
-                if _has_result(status, home_score, away_score):
-                    scores_written += 1
-                continue
-            schedule_changed, score_changed = _assign_game(
-                game, home.id, away.id, starts, row, status, home_score, away_score
-            )
-            if schedule_changed:
-                games_written += 1
-            if score_changed:
-                scores_written += 1
         session.commit()
+    print(
+        f"Games finished examined={examined} written={games_written} skipped={skipped_old} old completed games",
+        flush=True,
+    )
 
     if refresh_standings:
         with Session(engine) as session:
-            replace_ecnl_standings(session, "ECNL")
-            replace_ecnl_standings(session, "ECNL-RL")
+            for tier in ("ECNL", "ECNL-RL"):
+                print(f"Standings started {tier}", flush=True)
+                replace_ecnl_standings(session, tier)
+                print(f"Standings finished {tier}", flush=True)
     return RefreshCounts(teams=teams_written, games=games_written, scores=scores_written)
