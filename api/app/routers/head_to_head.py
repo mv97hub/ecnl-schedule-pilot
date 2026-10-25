@@ -24,6 +24,6 @@ def head_to_head(
         raise HTTPException(status_code=400, detail="team_a_id and team_b_id must be different")
     team_a = session.get(ScheduleTeam, team_a_id)
     team_b = session.get(ScheduleTeam, team_b_id)
-    if team_a is None or team_b is None:
+    if team_a is None or team_b is None or team_a.gender != "boys" or team_b.gender != "boys":
         raise HTTPException(status_code=404, detail="Team not found")
     return compare_teams(session, team_a, team_b, conference_only)

@@ -70,6 +70,18 @@ def looks_like_showcase(*parts: str) -> bool:
     return any(_SHOWCASE.search(part or "") for part in parts)
 
 
+_NON_CONFERENCE = re.compile(
+    r"\b(?:showcase|tournament|classic|festival|friendly|invitational|playoff|play-off|scout)\b",
+    re.IGNORECASE,
+)
+
+
+def counts_as_conference(*parts: str) -> bool:
+    """League group play counts. Showcase, playoff, friendly, and scout events do not."""
+
+    return not any(_NON_CONFERENCE.search(part or "") for part in parts)
+
+
 def split_location(raw: str) -> tuple[str, str, str]:
     """Return complex name, field number, and 'City, ST' peeled off the end."""
 

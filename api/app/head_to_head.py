@@ -108,6 +108,7 @@ def _official_ppg(session: Session, team: ScheduleTeam) -> float | None:
             func.lower(ConferenceStanding.conference) == short,
             ConferenceStanding.tier == team.tier,
             ConferenceStanding.age_group == team.age_group,
+            ConferenceStanding.gender == "boys",
         )
     ).all()
     for row in rows:

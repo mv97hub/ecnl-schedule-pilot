@@ -1,8 +1,9 @@
-"""Download the published 2026-27 ECNL Boys and ECNL RL Boys schedules.
+"""Download the published 2026-27 ECNL and ECNL RL schedules for boys and girls.
 
 Uses the public JSON API behind theecnl.com (api.athleteone.com). Writes
-api/data/ecnl_boys_2026_27.json for seed.py. Org 12 is ECNL Boys. Org 16 is
-ECNL Regional League Boys. Scores come from published box scores.
+api/data/ecnl_boys_2026_27.json for seed.py. Org 12 is ECNL Boys, org 16 is
+ECNL RL Boys, org 9 is ECNL Girls, and org 13 is ECNL RL Girls. Pre-ECNL orgs
+21 and 22 are not included. Scores come from published box scores.
 """
 
 from __future__ import annotations
@@ -16,17 +17,21 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from app.ingestion.normalizer import counts_as_conference
+
 API = "https://api.athleteone.com/api"
 ORG_ID = 12
 SEASON = "2026-27"
 OUTPUT = Path(__file__).resolve().parent / "data" / "ecnl_boys_2026_27.json"
 SKIP_EVENT_IDS = {4423, 4424}  # QA and a non-US test event
 LEAGUES = (
-    {"org_id": 12, "tier": "ECNL", "prefix": "ECNL Boys"},
-    {"org_id": 16, "tier": "ECNL-RL", "prefix": "ECNL RL Boys"},
+    {"org_id": 12, "tier": "ECNL", "prefix": "ECNL Boys", "gender": "boys", "divisions": "boysDivAndFlightList"},
+    {"org_id": 16, "tier": "ECNL-RL", "prefix": "ECNL RL Boys", "gender": "boys", "divisions": "boysDivAndFlightList"},
+    {"org_id": 9, "tier": "ECNL", "prefix": "ECNL Girls", "gender": "girls", "divisions": "girlsDivAndFlightList"},
+    {"org_id": 13, "tier": "ECNL-RL", "prefix": "ECNL RL Girls", "gender": "girls", "divisions": "girlsDivAndFlightList"},
 )
 _GLUE_ECNL = re.compile(r"(?<=\S)(?=ECNL)", re.IGNORECASE)
-_YEAR_TOKEN = re.compile(r"^(?:B\d{2,4}(?:/\d{2,4})?|BU\d{2}|\d{2,4}/\d{2,4}B?)$", re.IGNORECASE)
+_YEAR_TOKEN = re.compile(r"^(?:[BG]\d{2,4}(?:/\d{2,4})?|[BG]U\d{2}|\d{2,4}/\d{2,4}[BG]?)$", re.IGNORECASE)
 _LEAGUE_TAGS = {"ecnl", "ecnl-rl", "rl", "ntx", "stxcl", "socal", "s.cal", "gma", "gla"}
 
 STATE_TIMEZONE = {
@@ -102,7 +107,7 @@ def get_json(url: str) -> dict | list:
 
 def age_group(division_name: str) -> str:
     label = division_name.strip().upper()
-    if label.startswith("B"):
+    if label[:1] in {"B", "G"}:
         label = label[1:]
     if label not in {"U13", "U14", "U15", "U16", "U17", "U18/19"}:
         raise RuntimeError(f"Unexpected division {division_name}")
@@ -135,7 +140,7 @@ def display_name(team_name: str) -> str:
                 drop.update((cursor, cursor + 1))
                 cursor += 2
                 continue
-            if current.casefold() == "b" and cursor + 1 < len(tokens) and _YEAR_TOKEN.fullmatch(tokens[cursor + 1]):
+            if current.casefold() in {"b", "g"} and cursor + 1 < len(tokens) and _YEAR_TOKEN.fullmatch(tokens[cursor + 1]):
                 drop.update((cursor, cursor + 1))
                 cursor += 2
                 continue
@@ -150,7 +155,7 @@ def display_name(team_name: str) -> str:
                 drop.add(cursor)
                 cursor += 1
                 continue
-            if current.casefold() == "b" and cursor + 1 < len(tokens) and _YEAR_TOKEN.fullmatch(tokens[cursor + 1]):
+            if current.casefold() in {"b", "g"} and cursor + 1 < len(tokens) and _YEAR_TOKEN.fullmatch(tokens[cursor + 1]):
                 drop.update((cursor, cursor + 1))
                 cursor += 2
                 continue
@@ -162,7 +167,7 @@ def display_name(team_name: str) -> str:
                 drop.add(cursor)
                 cursor -= 1
                 continue
-            if current.casefold() == "b" and (cursor + 1 in drop or (cursor + 1 < len(tokens) and _YEAR_TOKEN.fullmatch(tokens[cursor + 1]))):
+            if current.casefold() in {"b", "g"} and (cursor + 1 in drop or (cursor + 1 < len(tokens) and _YEAR_TOKEN.fullmatch(tokens[cursor + 1]))):
                 drop.add(cursor)
                 cursor -= 1
                 continue
@@ -273,7 +278,7 @@ def official_result(match: dict) -> tuple[str, int | None, int | None]:
 
 
 def fetch_match_index() -> dict[int, dict]:
-    """Current ECNL and ECNL RL Boys matches from AthleteOne, keyed by match id."""
+    """Current ECNL and ECNL RL matches for boys and girls, keyed by match id."""
 
     flights: list[tuple[int, int]] = []
     for league in LEAGUES:
@@ -285,7 +290,7 @@ def fetch_match_index() -> dict[int, dict]:
             if SEASON not in name or not name.startswith(league["prefix"]):
                 continue
             divisions = get_json(f"{API}/Event/get-event-schedule-or-standings/{event_id}")
-            for division in divisions.get("boysDivAndFlightList") or []:
+            for division in divisions.get(league["divisions"]) or []:
                 for flight in division.get("flightList") or []:
                     flights.append((event_id, flight["flightID"]))
 
@@ -355,7 +360,43 @@ def event_label(match: dict) -> str | None:
     return note or None
 
 
-def download_league(org_id: int, prefix: str, tier: str) -> dict:
+def _text(value: object, limit: int = 240) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text[:limit]
+
+
+def _float_field(match: dict, *keys: str) -> float | None:
+    for key in keys:
+        if key not in match or match[key] in (None, ""):
+            continue
+        try:
+            return float(match[key])
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def match_is_conference(match: dict, event_name: str) -> bool:
+    if match.get("friendly") == 1:
+        return False
+    return counts_as_conference(
+        str(match.get("type") or ""),
+        str(match.get("publicNote") or ""),
+        event_label(match) or "",
+        event_name,
+    )
+
+
+def download_league(league: dict) -> dict:
+    org_id = league["org_id"]
+    prefix = league["prefix"]
+    tier = league["tier"]
+    gender = league["gender"]
+    division_key = league["divisions"]
     clubs = get_json(f"{API}/Event/get-org-club-list-by-orgID/{org_id}")
     club_home = {
         club["clubID"]: {
@@ -372,24 +413,36 @@ def download_league(org_id: int, prefix: str, tier: str) -> dict:
         name = details["name"]
         if SEASON not in name or not name.startswith(prefix):
             continue
-        events.append({"id": event_id, "name": name, "tier": tier})
+        events.append({"id": event_id, "name": name, "tier": tier, "gender": gender})
 
     flights: list[tuple[dict, dict]] = []
+    flight_rows: list[dict] = []
     for event in events:
         divisions = get_json(f"{API}/Event/get-event-schedule-or-standings/{event['id']}")
-        for division in divisions.get("boysDivAndFlightList", []):
+        for division in divisions.get(division_key) or []:
             group = age_group(division["divisionName"])
             flight_list = division.get("flightList") or []
             for flight in flight_list:
-                flights.append(
-                    (
-                        event,
-                        {
-                            "id": flight["flightID"],
-                            "age_group": group,
-                            "conference": conference_label(event["name"], flight.get("flightName") or "", len(flight_list)),
-                        },
-                    )
+                described = {
+                    "id": flight["flightID"],
+                    "division_id": division.get("divisionID"),
+                    "age_group": group,
+                    "conference": conference_label(event["name"], flight.get("flightName") or "", len(flight_list)),
+                    "flight_name": flight.get("flightName") or "",
+                }
+                flights.append((event, described))
+                flight_rows.append(
+                    {
+                        "event_id": event["id"],
+                        "event_name": event["name"],
+                        "division_id": division.get("divisionID"),
+                        "flight_id": flight["flightID"],
+                        "flight_name": flight.get("flightName") or "",
+                        "age_group": group,
+                        "gender": gender,
+                        "tier": tier,
+                        "conference": described["conference"],
+                    }
                 )
 
     def fetch_flight(item: tuple[dict, dict]) -> list[dict]:
@@ -401,9 +454,11 @@ def download_league(org_id: int, prefix: str, tier: str) -> dict:
             row["_conference"] = flight["conference"]
             row["_age_group"] = flight["age_group"]
             row["_tier"] = event["tier"]
+            row["_gender"] = event["gender"]
+            row["_event_name"] = event["name"]
         return rows
 
-    print(f"Fetching {tier}: {len(events)} events, {len(flights)} flights.", flush=True)
+    print(f"Fetching {tier} {gender}: {len(events)} events, {len(flights)} flights.", flush=True)
     matches: list[dict] = []
     with ThreadPoolExecutor(max_workers=6) as pool:
         futures = [pool.submit(fetch_flight, item) for item in flights]
@@ -417,6 +472,7 @@ def download_league(org_id: int, prefix: str, tier: str) -> dict:
             continue
         if not match.get("hometeamID") or not match.get("awayteamID"):
             continue
+        match["_conference_game"] = match_is_conference(match, match.get("_event_name") or "")
         unique_matches[match_id] = match
 
     print(f"Loaded {len(unique_matches)} matches. Resolving venue zips.", flush=True)
@@ -425,9 +481,11 @@ def download_league(org_id: int, prefix: str, tier: str) -> dict:
     games = []
     missing_place = 0
     for match in unique_matches.values():
-        for side, team_key, club_key in (
-            ("home", "hometeamID", "homeTeamClubID"),
-            ("away", "awayteamID", "awayTeamClubID"),
+        if not match.get("_conference_game"):
+            continue
+        for side, team_key, club_key, name_key in (
+            ("home", "hometeamID", "homeTeamClubID", "homeTeam"),
+            ("away", "awayteamID", "awayTeamClubID", "awayTeam"),
         ):
             team_id = match[team_key]
             if team_id in teams:
@@ -435,22 +493,27 @@ def download_league(org_id: int, prefix: str, tier: str) -> dict:
             club = club_home.get(match.get(club_key), {})
             teams[team_id] = {
                 "source_id": team_id,
-                "name": display_name(match["homeTeam"] if side == "home" else match["awayTeam"]),
+                "name": display_name(match[name_key]),
                 "age_group": match["_age_group"],
                 "tier": match["_tier"],
                 "conference": match["_conference"],
                 "city": club.get("city") or "",
                 "state": club.get("state") or "",
+                "gender": match["_gender"],
+                "club_id": match.get(club_key),
             }
 
+    for match in unique_matches.values():
         zip_code = "".join(ch for ch in str(match.get("zip") or "") if ch.isdigit())[:5]
         place = zip_lookup.lookup(zip_code) if zip_code else None
-        home = teams[match["hometeamID"]]
+        home = teams.get(match["hometeamID"])
+        club = club_home.get(match.get("homeTeamClubID"), {})
         if place:
             city, state = place
         else:
             missing_place += 1
-            city, state = home["city"] or "Unknown", home["state"] or "FL"
+            city = (home or {}).get("city") or club.get("city") or "Unknown"
+            state = (home or {}).get("state") or club.get("state") or "FL"
         zone = timezone_for(state, zip_code)
         status, home_score, away_score = official_result(match)
         games.append(
@@ -458,6 +521,10 @@ def download_league(org_id: int, prefix: str, tier: str) -> dict:
                 "source_id": match["matchID"],
                 "home_source_id": match["hometeamID"],
                 "away_source_id": match["awayteamID"],
+                "home_club_id": match.get("homeTeamClubID"),
+                "away_club_id": match.get("awayTeamClubID"),
+                "age_group": match["_age_group"],
+                "gender": match["_gender"],
                 "starts_at": kickoff_iso(match["gameDate"], zone),
                 "timezone": zone,
                 "venue_name": (match.get("complex") or "TBD").strip(),
@@ -467,6 +534,15 @@ def download_league(org_id: int, prefix: str, tier: str) -> dict:
                 "status": status,
                 "home_score": home_score,
                 "away_score": away_score,
+                "is_conference_game": bool(match.get("_conference_game")),
+                "field_name": _text(match.get("venue"), 160),
+                "venue_zip": zip_code or None,
+                "venue_address": _text(match.get("address") if "address" in match else match.get("venueAddress")),
+                "venue_lat": _float_field(match, "latitude", "lat", "venueLat"),
+                "venue_lng": _float_field(match, "longitude", "lng", "venueLng"),
+                "stream_link": _text(match.get("streamLink") or match.get("streamUrl") or match.get("broadcastUrl"), 400),
+                "field_surface": _text(match.get("fieldSurface") or match.get("surface"), 80),
+                "postponement_reason": _text(match.get("postponementReason") or match.get("postponeReason"), 240) if status == "POSTPONED" else None,
             }
         )
 
@@ -489,7 +565,7 @@ def download_league(org_id: int, prefix: str, tier: str) -> dict:
         f"zips_ok={zip_lookup.successes} zips_skipped={zip_lookup.failures} venue_fallbacks={missing_place}",
         flush=True,
     )
-    return {"teams": list(teams.values()), "games": games}
+    return {"teams": list(teams.values()), "games": games, "flights": flight_rows}
 
 
 def write_payload(teams: list[dict], games: list[dict]) -> dict:
@@ -500,7 +576,7 @@ def write_payload(teams: list[dict], games: list[dict]) -> dict:
     if len(game_ids) != len(set(game_ids)):
         raise RuntimeError("Game source ids collide across leagues")
     payload = {
-        "league": "ECNL Boys",
+        "league": "ECNL",
         "season": SEASON,
         "source": "api.athleteone.com",
         "teams": sorted(teams, key=lambda team: (team.get("tier") or "", team["conference"], team["age_group"], team["name"], team["source_id"])),
@@ -515,11 +591,15 @@ def write_payload(teams: list[dict], games: list[dict]) -> dict:
 def load() -> dict:
     teams: list[dict] = []
     games: list[dict] = []
+    flights: list[dict] = []
     for league in LEAGUES:
-        downloaded = download_league(league["org_id"], league["prefix"], league["tier"])
+        downloaded = download_league(league)
         teams.extend(downloaded["teams"])
         games.extend(downloaded["games"])
-    return write_payload(teams, games)
+        flights.extend(downloaded["flights"])
+    payload = write_payload(teams, games)
+    payload["flights"] = flights
+    return payload
 
 
 def merge_missing() -> dict:
@@ -530,16 +610,17 @@ def merge_missing() -> dict:
     payload = json.loads(OUTPUT.read_text())
     for team in payload["teams"]:
         team["tier"] = team.get("tier") or "ECNL"
-    present = {team.get("tier") or "ECNL" for team in payload["teams"]}
+    present = {(team.get("tier") or "ECNL", team.get("gender") or "boys") for team in payload["teams"]}
     teams = list(payload["teams"])
     games = list(payload["games"])
     for league in LEAGUES:
-        if league["tier"] in present:
+        key = (league["tier"], league["gender"])
+        if key in present:
             continue
-        downloaded = download_league(league["org_id"], league["prefix"], league["tier"])
+        downloaded = download_league(league)
         teams.extend(downloaded["teams"])
         games.extend(downloaded["games"])
-        present.add(league["tier"])
+        present.add(key)
     return write_payload(teams, games)
 
 

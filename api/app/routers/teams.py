@@ -32,7 +32,7 @@ def list_teams(
     if age_group is not None and age_group not in AGE_GROUPS:
         raise HTTPException(status_code=400, detail="age_group must be U13, U14, U15, U16, U17, or U18/19")
 
-    statement = select(Team)
+    statement = select(Team).where(Team.gender == "boys")
     if q and q.strip():
         statement = statement.where(Team.name.ilike(_contains(q.strip()), escape="\\"))
     if age_group is not None:
@@ -63,7 +63,7 @@ def team_schedule(
         raise HTTPException(status_code=400, detail="filter must be one of: all, home, away")
 
     team = session.get(Team, team_id)
-    if team is None:
+    if team is None or team.gender != "boys":
         raise HTTPException(status_code=404, detail="Team not found")
 
     games = session.scalars(

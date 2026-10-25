@@ -15,7 +15,7 @@ router = APIRouter()
 def last_data_refresh(session: Annotated[Session, Depends(get_session)]) -> DataRefreshOut:
     finished = session.scalar(
         select(DataRefresh.finished_at)
-        .where(DataRefresh.status == "success", DataRefresh.finished_at.is_not(None))
+        .where(DataRefresh.status == "success", DataRefresh.finished_at.is_not(None), DataRefresh.job == "schedule")
         .order_by(DataRefresh.finished_at.desc(), DataRefresh.id.desc())
         .limit(1)
     )
