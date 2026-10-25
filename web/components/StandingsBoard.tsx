@@ -2,126 +2,203 @@
 
 import { LoaderCircle } from "lucide-react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { useLeagueGender } from "@/components/GenderProvider";
+import { parseLeagueGender, useLeagueGender } from "@/components/GenderProvider";
 import { ResultMark } from "@/components/ResultMark";
 import { fetchStandings, fetchTeams } from "@/lib/api";
 import { PLAYOFF_SPOTS, TIERS, ageGroupsFor, type LeagueGender } from "@/lib/leagues";
 import { rememberedSquad, shortConference } from "@/lib/selection";
 import type { StandingRow, StandingsMode, Team } from "@/lib/types";
 
-function readQuery() {
-  const params = new URLSearchParams(window.location.search);
-  const conference = params.get("conference");
+const AGES = new Set(["U13", "U14", "U15", "U16", "U17", "U18/19"]);
+
+type TierName = (typeof TIERS)[number];
+
+type StandingsFilters = {
+  conference: string;
+  tier: TierName;
+  ageGroup: string;
+  mode: StandingsMode;
+  gender: LeagueGender;
+  team: number | null;
+};
+
+function readQuery(params: URLSearchParams) {
   const age = params.get("age_group");
-  const tier = params.get("tier");
-  const mode = params.get("mode");
-  const ages = new Set(["U13", "U14", "U15", "U16", "U17", "U18/19"]);
+  const team = Number(params.get("team"));
   return {
-    conference: conference || "Southeast",
-    tier: tier === "ECNL-RL" ? "ECNL-RL" : "ECNL",
-    ageGroup: age && ages.has(age) ? age : "U13",
-    mode: mode === "calculated" ? "calculated" : "official",
+    conference: params.get("conference") ?? "",
+    tier: params.get("tier") === "ECNL-RL" ? "ECNL-RL" : "ECNL",
+    ageGroup: age && AGES.has(age) ? age : "U13",
+    mode: params.get("mode") === "calculated" ? "calculated" : "official",
+    team: Number.isInteger(team) && team > 0 ? team : null,
+    gender: parseLeagueGender(params.get("gender")),
   } as const;
 }
 
-function conferencesFor(teams: Team[], tier: (typeof TIERS)[number]): string[] {
+function conferencesFor(teams: Team[], tier: TierName): string[] {
   return [...new Set(teams.filter((team) => (team.tier === "ECNL-RL" ? "ECNL-RL" : "ECNL") === tier).map((team) => shortConference(team.conference)).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
 
+function standingsSearch(filters: StandingsFilters): string {
+  const params = new URLSearchParams();
+  params.set("conference", filters.conference);
+  params.set("tier", filters.tier);
+  params.set("age_group", filters.ageGroup);
+  params.set("mode", filters.mode);
+  params.set("gender", filters.gender);
+  if (filters.team != null) params.set("team", String(filters.team));
+  return params.toString();
+}
+
+function queryMatches(params: URLSearchParams, filters: StandingsFilters): boolean {
+  const team = filters.team == null ? null : String(filters.team);
+  return (
+    params.get("conference") === filters.conference &&
+    params.get("tier") === filters.tier &&
+    params.get("age_group") === filters.ageGroup &&
+    params.get("mode") === filters.mode &&
+    params.get("gender") === filters.gender &&
+    (params.get("team") ?? null) === team
+  );
+}
+
+function resolveFilters(params: URLSearchParams, teams: Team[], gender: LeagueGender, userSwitched: boolean): { filters: StandingsFilters; history: "push" | "replace" | "none" } | null {
+  const read = readQuery(params);
+  let conference = read.conference;
+  let tier: TierName = read.tier;
+  let ageGroup = read.ageGroup;
+  const mode = read.mode;
+  let team = userSwitched ? null : read.team;
+
+  if (!params.has("conference")) {
+    const remembered = rememberedSquad();
+    const usable = remembered && remembered.gender === gender ? remembered : null;
+    if (usable && (usable.tier === "ECNL" || usable.tier === "ECNL-RL")) {
+      conference = usable.conference;
+      tier = usable.tier;
+      ageGroup = AGES.has(usable.ageGroup) ? usable.ageGroup : ageGroup;
+      if (team == null) team = usable.id;
+    } else if (!conference) {
+      conference = "Southeast";
+    }
+  }
+
+  const options = conferencesFor(teams, tier);
+  if (options.length === 0) return null;
+  if (!options.includes(conference)) conference = options[0];
+
+  const filters: StandingsFilters = { conference, tier, ageGroup, mode, gender, team };
+  if (queryMatches(params, filters)) return { filters, history: "none" };
+  return { filters, history: userSwitched ? "push" : "replace" };
+}
+
 export function StandingsBoard() {
-  const { gender, ready: genderReady } = useLeagueGender();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { gender, ready: genderReady, setGender, claimGenderChange, restoreGenderChange } = useLeagueGender();
   const ages = ageGroupsFor(gender);
-  const [conference, setConference] = useState("Southeast");
-  const [tier, setTier] = useState<(typeof TIERS)[number]>("ECNL");
-  const [ageGroup, setAgeGroup] = useState("U13");
-  const [mode, setMode] = useState<StandingsMode>("official");
-  const [ready, setReady] = useState(false);
   const [leagueTeams, setLeagueTeams] = useState<Team[]>([]);
-  const [teamsLoaded, setTeamsLoaded] = useState(false);
+  const [loadedGender, setLoadedGender] = useState<LeagueGender | null>(null);
+  const [applied, setApplied] = useState<StandingsFilters | null>(null);
   const [rows, setRows] = useState<StandingRow[]>([]);
-  const [highlightId, setHighlightId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const seenGender = useRef<LeagueGender | null>(null);
-
-  useEffect(() => {
-    if (!genderReady) return;
-    const params = new URLSearchParams(window.location.search);
-    const next = readQuery();
-    const remembered = rememberedSquad();
-    const usable = remembered && remembered.gender === gender ? remembered : null;
-    const teamParam = Number(params.get("team"));
-    const switched = seenGender.current != null && seenGender.current !== gender;
-    seenGender.current = gender;
-    Promise.resolve().then(() => {
-      if (switched) {
-        setHighlightId(null);
-        setConference("");
-        setLoading(true);
-        setError(null);
-      } else if (!params.has("conference") && usable) {
-        setConference(usable.conference);
-        setTier(usable.tier);
-        setAgeGroup(usable.ageGroup);
-        setMode(next.mode);
-        setHighlightId(Number.isInteger(teamParam) && teamParam > 0 ? teamParam : usable.id);
-      } else {
-        setConference(next.conference);
-        setTier(next.tier);
-        setAgeGroup(next.ageGroup);
-        setMode(next.mode);
-        setHighlightId(Number.isInteger(teamParam) && teamParam > 0 ? teamParam : (usable?.id ?? null));
-      }
-      setReady(true);
-    });
-  }, [genderReady, gender]);
+  const navId = useRef(0);
+  const teamsReady = genderReady && loadedGender === gender;
+  const roster = useMemo(() => (teamsReady ? leagueTeams : []), [teamsReady, leagueTeams]);
 
   useEffect(() => {
     if (!genderReady) return;
     let cancelled = false;
-    setTeamsLoaded(false);
-    setLeagueTeams([]);
     fetchTeams(undefined, gender)
       .then((teams: Team[]) => {
-        if (!cancelled) setLeagueTeams(teams);
+        if (cancelled) return;
+        setLeagueTeams(teams);
+        setLoadedGender(gender);
       })
       .catch(() => {
-        if (!cancelled) setLeagueTeams([]);
-      })
-      .finally(() => {
-        if (!cancelled) setTeamsLoaded(true);
+        if (cancelled) return;
+        setLeagueTeams([]);
+        setLoadedGender(gender);
       });
     return () => {
       cancelled = true;
     };
   }, [genderReady, gender]);
 
-  const conferenceOptions = useMemo(() => conferencesFor(leagueTeams, tier), [leagueTeams, tier]);
-
   useEffect(() => {
-    if (!ready || !teamsLoaded) return;
-    if (conferenceOptions.length === 0) {
-      Promise.resolve().then(() => {
-        setRows([]);
-        setLoading(false);
+    if (!teamsReady) return;
+    const previousGender = seenGender.current;
+    const genderChanged = previousGender != null && previousGender !== gender;
+    seenGender.current = gender;
+    const claimed = claimGenderChange(gender);
+    const userSwitched = genderChanged && claimed === "user";
+    const claimState = { settled: false };
+    const read = readQuery(searchParams);
+
+    if (!userSwitched && read.gender && read.gender !== gender && searchParams.has("conference") && searchParams.has("gender")) {
+      claimState.settled = true;
+      setApplied({
+        conference: read.conference,
+        tier: read.tier,
+        ageGroup: read.ageGroup,
+        mode: read.mode,
+        gender: read.gender,
+        team: read.team,
       });
+      setLoading(true);
+      setGender(read.gender, "adopt");
+      return () => {
+        if (!claimState.settled) {
+          seenGender.current = previousGender;
+          if (claimed) restoreGenderChange(claimed, gender);
+        }
+      };
+    }
+
+    const resolved = resolveFilters(searchParams, roster, gender, userSwitched);
+    if (!resolved) {
+      claimState.settled = true;
+      setApplied(null);
+      setRows([]);
+      setLoading(false);
       return;
     }
-    if (!conferenceOptions.includes(conference)) {
-      Promise.resolve().then(() => {
-        setLoading(true);
-        setError(null);
-        setConference(conferenceOptions[0]);
+
+    const query = standingsSearch(resolved.filters);
+    setApplied((current) => (current && standingsSearch(current) === query ? current : resolved.filters));
+    claimState.settled = true;
+    const attempt = { request: 0, committed: false };
+    if (resolved.history !== "none") {
+      attempt.request = ++navId.current;
+      const href = `/standings?${query}`;
+      queueMicrotask(() => {
+        if (navId.current !== attempt.request || window.location.pathname !== "/standings") return;
+        attempt.committed = true;
+        if (resolved.history === "push") router.push(href, { scroll: false });
+        else router.replace(href, { scroll: false });
       });
     }
-  }, [ready, teamsLoaded, conferenceOptions, conference]);
+
+    return () => {
+      if (attempt.request !== 0 && !attempt.committed) {
+        navId.current += 1;
+        seenGender.current = previousGender;
+        if (claimed) restoreGenderChange(claimed, gender);
+      }
+    };
+  }, [teamsReady, gender, roster, searchParams, claimGenderChange, restoreGenderChange, setGender, router]);
 
   useEffect(() => {
-    if (!ready || !conference) return;
+    if (!applied?.conference) return;
     let cancelled = false;
-    fetchStandings(conference, tier, ageGroup, mode, gender)
+    setLoading(true);
+    setError(null);
+    fetchStandings(applied.conference, applied.tier, applied.ageGroup, applied.mode, applied.gender)
       .then((data) => {
         if (!cancelled) setRows(data);
       })
@@ -136,12 +213,32 @@ export function StandingsBoard() {
     return () => {
       cancelled = true;
     };
-  }, [ready, conference, tier, ageGroup, mode, gender]);
+  }, [applied]);
 
-  function choose<T>(setter: (value: T) => void, value: T) {
+  const conferenceOptions = useMemo(() => conferencesFor(roster, applied?.tier ?? "ECNL"), [roster, applied?.tier]);
+  const view = applied ?? {
+    conference: readQuery(searchParams).conference || "Southeast",
+    tier: readQuery(searchParams).tier,
+    ageGroup: readQuery(searchParams).ageGroup,
+    mode: readQuery(searchParams).mode,
+    gender,
+    team: readQuery(searchParams).team,
+  };
+
+  function update(patch: Partial<StandingsFilters>) {
+    const current = applied ?? view;
+    let next: StandingsFilters = { ...current, ...patch, gender };
+    if (patch.tier) {
+      const options = conferencesFor(roster, next.tier);
+      if (options.length > 0 && !options.includes(next.conference)) next = { ...next, conference: options[0] };
+    }
+    if (queryMatches(searchParams, next)) return;
     setLoading(true);
     setError(null);
-    setter(value);
+    setApplied(next);
+    const query = standingsSearch(next);
+    navId.current += 1;
+    router.push(`/standings?${query}`, { scroll: false });
   }
 
   return (
@@ -155,14 +252,11 @@ export function StandingsBoard() {
             Tier
             <select
               aria-label="Tier"
-              value={tier}
+              value={view.tier}
               onChange={(event) => {
                 const next = event.target.value === "ECNL-RL" ? "ECNL-RL" : "ECNL";
-                const options = conferencesFor(leagueTeams, next);
-                setLoading(true);
-                setError(null);
-                setTier(next);
-                if (options.length > 0 && !options.includes(conference)) setConference(options[0]);
+                if (next === view.tier) return;
+                update({ tier: next });
               }}
               className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
             >
@@ -175,8 +269,11 @@ export function StandingsBoard() {
             Conference
             <select
               aria-label="Conference"
-              value={conference}
-              onChange={(event) => choose(setConference, event.target.value)}
+              value={view.conference}
+              onChange={(event) => {
+                if (event.target.value === view.conference) return;
+                update({ conference: event.target.value });
+              }}
               className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
             >
               {conferenceOptions.map((item) => (
@@ -188,8 +285,11 @@ export function StandingsBoard() {
             Age group
             <select
               aria-label="Age group"
-              value={ageGroup}
-              onChange={(event) => choose(setAgeGroup, event.target.value)}
+              value={view.ageGroup}
+              onChange={(event) => {
+                if (event.target.value === view.ageGroup) return;
+                update({ ageGroup: event.target.value });
+              }}
               className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
             >
               {ages.map((item) => (
@@ -203,8 +303,12 @@ export function StandingsBoard() {
             Table
             <select
               aria-label="Table source"
-              value={mode}
-              onChange={(event) => choose(setMode, event.target.value as StandingsMode)}
+              value={view.mode}
+              onChange={(event) => {
+                const next = event.target.value === "calculated" ? "calculated" : "official";
+                if (next === view.mode) return;
+                update({ mode: next });
+              }}
               className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
             >
               <option value="official">Official</option>
@@ -217,14 +321,18 @@ export function StandingsBoard() {
 
         {error && <p className="mt-4 rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-800">{error}</p>}
 
-        {loading ? (
+        {!applied && !loading ? (
+          <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-slate-500">
+            No table for this tier yet.
+          </div>
+        ) : loading || !applied ? (
           <div className="mt-6 flex items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-slate-500">
             <LoaderCircle className="size-4 animate-spin" />
             Loading standings
           </div>
         ) : rows.length === 0 ? (
           <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-slate-500">
-            No {mode === "official" ? "official" : "played"} table for {tier} {conference} {ageGroup} yet.
+            No {view.mode === "official" ? "official" : "played"} table for {view.tier} {view.conference} {view.ageGroup} yet.
           </div>
         ) : (
           <div className="mt-4 overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm">
@@ -241,7 +349,7 @@ export function StandingsBoard() {
               <tbody>
                 {rows.map((row) => {
                   const qualifying = row.rank <= PLAYOFF_SPOTS;
-                  const selected = highlightId != null && row.team_id === highlightId;
+                  const selected = view.team != null && row.team_id === view.team;
                   const diff = row.goal_diff > 0 ? `+${row.goal_diff}` : String(row.goal_diff);
                   return (
                     <tr
@@ -276,9 +384,9 @@ export function StandingsBoard() {
                         </div>
                       </td>
                       <td className="px-4 py-4">
-                        {highlightId != null && row.team_id != null && row.team_id !== highlightId ? (
+                        {view.team != null && row.team_id != null && row.team_id !== view.team ? (
                           <Link
-                            href={`/head-to-head?teamA=${highlightId}&teamB=${row.team_id}${gender === "girls" ? "&gender=girls" : ""}`}
+                            href={`/head-to-head?teamA=${view.team}&teamB=${row.team_id}${gender === "girls" ? "&gender=girls" : ""}`}
                             className="text-xs font-medium text-emerald-800 underline-offset-4 hover:underline"
                           >
                             Compare

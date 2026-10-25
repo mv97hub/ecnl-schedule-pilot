@@ -435,7 +435,7 @@ export function HeadToHeadBoard() {
     const key = search.toString();
     if (appliedSearch.current === key) return;
     appliedSearch.current = key;
-    if (dictated && dictated !== gender) setGender(dictated);
+    if (dictated && dictated !== gender) setGender(dictated, "adopt");
   }, [search, dictated, gender, setGender]);
 
   useEffect(() => {
