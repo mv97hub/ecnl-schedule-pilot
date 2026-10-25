@@ -35,7 +35,7 @@ def list_teams(
     session: Annotated[Session, Depends(get_session)],
     q: str | None = Query(default=None, description="Case-insensitive substring of the team name"),
     age_group: str | None = Query(default=None, description="U13 or U14"),
-    gender: str = Query(default="boys"),
+    gender: str = "boys",
 ) -> list[Team]:
     if age_group is not None and age_group not in AGE_GROUPS:
         raise HTTPException(status_code=400, detail="age_group must be U13, U14, U15, U16, U17, or U18/19")
