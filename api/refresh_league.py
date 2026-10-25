@@ -4,10 +4,12 @@ Downloads the public AthleteOne JSON, then upserts teams, games, and scores
 in place. Does not drop the database and does not use Playwright.
 
 From the repository root: cd api && python refresh_league.py
+Pass --full to update completed games older than 7 days. The cron run omits it.
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
 from datetime import UTC, datetime
 
@@ -19,13 +21,13 @@ def _stamp(value: datetime) -> str:
     return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def run() -> int:
+def run(full_pass: bool = False) -> int:
     started = datetime.now(UTC)
     print(f"League refresh start {_stamp(started)}", flush=True)
     run_id: int | None = None
     try:
         run_id = open_refresh(started)
-        counts = upsert_published(load())
+        counts = upsert_published(load(), full_pass=full_pass)
         finished = datetime.now(UTC)
         complete_refresh(run_id, finished, counts)
         print(f"teams={counts.teams} games={counts.games} scores={counts.scores}", flush=True)
@@ -43,5 +45,16 @@ def run() -> int:
         return 1
 
 
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Refresh the published ECNL league in place.")
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Update every stored game. The cron default skips completed games older than 7 days.",
+    )
+    args = parser.parse_args(argv)
+    return run(full_pass=args.full)
+
+
 if __name__ == "__main__":
-    sys.exit(run())
+    sys.exit(main())
