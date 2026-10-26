@@ -52,7 +52,83 @@ export type TeamRecordSummary = {
 export type ScheduleResponse = {
   team_record_summary: TeamRecordSummary;
   logo_url?: string | null;
+  club_id?: number | null;
   games: Game[];
+};
+
+export type ClubListItem = {
+  id: number;
+  name: string;
+  logo_url?: string | null;
+  team_count: number;
+};
+
+export type ClubRecord = {
+  wins: number;
+  losses: number;
+  draws: number;
+  goal_diff: number;
+};
+
+export type ClubSquad = {
+  id: number;
+  name: string;
+  age_group: string;
+  gender: "boys" | "girls";
+  tier: string;
+  conference: string;
+  conference_rank: number | null;
+};
+
+export type ClubVenue = {
+  venue_name: string;
+  field_name: string | null;
+  city: string;
+  state: string;
+  latitude: number | null;
+  longitude: number | null;
+};
+
+export type WeekendSquad = {
+  game_id: number;
+  team_id: number;
+  age_group: string;
+  gender: "boys" | "girls";
+  status: GameStatus;
+  result: "W" | "L" | "D" | null;
+  goals_for: number | null;
+  goals_against: number | null;
+  field_name: string | null;
+  venue_name: string;
+};
+
+export type WeekendScorecard = {
+  opponent_club_id: number;
+  opponent_name: string;
+  opponent_logo_url?: string | null;
+  weekend_start: string;
+  label: string;
+  upcoming: boolean;
+  wins: number;
+  losses: number;
+  draws: number;
+  squads: WeekendSquad[];
+};
+
+export type ClubDetail = {
+  id: number;
+  name: string;
+  logo_url?: string | null;
+  summary: string;
+  team_count: number;
+  tiers: string[];
+  conferences: string[];
+  record: ClubRecord;
+  conference_record: ClubRecord;
+  squads: ClubSquad[];
+  venues: ClubVenue[];
+  weekends: WeekendScorecard[];
+  next_weekend: string | null;
 };
 
 export type StandingRow = {

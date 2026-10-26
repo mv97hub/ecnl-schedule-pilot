@@ -9,6 +9,7 @@ export function AppHeader() {
   const path = usePathname();
   const { gender, setGender } = useLeagueGender();
   const schedules = path === "/";
+  const clubs = path.startsWith("/clubs");
   const standings = path.startsWith("/standings");
   const headToHead = path.startsWith("/head-to-head");
   const profile = path.startsWith("/profile");
@@ -40,6 +41,13 @@ export function AppHeader() {
             className={`rounded-full px-3 py-1.5 ${schedules ? "bg-white/15 text-white" : "text-emerald-100/80 hover:bg-white/10"}`}
           >
             Team Schedules
+          </Link>
+          <Link
+            href="/clubs"
+            aria-current={clubs ? "page" : undefined}
+            className={`rounded-full px-3 py-1.5 ${clubs ? "bg-white/15 text-white" : "text-emerald-100/80 hover:bg-white/10"}`}
+          >
+            Clubs
           </Link>
           <Link
             href="/standings"

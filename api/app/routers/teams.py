@@ -148,5 +148,6 @@ def team_schedule(
             conference=short_conference(team.conference),
         ),
         logo_url=logos.get(team.id),
+        club_id=team.club_id,
         games=schedule,
     )

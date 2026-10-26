@@ -7,6 +7,7 @@ from sqlmodel import SQLModel
 
 from app.database import engine, ensure_capture_columns, ensure_result_columns, ensure_source_columns
 from app.models import Base
+from app.routers.clubs import router as clubs_router
 from app.routers.data_refresh import router as data_refresh_router
 from app.routers.head_to_head import router as head_to_head_router
 from app.routers.ingest import router as ingest_router
@@ -48,6 +49,7 @@ app.include_router(data_refresh_router)
 app.include_router(teams_router)
 app.include_router(standings_router)
 app.include_router(head_to_head_router)
+app.include_router(clubs_router)
 app.include_router(ingest_router)
 
 

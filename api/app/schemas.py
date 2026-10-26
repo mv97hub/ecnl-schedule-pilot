@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -58,6 +58,7 @@ class TeamRecordSummary(BaseModel):
 class ScheduleResponse(BaseModel):
     team_record_summary: TeamRecordSummary
     logo_url: str | None = None
+    club_id: int | None = None
     games: list[ScheduleGameOut]
 
 
@@ -228,3 +229,78 @@ class HeadToHeadOut(BaseModel):
     common_opponents: list[CommonOpponentOut]
     common_opponents_rollup: CommonRollupOut
     scouting_report: ScoutingReportOut
+
+
+class ClubListItemOut(BaseModel):
+    id: int
+    name: str
+    logo_url: str | None = None
+    team_count: int
+
+
+class ClubRecordOut(BaseModel):
+    wins: int
+    losses: int
+    draws: int
+    goal_diff: int
+
+
+class ClubSquadOut(BaseModel):
+    id: int
+    name: str
+    age_group: str
+    gender: Literal["boys", "girls"]
+    tier: str
+    conference: str
+    conference_rank: int | None
+
+
+class ClubVenueOut(BaseModel):
+    venue_name: str
+    field_name: str | None = None
+    city: str
+    state: str
+    latitude: float | None = None
+    longitude: float | None = None
+
+
+class WeekendSquadOut(BaseModel):
+    game_id: int
+    team_id: int
+    age_group: str
+    gender: Literal["boys", "girls"]
+    status: GameStatus
+    result: TeamResult | None = None
+    goals_for: int | None = None
+    goals_against: int | None = None
+    field_name: str | None = None
+    venue_name: str
+
+
+class WeekendScorecardOut(BaseModel):
+    opponent_club_id: int
+    opponent_name: str
+    opponent_logo_url: str | None = None
+    weekend_start: date
+    label: str
+    upcoming: bool
+    wins: int
+    losses: int
+    draws: int
+    squads: list[WeekendSquadOut]
+
+
+class ClubDetailOut(BaseModel):
+    id: int
+    name: str
+    logo_url: str | None = None
+    summary: str
+    team_count: int
+    tiers: list[str]
+    conferences: list[str]
+    record: ClubRecordOut
+    conference_record: ClubRecordOut
+    squads: list[ClubSquadOut]
+    venues: list[ClubVenueOut]
+    weekends: list[WeekendScorecardOut]
+    next_weekend: str | None = None
