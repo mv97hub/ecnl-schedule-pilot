@@ -94,12 +94,34 @@ export type WeekendSquad = {
   team_id: number;
   age_group: string;
   gender: "boys" | "girls";
+  tier: string;
+  opponent_squad_name: string;
   status: GameStatus;
   result: "W" | "L" | "D" | null;
   goals_for: number | null;
   goals_against: number | null;
   field_name: string | null;
   venue_name: string;
+};
+
+export type NextWeekendSquad = {
+  team_id: number;
+  age_group: string;
+  gender: "boys" | "girls";
+  tier: string;
+};
+
+export type NextWeekendOpponent = {
+  opponent_club_id: number;
+  opponent_name: string;
+  opponent_logo_url?: string | null;
+  squads: NextWeekendSquad[];
+};
+
+export type NextWeekend = {
+  weekend_start: string;
+  label: string;
+  opponents: NextWeekendOpponent[];
 };
 
 export type WeekendScorecard = {
@@ -128,7 +150,7 @@ export type ClubDetail = {
   squads: ClubSquad[];
   venues: ClubVenue[];
   weekends: WeekendScorecard[];
-  next_weekend: string | null;
+  next_weekend: NextWeekend | null;
 };
 
 export type StandingRow = {

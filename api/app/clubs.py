@@ -22,6 +22,9 @@ from app.schemas import (
     ClubRecordOut,
     ClubSquadOut,
     ClubVenueOut,
+    NextWeekendOpponentOut,
+    NextWeekendOut,
+    NextWeekendSquadOut,
     WeekendScorecardOut,
     WeekendSquadOut,
 )
@@ -137,6 +140,8 @@ class _Appearance:
     team_id: int
     age_group: str
     gender: str
+    tier: str
+    opponent_squad_name: str
     starts_at: datetime
     status: str
     result: str | None
@@ -167,32 +172,20 @@ def _status(value: str) -> str:
     return "SCHEDULED"
 
 
-def _join_names(names: list[str]) -> str:
-    if len(names) == 1:
-        return names[0]
-    if len(names) == 2:
-        return f"{names[0]} and {names[1]}"
-    return ", ".join(names[:-1]) + f", and {names[-1]}"
+def _appearance_sort(row: _Appearance) -> tuple:
+    return (
+        AGE_ORDER.get(row.age_group, 99),
+        0 if row.gender == "boys" else 1,
+        TIER_ORDER.get(row.tier, 9),
+        row.starts_at,
+        row.game_id,
+    )
 
 
-def group_weekends(
-    games: list[ScheduleGame],
-    team_ids: set[int],
-    clubs_by_id: dict[int, Club],
-    club_id: int,
-    *,
-    today: date | None = None,
-    limit: int = WEEKEND_LIMIT,
-) -> tuple[list[WeekendScorecardOut], str | None]:
-    """Scorecards for weekends where two or more squads face the same rival club.
+def _collect_appearances(games: list[ScheduleGame], team_ids: set[int], club_id: int) -> list[_Appearance]:
+    """One row per game this club plays against another club on a Friday–Sunday."""
 
-    A weekend is Friday through Sunday in the game's local date. Games whose
-    opponent has no club, and games between two squads of this club, are skipped.
-    The soonest upcoming weekend is first, then the most recent, capped at `limit`.
-    """
-
-    anchor = today or datetime.now(EASTERN).date()
-    grouped: dict[tuple[int, date], list[_Appearance]] = defaultdict(list)
+    rows: list[_Appearance] = []
     seen: set[int] = set()
     for game in games:
         game_id = int(game.id or 0)
@@ -200,12 +193,16 @@ def group_weekends(
             continue
         if game_id:
             seen.add(game_id)
+        if _status(game.status) == "CANCELLED":
+            continue
         home_ours = game.home_team_id in team_ids
         away_ours = game.away_team_id in team_ids
         if home_ours == away_ours:
             continue
         squad = game.home_team if home_ours else game.away_team
         opponent = game.away_team if home_ours else game.home_team
+        if squad is None or opponent is None:
+            continue
         opponent_club_id = opponent.club_id
         if opponent_club_id is None or int(opponent_club_id) == club_id:
             continue
@@ -225,12 +222,14 @@ def group_weekends(
             goals_for, goals_against = scored
             result = _result_mark(goals_for, goals_against)
         starts_at = game.starts_at if game.starts_at.tzinfo is not None else game.starts_at.replace(tzinfo=UTC)
-        grouped[(int(opponent_club_id), friday)].append(
+        rows.append(
             _Appearance(
                 game_id=game_id,
                 team_id=int(squad.id),
                 age_group=squad.age_group,
                 gender=gender,
+                tier=squad.tier or "ECNL",
+                opponent_squad_name=" ".join((opponent.name or "").split()),
                 starts_at=starts_at,
                 status=_status(game.status),
                 result=result,
@@ -242,17 +241,71 @@ def group_weekends(
                 friday=friday,
             )
         )
+    return rows
+
+
+def _squad_out(row: _Appearance) -> WeekendSquadOut:
+    return WeekendSquadOut(
+        game_id=row.game_id,
+        team_id=row.team_id,
+        age_group=row.age_group,
+        gender=row.gender,  # type: ignore[arg-type]
+        tier=row.tier,
+        opponent_squad_name=row.opponent_squad_name,
+        status=row.status,  # type: ignore[arg-type]
+        result=row.result,  # type: ignore[arg-type]
+        goals_for=row.goals_for,
+        goals_against=row.goals_against,
+        field_name=row.field_name,
+        venue_name=row.venue_name,
+    )
+
+
+def _upcoming(friday: date, anchor: date) -> bool:
+    return friday + timedelta(days=2) >= anchor
+
+
+def group_weekends(
+    games: list[ScheduleGame],
+    team_ids: set[int],
+    clubs_by_id: dict[int, Club],
+    club_id: int,
+    *,
+    today: date | None = None,
+    limit: int = WEEKEND_LIMIT,
+) -> tuple[list[WeekendScorecardOut], NextWeekendOut | None]:
+    """Completed scorecards, and every opponent on the upcoming weekend.
+
+    A weekend is Friday through Sunday in the game's local date. Games whose
+    opponent has no club, and games between two squads of this club, are skipped.
+    Scorecards are past weekends where at least two squads have a result against
+    the same club, most recent first, capped at `limit`. The upcoming weekend
+    lists every opponent, including a club faced by only one squad.
+    """
+
+    anchor = today or datetime.now(EASTERN).date()
+    appearances = _collect_appearances(games, team_ids, club_id)
+    return _scorecards(appearances, clubs_by_id, anchor, limit), _next_weekend(appearances, clubs_by_id, anchor)
+
+
+def _scorecards(
+    appearances: list[_Appearance],
+    clubs_by_id: dict[int, Club],
+    anchor: date,
+    limit: int,
+) -> list[WeekendScorecardOut]:
+    grouped: dict[tuple[int, date], list[_Appearance]] = defaultdict(list)
+    for row in appearances:
+        if _upcoming(row.friday, anchor) or row.result is None:
+            continue
+        grouped[(row.opponent_club_id, row.friday)].append(row)
 
     cards: list[WeekendScorecardOut] = []
     for (opponent_club_id, friday), rows in grouped.items():
         if len({row.team_id for row in rows}) < 2:
             continue
-        rows.sort(key=lambda row: (AGE_ORDER.get(row.age_group, 99), 0 if row.gender == "boys" else 1, row.starts_at, row.game_id))
+        rows.sort(key=_appearance_sort)
         club = clubs_by_id.get(opponent_club_id)
-        wins = sum(1 for row in rows if row.result == "W")
-        losses = sum(1 for row in rows if row.result == "L")
-        draws = sum(1 for row in rows if row.result == "D")
-        sunday = friday + timedelta(days=2)
         cards.append(
             WeekendScorecardOut(
                 opponent_club_id=opponent_club_id,
@@ -260,63 +313,73 @@ def group_weekends(
                 opponent_logo_url=_logo(club.logo_url) if club is not None else None,
                 weekend_start=friday,
                 label=weekend_label(friday),
-                upcoming=sunday >= anchor,
-                wins=wins,
-                losses=losses,
-                draws=draws,
+                upcoming=False,
+                wins=sum(1 for row in rows if row.result == "W"),
+                losses=sum(1 for row in rows if row.result == "L"),
+                draws=sum(1 for row in rows if row.result == "D"),
+                squads=[_squad_out(row) for row in rows],
+            )
+        )
+    cards.sort(key=lambda card: (-card.weekend_start.toordinal(), card.opponent_name.casefold(), card.opponent_club_id))
+    return cards[:limit]
+
+
+def _unique_squads(rows: list[_Appearance]) -> list[_Appearance]:
+    chosen: dict[int, _Appearance] = {}
+    for row in sorted(rows, key=_appearance_sort):
+        chosen.setdefault(row.team_id, row)
+    return sorted(chosen.values(), key=_appearance_sort)
+
+
+def _next_weekend(
+    appearances: list[_Appearance],
+    clubs_by_id: dict[int, Club],
+    anchor: date,
+) -> NextWeekendOut | None:
+    fridays = sorted({row.friday for row in appearances if _upcoming(row.friday, anchor)})
+    if not fridays:
+        return None
+    friday = fridays[0]
+    grouped: dict[int, list[_Appearance]] = defaultdict(list)
+    for row in appearances:
+        if row.friday == friday:
+            grouped[row.opponent_club_id].append(row)
+    opponents: list[NextWeekendOpponentOut] = []
+    for opponent_club_id, group in grouped.items():
+        club = clubs_by_id.get(opponent_club_id)
+        opponents.append(
+            NextWeekendOpponentOut(
+                opponent_club_id=opponent_club_id,
+                opponent_name=club.name if club is not None else f"Club {opponent_club_id}",
+                opponent_logo_url=_logo(club.logo_url) if club is not None else None,
                 squads=[
-                    WeekendSquadOut(
-                        game_id=row.game_id,
+                    NextWeekendSquadOut(
                         team_id=row.team_id,
                         age_group=row.age_group,
                         gender=row.gender,  # type: ignore[arg-type]
-                        status=row.status,  # type: ignore[arg-type]
-                        result=row.result,  # type: ignore[arg-type]
-                        goals_for=row.goals_for,
-                        goals_against=row.goals_against,
-                        field_name=row.field_name,
-                        venue_name=row.venue_name,
+                        tier=row.tier,
                     )
-                    for row in rows
+                    for row in _unique_squads(group)
                 ],
             )
         )
-
-    def card_key(card: WeekendScorecardOut) -> tuple:
-        name = card.opponent_name.casefold()
-        if card.upcoming:
-            return (0, card.weekend_start.toordinal(), name, card.opponent_club_id)
-        return (1, -card.weekend_start.toordinal(), name, card.opponent_club_id)
-
-    cards.sort(key=card_key)
-    return cards[:limit], _next_weekend(cards)
-
-
-def _next_weekend(cards: list[WeekendScorecardOut]) -> str | None:
-    upcoming = [card for card in cards if card.upcoming]
-    if not upcoming:
-        return None
-    start = min(card.weekend_start for card in upcoming)
-    same = [card for card in upcoming if card.weekend_start == start]
-    names = sorted({card.opponent_name for card in same}, key=str.casefold)
-    label = same[0].label
-    return f"{label} vs {_join_names(names)}"
+    opponents.sort(key=lambda item: (item.opponent_name.casefold(), item.opponent_club_id))
+    return NextWeekendOut(weekend_start=friday, label=weekend_label(friday), opponents=opponents)
 
 
 def home_venues(games: list[ScheduleGame], team_ids: set[int]) -> list[ClubVenueOut]:
-    """Distinct venues where one of this club's squads is the home team."""
+    """One row per home venue, city, and state. Several fields at that location stay one row."""
 
-    buckets: dict[tuple[str, str, str, str], dict[str, object]] = {}
+    buckets: dict[tuple[str, str, str], dict[str, object]] = {}
     for game in games:
         if game.home_team_id not in team_ids:
             continue
         venue_name = " ".join((game.venue_name or "").split())
         if not venue_name:
             continue
-        field_name = _field_name(game.field_name)
         city = " ".join((game.city or "").split())
         state = " ".join((game.state or "").split())
-        key = (venue_name.casefold(), (field_name or "").casefold(), city.casefold(), state.casefold())
+        key = (venue_name.casefold(), city.casefold(), state.casefold())
         latitude = game.venue_lat
         longitude = game.venue_lng
         has_point = latitude is not None and longitude is not None
@@ -324,7 +387,6 @@ def home_venues(games: list[ScheduleGame], team_ids: set[int]) -> list[ClubVenue
         if current is None:
             buckets[key] = {
                 "venue_name": venue_name,
-                "field_name": field_name,
                 "city": city,
                 "state": state,
                 "latitude": latitude if has_point else None,
@@ -333,18 +395,20 @@ def home_venues(games: list[ScheduleGame], team_ids: set[int]) -> list[ClubVenue
             }
             continue
         stored_at = current["starts_at"]
-        if has_point and (current["latitude"] is None or (isinstance(stored_at, datetime) and game.starts_at >= stored_at)):
+        newer = isinstance(stored_at, datetime) and game.starts_at >= stored_at
+        if has_point and (current["latitude"] is None or newer):
             current["latitude"] = latitude
             current["longitude"] = longitude
+        if newer:
             current["starts_at"] = game.starts_at
     ordered = sorted(
         buckets.values(),
-        key=lambda row: (str(row["venue_name"]).casefold(), str(row["field_name"] or "").casefold(), str(row["city"]).casefold()),
+        key=lambda row: (str(row["venue_name"]).casefold(), str(row["city"]).casefold(), str(row["state"]).casefold()),
     )
     return [
         ClubVenueOut(
             venue_name=str(row["venue_name"]),
-            field_name=row["field_name"] if isinstance(row["field_name"], str) else None,
+            field_name=None,
             city=str(row["city"]),
             state=str(row["state"]),
             latitude=_coord(row["latitude"]),
