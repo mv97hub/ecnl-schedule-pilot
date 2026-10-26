@@ -33,7 +33,11 @@ from app.standings import conference_rank, short_conference
 EASTERN = ZoneInfo("America/New_York")
 CLUB_LIST_LIMIT = 30
 RESULT_WINDOW_DAYS = 10
-CITY_TOKENS = frozenset({"JAX", "TLH"})
+# Old city-token URLs. The canonical pages are 1353-sporting-sa-jax and 1353-sporting-sa-tlh.
+_SLUG_ALIASES = {
+    "1353-jax": (1353, "sporting-sa-jax"),
+    "1353-tlh": (1353, "sporting-sa-tlh"),
+}
 AGE_ORDER = {"U13": 0, "U14": 1, "U15": 2, "U16": 3, "U17": 4, "U18/19": 5}
 TIER_ORDER = {"ECNL": 0, "ECNL-RL": 1}
 
@@ -151,41 +155,57 @@ class _Appearance:
     field_name: str | None
     venue_name: str
     opponent_club_id: int
-    opponent_token: str | None
+    opponent_name_key: str
     local_date: date
 
 
-def city_token(name: str) -> str | None:
-    """JAX or TLH when that city token is the last word of a squad or club name."""
+def name_key(name: str) -> str:
+    """Grouping key: the stored team name, whitespace collapsed, folded to lower case."""
 
-    parts = (name or "").split()
-    if not parts:
-        return None
-    token = parts[-1].upper()
-    if token in CITY_TOKENS:
-        return token
-    return None
+    return " ".join((name or "").split()).casefold()
 
 
-def display_name(club_name: str, token: str | None) -> str:
-    if not token or city_token(club_name) == token:
-        return club_name
-    return f"{club_name} {token}"
+def name_slug(name: str) -> str:
+    """URL suffix: the grouping key with spaces turned into hyphens."""
+
+    return name_key(name).replace(" ", "-")
+
+
+def canonical_name(names: list[str]) -> str:
+    """One spelling for a folded name. BLACK and Black share a page; the spelling with fewer capitals wins a tie."""
+
+    cleaned = [" ".join(name.split()) for name in names if " ".join((name or "").split())]
+    if not cleaned:
+        return ""
+    counts: dict[str, int] = {}
+    for name in cleaned:
+        counts[name] = counts.get(name, 0) + 1
+
+    def sort_key(name: str) -> tuple:
+        uppers = sum(1 for char in name if char.isupper())
+        return (-counts[name], uppers, name.casefold(), name)
+
+    return min(counts, key=sort_key)
 
 
 def parse_club_key(raw: str) -> tuple[int, str | None] | None:
+    """Return the club id and, when present, the name slug. Bare ids request the unsplit page."""
+
     text = (raw or "").strip()
+    alias = _SLUG_ALIASES.get(text.casefold())
+    if alias is not None:
+        return alias
     if text.isdigit():
         return int(text), None
-    head, _, tail = text.rpartition("-")
-    if head.isdigit() and tail.upper() in CITY_TOKENS:
-        return int(head), tail.upper()
+    head, sep, tail = text.partition("-")
+    if sep and head.isdigit() and tail:
+        return int(head), tail.casefold()
     return None
 
 
-def _public_id(club_id: int, token: str | None) -> int | str:
-    if token:
-        return f"{club_id}-{token.lower()}"
+def _public_id(club_id: int, slug: str | None, *, split: bool) -> int | str:
+    if split and slug:
+        return f"{club_id}-{slug}"
     return club_id
 
 
@@ -222,9 +242,9 @@ def _collect_appearances(
     games: list[ScheduleGame],
     team_ids: set[int],
     club_id: int,
-    token: str | None,
+    page_name_key: str | None,
 ) -> list[_Appearance]:
-    """One row per game this display club plays against a different club."""
+    """One row per game this name plays against a different name."""
 
     rows: list[_Appearance] = []
     seen: set[int] = set()
@@ -245,8 +265,9 @@ def _collect_appearances(
         if squad is None or opponent is None:
             continue
         opponent_club_id = opponent.club_id
-        opponent_token = city_token(opponent.name or "")
-        if opponent_club_id is None or (int(opponent_club_id) == club_id and opponent_token == token):
+        opponent_key = name_key(opponent.name or "")
+        same_club = opponent_club_id is not None and int(opponent_club_id) == club_id
+        if opponent_club_id is None or (same_club and (page_name_key is None or opponent_key == page_name_key)):
             continue
         gender = _gender(squad.gender)
         if gender is None or squad.id is None:
@@ -278,7 +299,7 @@ def _collect_appearances(
                 field_name=_field_name(game.field_name),
                 venue_name=" ".join((game.venue_name or "").split()),
                 opponent_club_id=int(opponent_club_id),
-                opponent_token=opponent_token,
+                opponent_name_key=opponent_key,
                 local_date=local_date,
             )
         )
@@ -325,15 +346,14 @@ def _span_label(days: list[date]) -> str:
     return f"{first.strftime('%b')} {first.day}\u2013{last.strftime('%b')} {last.day}"
 
 
-def _branch_token(row: _Appearance, split_clubs: set[int]) -> str | None:
-    if row.opponent_club_id in split_clubs and row.opponent_token:
-        return row.opponent_token
-    return None
+def _is_split(split_names: dict[int, set[str]], club_id: int) -> bool:
+    return len(split_names.get(club_id, ())) >= 2
 
 
-def _opponent_name(club: Club | None, club_id: int, token: str | None) -> str:
-    base = club.name if club is not None else f"Club {club_id}"
-    return display_name(base, token)
+def _opponent_public_id(club_id: int, key: str, split_names: dict[int, set[str]]) -> int | str:
+    if _is_split(split_names, club_id):
+        return f"{club_id}-{key.replace(' ', '-')}"
+    return club_id
 
 
 def group_weekends(
@@ -343,43 +363,54 @@ def group_weekends(
     club_id: int,
     *,
     today: date | None = None,
-    token: str | None = None,
-    split_clubs: set[int] | None = None,
+    page_name_key: str | None = None,
+    split_names: dict[int, set[str]] | None = None,
 ) -> tuple[list[WeekendScorecardOut], NextWeekendOut | None]:
     """Completed games from the past 10 days, and opponents over the next 10 days.
 
     The past window is today and the 10 days before it, and only games that
     already have a result. The upcoming window is every game after today through
     the next 10 days, plus a game today that has not been played. Games against
-    a squad with no club, and games inside one display club, are skipped.
+    a squad with no club, and games against the same team name, are skipped.
+    Opponent cards are labeled with that opponent's team name.
     """
 
     anchor = today or datetime.now(EASTERN).date()
-    branches = split_clubs or set()
-    appearances = _collect_appearances(games, team_ids, club_id, token)
+    names = split_names or {}
+    page_key = page_name_key
+    if page_key is None:
+        found = {
+            name_key(team.name or "")
+            for game in games
+            for team in (game.home_team, game.away_team)
+            if team is not None and team.id in team_ids and name_key(team.name or "")
+        }
+        if len(found) == 1:
+            page_key = next(iter(found))
+    appearances = _collect_appearances(games, team_ids, club_id, page_key)
     past = [row for row in appearances if _in_past(row, anchor)]
     upcoming = [row for row in appearances if _in_upcoming(row, anchor)]
-    return _scorecards(past, clubs_by_id, branches), _upcoming_block(upcoming, clubs_by_id, branches)
+    return _scorecards(past, clubs_by_id, names), _upcoming_block(upcoming, clubs_by_id, names)
 
 
 def _scorecards(
     rows: list[_Appearance],
     clubs_by_id: dict[int, Club],
-    split_clubs: set[int],
+    split_names: dict[int, set[str]],
 ) -> list[WeekendScorecardOut]:
-    grouped: dict[tuple[int, str | None], list[_Appearance]] = defaultdict(list)
+    grouped: dict[tuple[int, str], list[_Appearance]] = defaultdict(list)
     for row in rows:
-        grouped[(row.opponent_club_id, _branch_token(row, split_clubs))].append(row)
+        grouped[(row.opponent_club_id, row.opponent_name_key)].append(row)
 
     cards: list[WeekendScorecardOut] = []
-    for (opponent_club_id, branch), group in grouped.items():
+    for (opponent_club_id, key), group in grouped.items():
         group.sort(key=lambda row: (-row.local_date.toordinal(),) + _appearance_sort(row))
         club = clubs_by_id.get(opponent_club_id)
         days = [row.local_date for row in group]
         cards.append(
             WeekendScorecardOut(
-                opponent_club_id=_public_id(opponent_club_id, branch),
-                opponent_name=_opponent_name(club, opponent_club_id, branch),
+                opponent_club_id=_opponent_public_id(opponent_club_id, key, split_names),
+                opponent_name=canonical_name([row.opponent_squad_name for row in group]) or f"Club {opponent_club_id}",
                 opponent_logo_url=_logo(club.logo_url) if club is not None else None,
                 weekend_start=max(days),
                 label=_span_label(days),
@@ -404,20 +435,20 @@ def _unique_squads(rows: list[_Appearance]) -> list[_Appearance]:
 def _upcoming_block(
     rows: list[_Appearance],
     clubs_by_id: dict[int, Club],
-    split_clubs: set[int],
+    split_names: dict[int, set[str]],
 ) -> NextWeekendOut | None:
     if not rows:
         return None
-    grouped: dict[tuple[int, str | None], list[_Appearance]] = defaultdict(list)
+    grouped: dict[tuple[int, str], list[_Appearance]] = defaultdict(list)
     for row in rows:
-        grouped[(row.opponent_club_id, _branch_token(row, split_clubs))].append(row)
+        grouped[(row.opponent_club_id, row.opponent_name_key)].append(row)
     opponents: list[NextWeekendOpponentOut] = []
-    for (opponent_club_id, branch), group in grouped.items():
+    for (opponent_club_id, key), group in grouped.items():
         club = clubs_by_id.get(opponent_club_id)
         opponents.append(
             NextWeekendOpponentOut(
-                opponent_club_id=_public_id(opponent_club_id, branch),
-                opponent_name=_opponent_name(club, opponent_club_id, branch),
+                opponent_club_id=_opponent_public_id(opponent_club_id, key, split_names),
+                opponent_name=canonical_name([row.opponent_squad_name for row in group]) or f"Club {opponent_club_id}",
                 opponent_logo_url=_logo(club.logo_url) if club is not None else None,
                 squads=[
                     NextWeekendSquadOut(
@@ -526,52 +557,52 @@ def _contains(value: str) -> str:
     return f"%{escaped}%"
 
 
-def _split_club_ids(session: Session, club_ids: set[int]) -> set[int]:
-    if not club_ids:
-        return set()
+def _names_by_club(session: Session, club_ids: set[int]) -> dict[int, set[str]]:
+    """Folded team names stored on each club id."""
+
     found: dict[int, set[str]] = defaultdict(set)
+    if not club_ids:
+        return found
     rows = session.execute(select(ScheduleTeam.club_id, ScheduleTeam.name).where(ScheduleTeam.club_id.in_(club_ids)))
-    for club_id, name in rows:
+    for club_id, team_name in rows:
         if club_id is None:
             continue
-        token = city_token(name or "")
-        if token:
-            found[int(club_id)].add(token)
-    return {club_id for club_id, tokens in found.items() if len(tokens) >= 2}
+        key = name_key(team_name or "")
+        if key:
+            found[int(club_id)].add(key)
+    return found
 
 
 def _expand_clubs(session: Session, clubs: list[Club]) -> list[ClubListItemOut]:
-    """One list row per club. JAX and TLH under one AthleteOne id become two rows."""
+    """One list row per team name. A single name keeps the club's own name and numeric id."""
 
     if not clubs:
         return []
-    names_by_club: dict[int, list[str]] = defaultdict(list)
+    spellings: dict[int, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
     rows = session.execute(select(ScheduleTeam.club_id, ScheduleTeam.name).where(ScheduleTeam.club_id.in_([club.id for club in clubs])))
-    for club_id, name in rows:
-        if club_id is not None:
-            names_by_club[int(club_id)].append(name or "")
+    for club_id, team_name in rows:
+        if club_id is None:
+            continue
+        key = name_key(team_name or "")
+        if key:
+            spellings[int(club_id)][key].append(team_name or "")
     items: list[ClubListItemOut] = []
     for club in clubs:
-        names = names_by_club.get(club.id, [])
-        tokens = {token for name in names if (token := city_token(name))}
-        if len(tokens) < 2:
-            if not names:
-                continue
-            items.append(ClubListItemOut(id=club.id, name=club.name, logo_url=_logo(club.logo_url), team_count=len(names)))
-            continue
-        plain = [name for name in names if city_token(name) is None]
-        if plain:
-            items.append(ClubListItemOut(id=club.id, name=club.name, logo_url=_logo(club.logo_url), team_count=len(plain)))
-        for token in sorted(tokens):
-            count = sum(1 for name in names if city_token(name) == token)
+        grouped = spellings.get(club.id, {})
+        if len(grouped) < 2:
+            count = sum(len(names) for names in grouped.values())
             if count == 0:
                 continue
+            items.append(ClubListItemOut(id=club.id, name=club.name, logo_url=_logo(club.logo_url), team_count=count))
+            continue
+        for key, names in grouped.items():
+            label = canonical_name(names)
             items.append(
                 ClubListItemOut(
-                    id=_public_id(club.id, token),
-                    name=display_name(club.name, token),
+                    id=_public_id(club.id, name_slug(label), split=True),
+                    name=label,
                     logo_url=_logo(club.logo_url),
-                    team_count=count,
+                    team_count=len(names),
                 )
             )
     return items
@@ -620,20 +651,30 @@ def club_detail(session: Session, club_key: str) -> ClubDetailOut | None:
     parsed = parse_club_key(club_key)
     if parsed is None:
         return None
-    club_id, requested_token = parsed
+    club_id, requested_slug = parsed
     club = session.get(Club, club_id)
     if club is None:
         return None
     teams = list(session.scalars(select(ScheduleTeam).where(ScheduleTeam.club_id == club_id)).all())
-    split = len({token for team in teams if (token := city_token(team.name))}) >= 2
-    if split and requested_token is None:
+    grouped: dict[str, list[ScheduleTeam]] = defaultdict(list)
+    for team in teams:
+        key = name_key(team.name)
+        if key:
+            grouped[key].append(team)
+    split = len(grouped) >= 2
+    if split and requested_slug is None:
         return None
-    if requested_token is not None and not split:
+    if requested_slug is not None and not split:
         return None
-    if requested_token is not None:
-        teams = [team for team in teams if city_token(team.name) == requested_token]
-        if not teams:
+    page_key = ""
+    if requested_slug is not None:
+        matches = [key for key in grouped if name_slug(key) == requested_slug]
+        if len(matches) != 1:
             return None
+        page_key = matches[0]
+        teams = grouped[page_key]
+    elif grouped:
+        page_key = next(iter(grouped))
     team_ids = {int(team.id) for team in teams if team.id is not None}
     games: list[ScheduleGame] = []
     if team_ids:
@@ -654,15 +695,15 @@ def club_detail(session: Session, club_key: str) -> ClubDetailOut | None:
     if opponent_club_ids:
         for rival in session.scalars(select(Club).where(Club.id.in_(opponent_club_ids))):
             clubs_by_id[rival.id] = rival
-    split_clubs = _split_club_ids(session, opponent_club_ids | {club_id})
+    split_names = _names_by_club(session, opponent_club_ids | {club_id})
     overall, conference = accumulate_records(games, team_ids)
     weekends, upcoming = group_weekends(
         games,
         team_ids,
         clubs_by_id,
         club_id,
-        token=requested_token,
-        split_clubs=split_clubs,
+        page_name_key=page_key or None,
+        split_names=split_names,
     )
     tiers = _tiers(teams)
     conferences = _conferences(teams)
@@ -683,8 +724,8 @@ def club_detail(session: Session, club_key: str) -> ClubDetailOut | None:
             )
         )
     return ClubDetailOut(
-        id=_public_id(club.id, requested_token if split else None),
-        name=display_name(club.name, requested_token if split else None),
+        id=_public_id(club.id, name_slug(page_key) if split else None, split=split),
+        name=canonical_name([team.name for team in teams]) if split else club.name,
         logo_url=_logo(club.logo_url),
         summary=summary_line(len(squads), tiers, conferences),
         team_count=len(squads),

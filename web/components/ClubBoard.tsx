@@ -290,7 +290,7 @@ export function ClubRoute() {
 
 export function ClubBoard({ clubId }: { clubId: string }) {
   const key = clubId.trim();
-  const valid = /^\d+(?:-(?:jax|tlh))?$/i.test(key);
+  const valid = /^\d+(?:-\S.*)?$/.test(key);
   const [club, setClub] = useState<ClubDetail | null>(null);
   const [loading, setLoading] = useState(valid);
   const [error, setError] = useState<string | null>(valid ? null : "Club not found");
