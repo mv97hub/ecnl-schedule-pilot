@@ -158,11 +158,78 @@ class RecordAndWeekendTests(unittest.TestCase):
         self.assertIsNotNone(upcoming)
         assert upcoming is not None
         self.assertEqual(upcoming.weekend_start, friday)
-        self.assertEqual(upcoming.label, "Nov 6\u20138")
+        self.assertEqual(upcoming.label, "Nov 6")
         self.assertEqual([item.opponent_name for item in upcoming.opponents], ["Rival FC", "Solo FC"])
         self.assertEqual(len(upcoming.opponents[0].squads), 2)
         self.assertEqual(len(upcoming.opponents[1].squads), 1)
         self.assertEqual(upcoming.opponents[1].squads[0].age_group, "U13")
+
+    def test_ten_day_windows_keep_today_and_drop_this_weekends_past_days_from_upcoming(self) -> None:
+        today = date(2026, 10, 25)
+
+        def squad(team_id: int, club_id: int, age: str) -> ScheduleTeam:
+            return ScheduleTeam(
+                id=team_id,
+                name=f"Probe Squad {team_id}",
+                age_group=age,
+                tier="ECNL",
+                conference="ECNL Boys East",
+                city="Jacksonville",
+                state="FL",
+                gender="boys",
+                club_id=club_id,
+            )
+
+        def match(game_id: int, home: ScheduleTeam, away: ScheduleTeam, day: date, status: str = "SCHEDULED", home_score: int | None = None, away_score: int | None = None) -> ScheduleGame:
+            game = ScheduleGame(
+                id=game_id,
+                home_team_id=int(home.id),
+                away_team_id=int(away.id),
+                starts_at=_kick(day, 10),
+                venue_name="Park",
+                city="Jacksonville",
+                state="FL",
+                timezone="America/New_York",
+                status=status,
+                home_score=home_score,
+                away_score=away_score,
+                is_conference_game=True,
+            )
+            game.home_team = home
+            game.away_team = away
+            return game
+
+        ours = squad(1, 7, "U13")
+        rival = squad(10, 50, "U13")
+        edge = squad(11, 51, "U13")
+        beyond = squad(12, 52, "U13")
+        games = [
+            match(1, ours, rival, today - timedelta(days=11), "COMPLETED", 1, 0),
+            match(2, ours, rival, today - timedelta(days=10), "COMPLETED", 2, 0),
+            match(3, ours, rival, date(2026, 10, 23), "COMPLETED", 3, 1),
+            match(4, ours, rival, date(2026, 10, 24), "COMPLETED", 1, 0),
+            match(5, ours, rival, today, "COMPLETED", 4, 0),
+            match(6, ours, rival, today),
+            match(7, ours, edge, today + timedelta(days=10)),
+            match(8, ours, beyond, today + timedelta(days=11)),
+        ]
+        clubs = {
+            50: Club(id=50, name="Rival FC", logo_url=None),
+            51: Club(id=51, name="Edge FC", logo_url=None),
+            52: Club(id=52, name="Beyond FC", logo_url=None),
+        }
+        cards, upcoming = group_weekends(games, {1}, clubs, 7, today=today)
+        played = [row.played_on for card in cards for row in card.squads]
+        self.assertEqual(played, [today, date(2026, 10, 24), date(2026, 10, 23), today - timedelta(days=10)])
+        self.assertNotIn(today - timedelta(days=11), played)
+        self.assertIsNotNone(upcoming)
+        assert upcoming is not None
+        by_name = {item.opponent_name: [row.game_date for row in item.squads] for item in upcoming.opponents}
+        self.assertEqual(by_name["Rival FC"], [today])
+        self.assertEqual(by_name["Edge FC"], [today + timedelta(days=10)])
+        self.assertNotIn("Beyond FC", by_name)
+        self.assertNotIn(date(2026, 10, 23), [day for days in by_name.values() for day in days])
+        self.assertNotIn(date(2026, 10, 24), [day for days in by_name.values() for day in days])
 
 
 class ClubRouteTests(unittest.TestCase):
@@ -208,13 +275,13 @@ class ClubRouteTests(unittest.TestCase):
 
     def test_detail_record_weekends_and_search(self) -> None:
         today = datetime.now(EASTERN).date()
-        coming = _next_friday(today)
-        recent = coming - timedelta(days=14)
-        single = coming - timedelta(days=21)
-        nomads = coming - timedelta(days=28)
-        wednesday = coming - timedelta(days=2)
-        tuesday = recent - timedelta(days=3)
-        thursday = coming - timedelta(days=1)
+        coming = today + timedelta(days=4)
+        recent = today - timedelta(days=2)
+        single = today - timedelta(days=20)
+        nomads = today - timedelta(days=16)
+        wednesday = today - timedelta(days=4)
+        tuesday = today - timedelta(days=12)
+        thursday = today + timedelta(days=1)
 
         with Session(engine) as session:
             session.add_all(
@@ -444,17 +511,18 @@ class ClubRouteTests(unittest.TestCase):
         self.assertEqual(recent_card["weekend_start"], recent.isoformat())
         self.assertEqual((recent_card["wins"], recent_card["losses"], recent_card["draws"]), (1, 1, 0))
         self.assertEqual(
-            [(row["age_group"], row["gender"], row["tier"], row["result"], row["opponent_squad_name"], row["goals_for"], row["goals_against"]) for row in recent_card["squads"]],
+            [(row["age_group"], row["gender"], row["tier"], row["result"], row["opponent_squad_name"], row["goals_for"], row["goals_against"], row["played_on"]) for row in recent_card["squads"]],
             [
-                ("U13", "boys", "ECNL", "W", "Probe Club Page Rival U13", 2, 0),
-                ("U14", "boys", "ECNL-RL", "L", "Probe Club Page Rival U14", 0, 1),
+                ("U13", "boys", "ECNL", "W", "Probe Club Page Rival U13", 2, 0, recent.isoformat()),
+                ("U14", "boys", "ECNL-RL", "L", "Probe Club Page Rival U14", 0, 1, recent.isoformat()),
             ],
         )
-        self.assertNotIn(single.isoformat(), [card["weekend_start"] for card in body["weekends"]])
-        self.assertNotIn(coming.isoformat(), [card["weekend_start"] for card in body["weekends"]])
+        past_days = [row["played_on"] for card in body["weekends"] for row in card["squads"]]
+        self.assertTrue(all(row >= (today - timedelta(days=10)).isoformat() for row in past_days))
+        self.assertNotIn(single.isoformat(), past_days)
+        self.assertNotIn(tuesday.isoformat(), past_days)
 
-        upcoming = body["next_weekend"]
-        self.assertEqual(upcoming["weekend_start"], coming.isoformat())
+        upcoming = body["upcoming"]
         self.assertEqual([item["opponent_name"] for item in upcoming["opponents"]], ["Probe Club Page Other", "Probe Club Page Rival"])
         self.assertEqual(
             [(row["age_group"], row["gender"], row["tier"]) for row in upcoming["opponents"][0]["squads"]],
@@ -462,10 +530,12 @@ class ClubRouteTests(unittest.TestCase):
         )
         self.assertEqual(
             [(row["age_group"], row["gender"], row["tier"]) for row in upcoming["opponents"][1]["squads"]],
-            [("U13", "boys", "ECNL"), ("U13", "girls", "ECNL")],
+            [("U13", "boys", "ECNL"), ("U13", "girls", "ECNL"), ("U16", "boys", "ECNL")],
         )
-        played_ages = [row["age_group"] for item in upcoming["opponents"] for row in item["squads"]]
-        self.assertNotIn("U16", played_ages)
+        upcoming_days = [row["game_date"] for item in upcoming["opponents"] for row in item["squads"]]
+        self.assertTrue(all(day > today.isoformat() for day in upcoming_days))
+        self.assertIn(thursday.isoformat(), upcoming_days)
+        self.assertIn(coming.isoformat(), upcoming_days)
 
         venue_names = [venue["venue_name"] for venue in body["venues"]]
         self.assertEqual(venue_names, ["Probe Annex", "Probe Complex"])
@@ -487,6 +557,126 @@ class ClubRouteTests(unittest.TestCase):
         self.assertEqual(empty.json(), [])
         self.assertEqual(schedule.status_code, 200)
         self.assertEqual(schedule.json()["club_id"], CLUB_ID)
+
+    def test_jax_and_tlh_on_one_club_id_become_two_pages(self) -> None:
+        """One AthleteOne id that names both cities is two clubs. Age groups alone stay one club."""
+
+        split_id = 8801201
+        ages_id = 8801202
+        today = datetime.now(EASTERN).date()
+        played = today - timedelta(days=1)
+        older = today - timedelta(days=11)
+        coming = today + timedelta(days=1)
+        with Session(engine) as session:
+            session.add_all(
+                (
+                    Club(id=split_id, name="Probe Club Page Split", logo_url="https://example.com/probe-split.png", parent_club_id=None),
+                    Club(id=ages_id, name="Probe Club Page Ages", logo_url=None, parent_club_id=None),
+                )
+            )
+            session.flush()
+
+            def add_team(name: str, age: str, club_id: int) -> ScheduleTeam:
+                team = ScheduleTeam(
+                    name=name,
+                    age_group=age,
+                    tier="ECNL",
+                    conference="ECNL Boys Probe Club Page East",
+                    city="St Johns",
+                    state="FL",
+                    gender="boys",
+                    club_id=club_id,
+                )
+                session.add(team)
+                session.flush()
+                return team
+
+            jax = add_team("Probe Club Page Split JAX", "U13", split_id)
+            tlh = add_team("Probe Club Page Split TLH", "U14", split_id)
+            add_team("Probe Club Page Ages U13", "U13", ages_id)
+            add_team("Probe Club Page Ages U15", "U15", ages_id)
+
+            def add_game(home: ScheduleTeam, away: ScheduleTeam, day: date, status: str, home_score: int | None, away_score: int | None, venue: str, city: str) -> None:
+                session.add(
+                    ScheduleGame(
+                        home_team_id=int(home.id),
+                        away_team_id=int(away.id),
+                        starts_at=_kick(day, 11),
+                        venue_name=venue,
+                        city=city,
+                        state="FL",
+                        timezone="America/New_York",
+                        status=status,
+                        home_score=home_score,
+                        away_score=away_score,
+                        is_conference_game=True,
+                        field_name="Pitch 1",
+                    )
+                )
+
+            add_game(jax, tlh, played, "COMPLETED", 2, 0, "Jax Park", "Jacksonville")
+            add_game(jax, tlh, older, "COMPLETED", 1, 0, "Jax Park", "Jacksonville")
+            add_game(tlh, jax, coming, "SCHEDULED", None, None, "Tallahassee Park", "Tallahassee")
+            session.commit()
+            jax_team_id = int(jax.id)
+            tlh_team_id = int(tlh.id)
+
+        with TestClient(app) as client:
+            found = client.get("/clubs", params={"q": "Probe Club Page Split"})
+            jax_only = client.get("/clubs", params={"q": "Probe Club Page Split JAX"})
+            ages = client.get("/clubs", params={"q": "Probe Club Page Ages"})
+            merged = client.get(f"/clubs/{split_id}")
+            jax_page = client.get(f"/clubs/{split_id}-jax")
+            tlh_page = client.get(f"/clubs/{split_id}-tlh")
+            ages_page = client.get(f"/clubs/{ages_id}")
+            ages_token = client.get(f"/clubs/{ages_id}-jax")
+
+        self.assertEqual(merged.status_code, 404)
+        self.assertEqual(ages_token.status_code, 404)
+        self.assertEqual(found.status_code, 200)
+        self.assertEqual(
+            [(row["id"], row["name"], row["team_count"]) for row in found.json()],
+            [(f"{split_id}-jax", "Probe Club Page Split JAX", 1), (f"{split_id}-tlh", "Probe Club Page Split TLH", 1)],
+        )
+        self.assertEqual(jax_only.json()[0]["id"], f"{split_id}-jax")
+        self.assertEqual(len(jax_only.json()), 1)
+        self.assertEqual([(row["id"], row["name"], row["team_count"]) for row in ages.json()], [(ages_id, "Probe Club Page Ages", 2)])
+
+        self.assertEqual(ages_page.status_code, 200)
+        self.assertEqual(ages_page.json()["id"], ages_id)
+        self.assertEqual(ages_page.json()["name"], "Probe Club Page Ages")
+        self.assertEqual(sorted(squad["age_group"] for squad in ages_page.json()["squads"]), ["U13", "U15"])
+
+        self.assertEqual(jax_page.status_code, 200)
+        jax_body = jax_page.json()
+        self.assertEqual(jax_body["id"], f"{split_id}-jax")
+        self.assertEqual(jax_body["name"], "Probe Club Page Split JAX")
+        self.assertEqual(jax_body["logo_url"], "https://example.com/probe-split.png")
+        self.assertEqual([squad["id"] for squad in jax_body["squads"]], [jax_team_id])
+        self.assertEqual(jax_body["record"], {"wins": 2, "losses": 0, "draws": 0, "goal_diff": 3})
+        self.assertEqual([venue["venue_name"] for venue in jax_body["venues"]], ["Jax Park"])
+        self.assertEqual(len(jax_body["weekends"]), 1)
+        self.assertEqual(jax_body["weekends"][0]["opponent_name"], "Probe Club Page Split TLH")
+        self.assertEqual(jax_body["weekends"][0]["opponent_club_id"], f"{split_id}-tlh")
+        self.assertEqual(
+            [(row["result"], row["opponent_squad_name"], row["goals_for"], row["goals_against"], row["played_on"]) for row in jax_body["weekends"][0]["squads"]],
+            [("W", "Probe Club Page Split TLH", 2, 0, played.isoformat())],
+        )
+        self.assertNotIn(older.isoformat(), [row["played_on"] for card in jax_body["weekends"] for row in card["squads"]])
+        jax_upcoming = jax_body["upcoming"]
+        self.assertEqual([item["opponent_name"] for item in jax_upcoming["opponents"]], ["Probe Club Page Split TLH"])
+        self.assertEqual([row["game_date"] for item in jax_upcoming["opponents"] for row in item["squads"]], [coming.isoformat()])
+
+        self.assertEqual(tlh_page.status_code, 200)
+        tlh_body = tlh_page.json()
+        self.assertEqual(tlh_body["name"], "Probe Club Page Split TLH")
+        self.assertEqual([squad["id"] for squad in tlh_body["squads"]], [tlh_team_id])
+        self.assertEqual(tlh_body["record"], {"wins": 0, "losses": 2, "draws": 0, "goal_diff": -3})
+        self.assertEqual([venue["venue_name"] for venue in tlh_body["venues"]], ["Tallahassee Park"])
+        self.assertEqual(tlh_body["weekends"][0]["opponent_name"], "Probe Club Page Split JAX")
+        self.assertEqual(tlh_body["weekends"][0]["squads"][0]["result"], "L")
+        self.assertEqual(tlh_body["weekends"][0]["squads"][0]["played_on"], played.isoformat())
+        self.assertEqual([row["game_date"] for item in tlh_body["upcoming"]["opponents"] for row in item["squads"]], [coming.isoformat()])
 
     def test_empty_query_is_capped_to_clubs_with_teams(self) -> None:
         from app import clubs as clubs_module

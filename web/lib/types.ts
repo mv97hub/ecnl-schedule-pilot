@@ -57,7 +57,7 @@ export type ScheduleResponse = {
 };
 
 export type ClubListItem = {
-  id: number;
+  id: number | string;
   name: string;
   logo_url?: string | null;
   team_count: number;
@@ -102,6 +102,7 @@ export type WeekendSquad = {
   goals_against: number | null;
   field_name: string | null;
   venue_name: string;
+  played_on: string;
 };
 
 export type NextWeekendSquad = {
@@ -109,10 +110,11 @@ export type NextWeekendSquad = {
   age_group: string;
   gender: "boys" | "girls";
   tier: string;
+  game_date: string;
 };
 
 export type NextWeekendOpponent = {
-  opponent_club_id: number;
+  opponent_club_id: number | string;
   opponent_name: string;
   opponent_logo_url?: string | null;
   squads: NextWeekendSquad[];
@@ -125,7 +127,7 @@ export type NextWeekend = {
 };
 
 export type WeekendScorecard = {
-  opponent_club_id: number;
+  opponent_club_id: number | string;
   opponent_name: string;
   opponent_logo_url?: string | null;
   weekend_start: string;
@@ -138,7 +140,7 @@ export type WeekendScorecard = {
 };
 
 export type ClubDetail = {
-  id: number;
+  id: number | string;
   name: string;
   logo_url?: string | null;
   summary: string;
@@ -150,7 +152,7 @@ export type ClubDetail = {
   squads: ClubSquad[];
   venues: ClubVenue[];
   weekends: WeekendScorecard[];
-  next_weekend: NextWeekend | null;
+  upcoming: NextWeekend | null;
 };
 
 export type StandingRow = {

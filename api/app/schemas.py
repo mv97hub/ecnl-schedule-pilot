@@ -232,7 +232,7 @@ class HeadToHeadOut(BaseModel):
 
 
 class ClubListItemOut(BaseModel):
-    id: int
+    id: int | str
     name: str
     logo_url: str | None = None
     team_count: int
@@ -277,10 +277,11 @@ class WeekendSquadOut(BaseModel):
     goals_against: int | None = None
     field_name: str | None = None
     venue_name: str
+    played_on: date
 
 
 class WeekendScorecardOut(BaseModel):
-    opponent_club_id: int
+    opponent_club_id: int | str
     opponent_name: str
     opponent_logo_url: str | None = None
     weekend_start: date
@@ -297,10 +298,11 @@ class NextWeekendSquadOut(BaseModel):
     age_group: str
     gender: Literal["boys", "girls"]
     tier: str
+    game_date: date
 
 
 class NextWeekendOpponentOut(BaseModel):
-    opponent_club_id: int
+    opponent_club_id: int | str
     opponent_name: str
     opponent_logo_url: str | None = None
     squads: list[NextWeekendSquadOut]
@@ -313,7 +315,7 @@ class NextWeekendOut(BaseModel):
 
 
 class ClubDetailOut(BaseModel):
-    id: int
+    id: int | str
     name: str
     logo_url: str | None = None
     summary: str
@@ -325,4 +327,4 @@ class ClubDetailOut(BaseModel):
     squads: list[ClubSquadOut]
     venues: list[ClubVenueOut]
     weekends: list[WeekendScorecardOut]
-    next_weekend: NextWeekendOut | None = None
+    upcoming: NextWeekendOut | None = None

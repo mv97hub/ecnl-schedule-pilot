@@ -18,9 +18,9 @@ def list_clubs(
     return search_clubs(session, q)
 
 
-@router.get("/clubs/{club_id}", response_model=ClubDetailOut)
-def read_club(club_id: int, session: Annotated[Session, Depends(get_session)]) -> ClubDetailOut:
-    detail = club_detail(session, club_id)
+@router.get("/clubs/{club_key}", response_model=ClubDetailOut)
+def read_club(club_key: str, session: Annotated[Session, Depends(get_session)]) -> ClubDetailOut:
+    detail = club_detail(session, club_key)
     if detail is None:
         raise HTTPException(status_code=404, detail="Club not found")
     return detail

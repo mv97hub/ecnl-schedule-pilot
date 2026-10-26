@@ -34,8 +34,8 @@ export function fetchClubs(q?: string): Promise<ClubListItem[]> {
   return request<ClubListItem[]>(`/clubs${query ? `?${query}` : ""}`);
 }
 
-export function fetchClub(clubId: number): Promise<ClubDetail> {
-  return request<ClubDetail>(`/clubs/${clubId}`);
+export function fetchClub(clubKey: string): Promise<ClubDetail> {
+  return request<ClubDetail>(`/clubs/${encodeURIComponent(clubKey)}`);
 }
 
 export function fetchHeadToHead(teamAId: number, teamBId: number, conferenceOnly: boolean): Promise<HeadToHeadReport> {

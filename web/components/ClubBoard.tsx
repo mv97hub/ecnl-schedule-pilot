@@ -63,6 +63,12 @@ function squadPhrase(squad: { age_group: string; gender: "boys" | "girls"; tier:
   return `${squad.age_group} ${sideWord(squad.gender)} ${squad.tier}`;
 }
 
+function formatDay(iso: string): string {
+  const [year, month, day] = iso.slice(0, 10).split("-").map(Number);
+  if (!year || !month || !day) return iso;
+  return new Date(year, month - 1, day).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function resultRest(row: WeekendSquad): string {
   const score = row.goals_for != null && row.goals_against != null ? `${row.goals_for}\u2013${row.goals_against}` : "";
   const opponent = row.opponent_squad_name;
@@ -148,11 +154,12 @@ function WeekendCard({ card }: { card: WeekendScorecard }) {
       </div>
       <ul className="mt-3">
         {card.squads.map((row) => (
-          <li key={row.game_id} data-score-line className="border-t border-stone-100 py-2.5 text-sm text-stone-800">
+          <li key={row.game_id} data-score-line data-played-on={row.played_on} className="border-t border-stone-100 py-2.5 text-sm text-stone-800">
             <Link href={`/?team=${row.team_id}`} data-team-id={row.team_id} className="font-medium text-emerald-900 underline-offset-4 hover:underline">
               {row.age_group}
             </Link>{" "}
             {resultRest(row)}
+            <span className="text-stone-500"> · {formatDay(row.played_on)}</span>
           </li>
         ))}
       </ul>
@@ -160,30 +167,31 @@ function WeekendCard({ card }: { card: WeekendScorecard }) {
   );
 }
 
-function NextWeekendBox({ club }: { club: ClubDetail }) {
-  const weekend = club.next_weekend;
+function UpcomingBox({ club }: { club: ClubDetail }) {
+  const upcoming = club.upcoming;
   return (
-    <section className="mt-8" aria-label="Next weekend">
-      <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">Next weekend</h2>
-      {weekend == null || weekend.opponents.length === 0 ? (
-        <p className="mt-3 text-sm text-stone-500">No upcoming weekend.</p>
+    <section className="mt-8" aria-label="Upcoming 10 days">
+      <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">Upcoming 10 days</h2>
+      {upcoming == null || upcoming.opponents.length === 0 ? (
+        <p className="mt-3 text-sm text-stone-500">No games in the next 10 days.</p>
       ) : (
-        <article data-next-weekend={weekend.label} className="mt-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
-          <p className="text-sm text-stone-500">{weekend.label}</p>
+        <article data-upcoming={upcoming.label} className="mt-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+          <p className="text-sm text-stone-500">{upcoming.label}</p>
           <ul className="mt-2">
-            {weekend.opponents.map((opponent) => (
-              <li key={opponent.opponent_club_id} data-next-opponent={opponent.opponent_name} className="border-t border-stone-100 py-3 first:border-t-0">
+            {upcoming.opponents.map((opponent) => (
+              <li key={opponent.opponent_club_id} data-upcoming-opponent={opponent.opponent_name} className="border-t border-stone-100 py-3 first:border-t-0">
                 <div className="flex items-start gap-3">
                   <ClubMark name={opponent.opponent_name} src={opponent.opponent_logo_url} />
                   <div className="min-w-0">
                     <h3 className="text-base font-semibold leading-snug text-stone-950">{opponent.opponent_name}</h3>
                     <p className="mt-1 text-sm text-stone-700">
                       {opponent.squads.map((squad, index) => (
-                        <span key={squad.team_id}>
+                        <span key={squad.team_id} data-game-date={squad.game_date}>
                           {index > 0 ? ", " : ""}
                           <Link href={`/?team=${squad.team_id}`} data-team-id={squad.team_id} className="font-medium text-emerald-900 underline-offset-4 hover:underline">
                             {squadPhrase(squad)}
                           </Link>
+                          <span className="text-stone-500"> · {formatDay(squad.game_date)}</span>
                         </span>
                       ))}
                     </p>
@@ -260,7 +268,7 @@ export function ClubSearch() {
                 <Link href={`/clubs/${club.id}`} className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm hover:border-emerald-700">
                   <ClubMark name={club.name} src={club.logo_url} />
                   <span className="min-w-0">
-                    <span className="block truncate font-semibold text-stone-950">{club.name}</span>
+                    <span className="block font-semibold text-stone-950">{club.name}</span>
                     <span className="block text-sm text-stone-500">{countWord(club.team_count, "team", "teams")}</span>
                   </span>
                 </Link>
@@ -281,8 +289,8 @@ export function ClubRoute() {
 }
 
 export function ClubBoard({ clubId }: { clubId: string }) {
-  const id = Number(clubId);
-  const valid = Number.isInteger(id) && id > 0;
+  const key = clubId.trim();
+  const valid = /^\d+(?:-(?:jax|tlh))?$/i.test(key);
   const [club, setClub] = useState<ClubDetail | null>(null);
   const [loading, setLoading] = useState(valid);
   const [error, setError] = useState<string | null>(valid ? null : "Club not found");
@@ -293,7 +301,7 @@ export function ClubBoard({ clubId }: { clubId: string }) {
     setLoading(true);
     setClub(null);
     setError(null);
-    fetchClub(id)
+    fetchClub(key)
       .then((payload) => {
         if (!active) return;
         setClub(payload);
@@ -311,7 +319,7 @@ export function ClubBoard({ clubId }: { clubId: string }) {
     return () => {
       active = false;
     };
-  }, [id, valid]);
+  }, [key, valid]);
 
   return (
     <div className="min-h-full bg-stone-100">
@@ -360,10 +368,10 @@ export function ClubBoard({ clubId }: { clubId: string }) {
 
             <TeamRanks squads={club.squads} />
 
-            <section className="mt-8" aria-label="Weekend scorecard">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">Weekend scorecard</h2>
+            <section className="mt-8" aria-label="Past 10 days">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">Past 10 days</h2>
               {club.weekends.length === 0 ? (
-                <p className="mt-3 text-sm text-stone-500">No completed weekend with two or more squads against the same club.</p>
+                <p className="mt-3 text-sm text-stone-500">No completed games in the past 10 days.</p>
               ) : (
                 <div className="mt-3 grid grid-cols-1 gap-3">
                   {club.weekends.map((card) => (
@@ -373,7 +381,7 @@ export function ClubBoard({ clubId }: { clubId: string }) {
               )}
             </section>
 
-            <NextWeekendBox club={club} />
+            <UpcomingBox club={club} />
 
             <section className="mt-8" aria-label="Fields">
               <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">Fields</h2>
