@@ -74,10 +74,10 @@ class RecordAndWeekendTests(unittest.TestCase):
         self.assertEqual(game_local_date(moment, None), local)
 
     def test_completed_pair_is_a_scorecard_and_one_squad_stays_on_next_weekend(self) -> None:
-        def squad(team_id: int, club_id: int | None, age: str, gender: str = "boys") -> ScheduleTeam:
+        def squad(team_id: int, club_id: int | None, age: str, gender: str = "boys", name: str | None = None) -> ScheduleTeam:
             return ScheduleTeam(
                 id=team_id,
-                name=f"Probe Squad {team_id}",
+                name=name or f"Probe Squad {team_id}",
                 age_group=age,
                 tier="ECNL",
                 conference="ECNL Boys East",
@@ -118,13 +118,13 @@ class RecordAndWeekendTests(unittest.TestCase):
         friday = date(2026, 11, 6)
         earlier = date(2026, 10, 30)
         lone = date(2026, 10, 23)
-        ours_u13 = squad(1, 7, "U13")
-        ours_u14 = squad(2, 7, "U14")
-        rival_u13 = squad(10, 50, "U13")
-        rival_u14 = squad(11, 50, "U14")
+        ours_u13 = squad(1, 7, "U13", name="Home FC")
+        ours_u14 = squad(2, 7, "U14", name="Home FC")
+        rival_u13 = squad(10, 50, "U13", name="Rival FC")
+        rival_u14 = squad(11, 50, "U14", name="Rival FC")
         nomad_u13 = squad(12, None, "U13")
         nomad_u14 = squad(13, None, "U14")
-        solo_u13 = squad(20, 60, "U13")
+        solo_u13 = squad(20, 60, "U13", name="Solo FC")
         games = [
             match(1, ours_u13, rival_u13, friday, 10),
             match(2, ours_u14, rival_u14, friday, 12),
@@ -152,7 +152,7 @@ class RecordAndWeekendTests(unittest.TestCase):
         self.assertEqual([row.age_group for row in cards[0].squads], ["U13", "U14"])
         self.assertEqual(cards[0].squads[0].result, "W")
         self.assertEqual(cards[0].squads[0].tier, "ECNL")
-        self.assertEqual(cards[0].squads[0].opponent_squad_name, "Probe Squad 10")
+        self.assertEqual(cards[0].squads[0].opponent_squad_name, "Rival FC")
         self.assertNotIn(friday, [card.weekend_start for card in cards])
         self.assertNotIn(lone, [card.weekend_start for card in cards])
         self.assertIsNotNone(upcoming)
@@ -167,10 +167,10 @@ class RecordAndWeekendTests(unittest.TestCase):
     def test_ten_day_windows_keep_today_and_drop_this_weekends_past_days_from_upcoming(self) -> None:
         today = date(2026, 10, 25)
 
-        def squad(team_id: int, club_id: int, age: str) -> ScheduleTeam:
+        def squad(team_id: int, club_id: int, age: str, name: str) -> ScheduleTeam:
             return ScheduleTeam(
                 id=team_id,
-                name=f"Probe Squad {team_id}",
+                name=name,
                 age_group=age,
                 tier="ECNL",
                 conference="ECNL Boys East",
@@ -199,10 +199,10 @@ class RecordAndWeekendTests(unittest.TestCase):
             game.away_team = away
             return game
 
-        ours = squad(1, 7, "U13")
-        rival = squad(10, 50, "U13")
-        edge = squad(11, 51, "U13")
-        beyond = squad(12, 52, "U13")
+        ours = squad(1, 7, "U13", "Home FC")
+        rival = squad(10, 50, "U13", "Rival FC")
+        edge = squad(11, 51, "U13", "Edge FC")
+        beyond = squad(12, 52, "U13", "Beyond FC")
         games = [
             match(1, ours, rival, today - timedelta(days=11), "COMPLETED", 1, 0),
             match(2, ours, rival, today - timedelta(days=10), "COMPLETED", 2, 0),
@@ -312,20 +312,20 @@ class ClubRouteTests(unittest.TestCase):
             east = "ECNL Boys Probe Club Page East"
             south = "ECNL RL Boys Probe Club Page South"
             west = "ECNL Girls Probe Club Page West"
-            u13 = add_team("Probe Club Page U13", "U13", "boys", "ECNL", east, CLUB_ID)
-            u13_rl = add_team("Probe Club Page U13 RL", "U13", "boys", "ECNL-RL", south, CLUB_ID)
-            u14 = add_team("Probe Club Page U14", "U14", "boys", "ECNL-RL", south, CLUB_ID)
-            u15 = add_team("Probe Club Page U15", "U15", "boys", "ECNL", east, CLUB_ID)
-            u16 = add_team("Probe Club Page U16", "U16", "boys", "ECNL", east, CLUB_ID)
-            g13 = add_team("Probe Club Page G13", "U13", "girls", "ECNL", west, CLUB_ID)
-            g17 = add_team("Probe Club Page G17", "U17", "girls", "ECNL", west, CLUB_ID)
-            rival_u13 = add_team("Probe Club Page Rival U13", "U13", "boys", "ECNL", east, RIVAL_ID)
-            rival_u14 = add_team("Probe Club Page Rival U14", "U14", "boys", "ECNL-RL", south, RIVAL_ID)
-            rival_g13 = add_team("Probe Club Page Rival G13", "U13", "girls", "ECNL", west, RIVAL_ID)
-            rival_u16 = add_team("Probe Club Page Rival U16", "U16", "boys", "ECNL", east, RIVAL_ID)
-            other_u15 = add_team("Probe Club Page Other U15", "U15", "boys", "ECNL", east, OTHER_ID)
-            other_u14 = add_team("Probe Club Page Other U14", "U14", "boys", "ECNL-RL", south, OTHER_ID)
-            other_g17 = add_team("Probe Club Page Other G17", "U17", "girls", "ECNL", west, OTHER_ID)
+            u13 = add_team("Probe Club Page FC", "U13", "boys", "ECNL", east, CLUB_ID)
+            u13_rl = add_team("Probe Club Page FC", "U13", "boys", "ECNL-RL", south, CLUB_ID)
+            u14 = add_team("Probe Club Page FC", "U14", "boys", "ECNL-RL", south, CLUB_ID)
+            u15 = add_team("Probe Club Page FC", "U15", "boys", "ECNL", east, CLUB_ID)
+            u16 = add_team("Probe Club Page FC", "U16", "boys", "ECNL", east, CLUB_ID)
+            g13 = add_team("Probe Club Page FC", "U13", "girls", "ECNL", west, CLUB_ID)
+            g17 = add_team("Probe Club Page FC", "U17", "girls", "ECNL", west, CLUB_ID)
+            rival_u13 = add_team("Probe Club Page Rival", "U13", "boys", "ECNL", east, RIVAL_ID)
+            rival_u14 = add_team("Probe Club Page Rival", "U14", "boys", "ECNL-RL", south, RIVAL_ID)
+            rival_g13 = add_team("Probe Club Page Rival", "U13", "girls", "ECNL", west, RIVAL_ID)
+            rival_u16 = add_team("Probe Club Page Rival", "U16", "boys", "ECNL", east, RIVAL_ID)
+            other_u15 = add_team("Probe Club Page Other", "U15", "boys", "ECNL", east, OTHER_ID)
+            other_u14 = add_team("Probe Club Page Other", "U14", "boys", "ECNL-RL", south, OTHER_ID)
+            other_g17 = add_team("Probe Club Page Other", "U17", "girls", "ECNL", west, OTHER_ID)
             nomad_u15 = add_team("Probe Club Page Nomad U15", "U15", "boys", "ECNL", east, None)
             nomad_u16 = add_team("Probe Club Page Nomad U16", "U16", "boys", "ECNL", east, None)
 
@@ -484,6 +484,7 @@ class ClubRouteTests(unittest.TestCase):
         self.assertEqual(missing.status_code, 404)
         self.assertEqual(detail.status_code, 200)
         body = detail.json()
+        self.assertEqual(body["id"], CLUB_ID)
         self.assertEqual(body["name"], "Probe Club Page FC")
         self.assertEqual(body["logo_url"], "https://example.com/probe-club.png")
         self.assertEqual(body["team_count"], 7)
@@ -513,8 +514,8 @@ class ClubRouteTests(unittest.TestCase):
         self.assertEqual(
             [(row["age_group"], row["gender"], row["tier"], row["result"], row["opponent_squad_name"], row["goals_for"], row["goals_against"], row["played_on"]) for row in recent_card["squads"]],
             [
-                ("U13", "boys", "ECNL", "W", "Probe Club Page Rival U13", 2, 0, recent.isoformat()),
-                ("U14", "boys", "ECNL-RL", "L", "Probe Club Page Rival U14", 0, 1, recent.isoformat()),
+                ("U13", "boys", "ECNL", "W", "Probe Club Page Rival", 2, 0, recent.isoformat()),
+                ("U14", "boys", "ECNL-RL", "L", "Probe Club Page Rival", 0, 1, recent.isoformat()),
             ],
         )
         past_days = [row["played_on"] for card in body["weekends"] for row in card["squads"]]
@@ -558,25 +559,30 @@ class ClubRouteTests(unittest.TestCase):
         self.assertEqual(schedule.status_code, 200)
         self.assertEqual(schedule.json()["club_id"], CLUB_ID)
 
-    def test_jax_and_tlh_on_one_club_id_become_two_pages(self) -> None:
-        """One AthleteOne id that names both cities is two clubs. Age groups alone stay one club."""
+    def test_distinct_team_names_are_separate_pages_and_case_folds(self) -> None:
+        """One stored name is one page. Ages stay together. BLACK and Black share a page."""
 
         split_id = 8801201
         ages_id = 8801202
+        tone_id = 8801203
         today = datetime.now(EASTERN).date()
         played = today - timedelta(days=1)
         older = today - timedelta(days=11)
         coming = today + timedelta(days=1)
+        north_slug = f"{split_id}-probe-club-page-north"
+        south_slug = f"{split_id}-probe-club-page-south"
+        black_slug = f"{tone_id}-probe-club-page-tone-black"
         with Session(engine) as session:
             session.add_all(
                 (
                     Club(id=split_id, name="Probe Club Page Split", logo_url="https://example.com/probe-split.png", parent_club_id=None),
                     Club(id=ages_id, name="Probe Club Page Ages", logo_url=None, parent_club_id=None),
+                    Club(id=tone_id, name="Probe Club Page Tone Parent", logo_url="https://example.com/probe-tone.png", parent_club_id=None),
                 )
             )
             session.flush()
 
-            def add_team(name: str, age: str, club_id: int) -> ScheduleTeam:
+            def add_team(name: str, age: str, club_id: int, gender: str = "boys") -> ScheduleTeam:
                 team = ScheduleTeam(
                     name=name,
                     age_group=age,
@@ -584,17 +590,21 @@ class ClubRouteTests(unittest.TestCase):
                     conference="ECNL Boys Probe Club Page East",
                     city="St Johns",
                     state="FL",
-                    gender="boys",
+                    gender=gender,
                     club_id=club_id,
                 )
                 session.add(team)
                 session.flush()
                 return team
 
-            jax = add_team("Probe Club Page Split JAX", "U13", split_id)
-            tlh = add_team("Probe Club Page Split TLH", "U14", split_id)
-            add_team("Probe Club Page Ages U13", "U13", ages_id)
-            add_team("Probe Club Page Ages U15", "U15", ages_id)
+            north_u13 = add_team("Probe Club Page North", "U13", split_id)
+            north_u15 = add_team("Probe Club Page North", "U15", split_id, gender="girls")
+            south = add_team("Probe Club Page South", "U14", split_id)
+            add_team("Probe Club Page Ages", "U13", ages_id)
+            add_team("Probe Club Page Ages", "U15", ages_id, gender="girls")
+            black = add_team("Probe Club Page Tone BLACK", "U13", tone_id)
+            mixed = add_team("Probe Club Page Tone Black", "U14", tone_id)
+            add_team("Probe Club Page Tone", "U15", tone_id)
 
             def add_game(home: ScheduleTeam, away: ScheduleTeam, day: date, status: str, home_score: int | None, away_score: int | None, venue: str, city: str) -> None:
                 session.add(
@@ -614,69 +624,90 @@ class ClubRouteTests(unittest.TestCase):
                     )
                 )
 
-            add_game(jax, tlh, played, "COMPLETED", 2, 0, "Jax Park", "Jacksonville")
-            add_game(jax, tlh, older, "COMPLETED", 1, 0, "Jax Park", "Jacksonville")
-            add_game(tlh, jax, coming, "SCHEDULED", None, None, "Tallahassee Park", "Tallahassee")
+            add_game(north_u13, south, played, "COMPLETED", 2, 0, "North Park", "Jacksonville")
+            add_game(north_u13, south, older, "COMPLETED", 1, 0, "North Park", "Jacksonville")
+            add_game(south, north_u15, coming, "SCHEDULED", None, None, "South Park", "Tallahassee")
             session.commit()
-            jax_team_id = int(jax.id)
-            tlh_team_id = int(tlh.id)
+            north_ids = {int(north_u13.id), int(north_u15.id)}
+            south_id = int(south.id)
+            black_ids = {int(black.id), int(mixed.id)}
 
         with TestClient(app) as client:
-            found = client.get("/clubs", params={"q": "Probe Club Page Split"})
-            jax_only = client.get("/clubs", params={"q": "Probe Club Page Split JAX"})
+            found = client.get("/clubs", params={"q": "Probe Club Page"})
+            north_only = client.get("/clubs", params={"q": "Probe Club Page North"})
             ages = client.get("/clubs", params={"q": "Probe Club Page Ages"})
+            tones = client.get("/clubs", params={"q": "Probe Club Page Tone"})
             merged = client.get(f"/clubs/{split_id}")
-            jax_page = client.get(f"/clubs/{split_id}-jax")
-            tlh_page = client.get(f"/clubs/{split_id}-tlh")
+            north_page = client.get(f"/clubs/{north_slug}")
+            south_page = client.get(f"/clubs/{south_slug}")
             ages_page = client.get(f"/clubs/{ages_id}")
-            ages_token = client.get(f"/clubs/{ages_id}-jax")
+            ages_slug = client.get(f"/clubs/{ages_id}-probe-club-page-ages")
+            black_page = client.get(f"/clubs/{black_slug}")
+            tone_bare = client.get(f"/clubs/{tone_id}")
 
         self.assertEqual(merged.status_code, 404)
-        self.assertEqual(ages_token.status_code, 404)
-        self.assertEqual(found.status_code, 200)
-        self.assertEqual(
-            [(row["id"], row["name"], row["team_count"]) for row in found.json()],
-            [(f"{split_id}-jax", "Probe Club Page Split JAX", 1), (f"{split_id}-tlh", "Probe Club Page Split TLH", 1)],
-        )
-        self.assertEqual(jax_only.json()[0]["id"], f"{split_id}-jax")
-        self.assertEqual(len(jax_only.json()), 1)
+        self.assertEqual(tone_bare.status_code, 404)
+        self.assertEqual(ages_slug.status_code, 404)
+        by_name = {row["name"]: row for row in found.json()}
+        self.assertEqual((by_name["Probe Club Page North"]["id"], by_name["Probe Club Page North"]["team_count"]), (north_slug, 2))
+        self.assertEqual((by_name["Probe Club Page South"]["id"], by_name["Probe Club Page South"]["team_count"]), (south_slug, 1))
+        self.assertEqual(north_only.json()[0]["id"], north_slug)
+        self.assertEqual(north_only.json()[0]["logo_url"], "https://example.com/probe-split.png")
         self.assertEqual([(row["id"], row["name"], row["team_count"]) for row in ages.json()], [(ages_id, "Probe Club Page Ages", 2)])
+        self.assertEqual(
+            [(row["id"], row["name"], row["team_count"]) for row in tones.json()],
+            [(f"{tone_id}-probe-club-page-tone", "Probe Club Page Tone", 1), (black_slug, "Probe Club Page Tone Black", 2)],
+        )
 
         self.assertEqual(ages_page.status_code, 200)
         self.assertEqual(ages_page.json()["id"], ages_id)
         self.assertEqual(ages_page.json()["name"], "Probe Club Page Ages")
         self.assertEqual(sorted(squad["age_group"] for squad in ages_page.json()["squads"]), ["U13", "U15"])
 
-        self.assertEqual(jax_page.status_code, 200)
-        jax_body = jax_page.json()
-        self.assertEqual(jax_body["id"], f"{split_id}-jax")
-        self.assertEqual(jax_body["name"], "Probe Club Page Split JAX")
-        self.assertEqual(jax_body["logo_url"], "https://example.com/probe-split.png")
-        self.assertEqual([squad["id"] for squad in jax_body["squads"]], [jax_team_id])
-        self.assertEqual(jax_body["record"], {"wins": 2, "losses": 0, "draws": 0, "goal_diff": 3})
-        self.assertEqual([venue["venue_name"] for venue in jax_body["venues"]], ["Jax Park"])
-        self.assertEqual(len(jax_body["weekends"]), 1)
-        self.assertEqual(jax_body["weekends"][0]["opponent_name"], "Probe Club Page Split TLH")
-        self.assertEqual(jax_body["weekends"][0]["opponent_club_id"], f"{split_id}-tlh")
-        self.assertEqual(
-            [(row["result"], row["opponent_squad_name"], row["goals_for"], row["goals_against"], row["played_on"]) for row in jax_body["weekends"][0]["squads"]],
-            [("W", "Probe Club Page Split TLH", 2, 0, played.isoformat())],
-        )
-        self.assertNotIn(older.isoformat(), [row["played_on"] for card in jax_body["weekends"] for row in card["squads"]])
-        jax_upcoming = jax_body["upcoming"]
-        self.assertEqual([item["opponent_name"] for item in jax_upcoming["opponents"]], ["Probe Club Page Split TLH"])
-        self.assertEqual([row["game_date"] for item in jax_upcoming["opponents"] for row in item["squads"]], [coming.isoformat()])
+        self.assertEqual(north_page.status_code, 200)
+        north_body = north_page.json()
+        self.assertEqual(north_body["id"], north_slug)
+        self.assertEqual(north_body["name"], "Probe Club Page North")
+        self.assertEqual(north_body["logo_url"], "https://example.com/probe-split.png")
+        self.assertEqual({squad["id"] for squad in north_body["squads"]}, north_ids)
+        self.assertEqual(north_body["record"], {"wins": 2, "losses": 0, "draws": 0, "goal_diff": 3})
+        self.assertEqual([venue["venue_name"] for venue in north_body["venues"]], ["North Park"])
+        self.assertEqual(north_body["weekends"][0]["opponent_name"], "Probe Club Page South")
+        self.assertEqual(north_body["weekends"][0]["opponent_club_id"], south_slug)
+        self.assertEqual(north_body["weekends"][0]["squads"][0]["played_on"], played.isoformat())
+        self.assertNotIn(older.isoformat(), [row["played_on"] for card in north_body["weekends"] for row in card["squads"]])
+        self.assertEqual([row["game_date"] for item in north_body["upcoming"]["opponents"] for row in item["squads"]], [coming.isoformat()])
 
-        self.assertEqual(tlh_page.status_code, 200)
-        tlh_body = tlh_page.json()
-        self.assertEqual(tlh_body["name"], "Probe Club Page Split TLH")
-        self.assertEqual([squad["id"] for squad in tlh_body["squads"]], [tlh_team_id])
-        self.assertEqual(tlh_body["record"], {"wins": 0, "losses": 2, "draws": 0, "goal_diff": -3})
-        self.assertEqual([venue["venue_name"] for venue in tlh_body["venues"]], ["Tallahassee Park"])
-        self.assertEqual(tlh_body["weekends"][0]["opponent_name"], "Probe Club Page Split JAX")
-        self.assertEqual(tlh_body["weekends"][0]["squads"][0]["result"], "L")
-        self.assertEqual(tlh_body["weekends"][0]["squads"][0]["played_on"], played.isoformat())
-        self.assertEqual([row["game_date"] for item in tlh_body["upcoming"]["opponents"] for row in item["squads"]], [coming.isoformat()])
+        self.assertEqual(south_page.status_code, 200)
+        self.assertEqual(south_page.json()["name"], "Probe Club Page South")
+        self.assertEqual([squad["id"] for squad in south_page.json()["squads"]], [south_id])
+        self.assertEqual(south_page.json()["weekends"][0]["opponent_name"], "Probe Club Page North")
+
+        self.assertEqual(black_page.status_code, 200)
+        black_body = black_page.json()
+        self.assertEqual(black_body["name"], "Probe Club Page Tone Black")
+        self.assertEqual(black_body["logo_url"], "https://example.com/probe-tone.png")
+        self.assertEqual({squad["id"] for squad in black_body["squads"]}, black_ids)
+        self.assertEqual(sorted(squad["name"] for squad in black_body["squads"]), ["Probe Club Page Tone BLACK", "Probe Club Page Tone Black"])
+
+    def test_sporting_sa_city_urls_alias_the_name_pages(self) -> None:
+        with TestClient(app) as client:
+            alias = client.get("/clubs/1353-jax")
+            canonical = client.get("/clubs/1353-sporting-sa-jax")
+            tlh_alias = client.get("/clubs/1353-tlh")
+            tlh = client.get("/clubs/1353-sporting-sa-tlh")
+            bare = client.get("/clubs/1353")
+        self.assertEqual(bare.status_code, 404)
+        self.assertEqual(alias.status_code, 200)
+        self.assertEqual(canonical.status_code, 200)
+        self.assertEqual(alias.json()["id"], "1353-sporting-sa-jax")
+        self.assertEqual(alias.json()["name"], "Sporting SA JAX")
+        self.assertEqual(canonical.json(), alias.json())
+        self.assertEqual(tlh_alias.status_code, 200)
+        self.assertEqual(tlh_alias.json()["id"], "1353-sporting-sa-tlh")
+        self.assertEqual(tlh_alias.json()["name"], "Sporting SA TLH")
+        self.assertEqual(tlh.json()["id"], tlh_alias.json()["id"])
+        self.assertNotEqual(alias.json()["team_count"], tlh_alias.json()["team_count"])
 
     def test_empty_query_is_capped_to_clubs_with_teams(self) -> None:
         from app import clubs as clubs_module
