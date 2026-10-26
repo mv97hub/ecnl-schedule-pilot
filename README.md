@@ -278,25 +278,27 @@ The people job, the reference job, and `capture_live` (the end of the schedule j
 
 ## Cron setup
 
-This repository does not define the Render cron services. There is no `render.yaml`. Create three cron services in the Render dashboard. Each command below is the one in the script docstring and is run from the repository root. The schedule job has no interval in the repo. People is weekly and reference is monthly because those words are in the module docstrings. This repo does not say which day or hour.
+Nothing in this repository schedules a refresh. There is no `render.yaml`, crontab, or other start command. The only invocations are the three scripts below, run by hand or by a Render cron service you configure in the dashboard. `refresh_league.py` then calls `capture_live`. That is not a fourth job. Tests call the Python functions directly and do not name a schedule.
 
-Each cron process needs the same five database variables. Names only:
+No code, comment, or test names a 12-hour league refresh. The schedule interval is set in Render and is not in the repo. The cron command for that job omits `--full`. The people and reference module docstrings say weekly and monthly. They do not name a day or an hour, and they do not name a Render schedule expression.
 
-| Variable | Used for |
+The running API and each cron job read the same five environment variables. `api/app/database.py` opens Postgres with `build_database_url()` in `api/app/config.py`. `refresh_league.py`, `refresh_people.py`, and `refresh_reference.py` import that engine. The names are `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`, and `POSTGRES_DB`. If all five are set in the process environment, those values are used. If any one is missing, the same five keys are read from the repository `.env`, which a Render cron service will not have. `.env.example` also contains `DATABASE_URL`. The API and the cron scripts do not read `DATABASE_URL`.
+
+| Variable | Read by |
 | --- | --- |
-| `POSTGRES_USER` | Database user. |
-| `POSTGRES_PASSWORD` | Database password. |
-| `POSTGRES_HOST` | Database host. |
-| `POSTGRES_PORT` | Database port. |
-| `POSTGRES_DB` | Database name. |
+| `POSTGRES_USER` | API process and all three cron jobs. |
+| `POSTGRES_PASSWORD` | API process and all three cron jobs. |
+| `POSTGRES_HOST` | API process and all three cron jobs. |
+| `POSTGRES_PORT` | API process and all three cron jobs. |
+| `POSTGRES_DB` | API process and all three cron jobs. |
 
-All five must be set on the cron service. If any one is missing, the script reads the repository `.env` instead, which a Render cron service will not have. `DATABASE_URL` is not read. `ALLOWED_ORIGINS` and `NEXT_PUBLIC_API_URL` are for the API and the Next.js app, not for these jobs.
+`ALLOWED_ORIGINS` is read by the API process only. `NEXT_PUBLIC_API_URL` is read by the Next.js app only. Neither is read by a cron job.
 
 | Job | `data_refresh.job` | Command | Schedule this repo states | Success |
 | --- | --- | --- | --- | --- |
-| Schedule | `schedule` | `cd api && python refresh_league.py` | Not stated. Do not add `--full`. | Log ends with `League refresh success <UTC time>`. The new `data_refresh` row has `status` `success` and `finished_at` set. `GET /data-refresh` returns that `finished_at`. |
-| People | `people` | `cd api && python refresh_people.py` | Weekly. | Log ends with `People refresh success <UTC time>`. The row has `job` `people` and `status` `success`. |
-| Reference | `reference` | `cd api && python refresh_reference.py` | Monthly. | Log ends with `Reference refresh success <UTC time>`. The row has `job` `reference` and `status` `success`. |
+| Schedule | `schedule` | `cd api && python refresh_league.py` | Interval is set in Render and is not in the repo. Do not add `--full`. | Log ends with `League refresh success <UTC time>`. The new `data_refresh` row has `status` `success` and `finished_at` set. `GET /data-refresh` returns that `finished_at`. |
+| People | `people` | `cd api && python refresh_people.py` | Weekly, from the module docstring. No day or hour is named. | Log ends with `People refresh success <UTC time>`. The row has `job` `people` and `status` `success`. |
+| Reference | `reference` | `cd api && python refresh_reference.py` | Monthly, from the module docstring. No day or hour is named. | Log ends with `Reference refresh success <UTC time>`. The row has `job` `reference` and `status` `success`. |
 
 A run that failed ends with `League refresh failure`, `People refresh failure`, or `Reference refresh failure`, and that row's `status` is `failure`. The previous success row for the same job is left in place.
 
