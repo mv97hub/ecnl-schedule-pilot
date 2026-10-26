@@ -73,7 +73,7 @@ class RecordAndWeekendTests(unittest.TestCase):
         self.assertEqual(weekend_friday(date(2026, 11, 6)), date(2026, 11, 6))
         self.assertEqual(game_local_date(moment, None), local)
 
-    def test_one_squad_weekend_is_omitted_and_two_squads_are_kept(self) -> None:
+    def test_completed_pair_is_a_scorecard_and_one_squad_stays_on_next_weekend(self) -> None:
         def squad(team_id: int, club_id: int | None, age: str, gender: str = "boys") -> ScheduleTeam:
             return ScheduleTeam(
                 id=team_id,
@@ -117,34 +117,52 @@ class RecordAndWeekendTests(unittest.TestCase):
 
         friday = date(2026, 11, 6)
         earlier = date(2026, 10, 30)
+        lone = date(2026, 10, 23)
         ours_u13 = squad(1, 7, "U13")
         ours_u14 = squad(2, 7, "U14")
         rival_u13 = squad(10, 50, "U13")
         rival_u14 = squad(11, 50, "U14")
         nomad_u13 = squad(12, None, "U13")
         nomad_u14 = squad(13, None, "U14")
+        solo_u13 = squad(20, 60, "U13")
         games = [
             match(1, ours_u13, rival_u13, friday, 10),
             match(2, ours_u14, rival_u14, friday, 12),
-            match(3, ours_u13, rival_u13, earlier, 10),
+            match(3, ours_u13, rival_u13, earlier, 10, status="COMPLETED", home_score=2, away_score=0),
+            match(7, ours_u14, rival_u14, earlier, 12, status="COMPLETED", home_score=1, away_score=0),
             match(4, ours_u13, nomad_u13, friday, 14),
             match(5, ours_u14, nomad_u14, friday, 16),
             match(6, ours_u13, ours_u14, friday, 18, status="COMPLETED", home_score=2, away_score=2),
+            match(8, ours_u13, solo_u13, friday, 9),
+            match(9, ours_u13, solo_u13, lone, 10, status="COMPLETED", home_score=1, away_score=0),
         ]
         cards, upcoming = group_weekends(
             games,
             {1, 2},
-            {50: Club(id=50, name="Rival FC", logo_url=None)},
+            {
+                50: Club(id=50, name="Rival FC", logo_url=None),
+                60: Club(id=60, name="Solo FC", logo_url=None),
+            },
             7,
             today=date(2026, 11, 4),
         )
-        self.assertEqual(len(cards), 1)
+        self.assertEqual([card.weekend_start for card in cards], [earlier])
         self.assertEqual(cards[0].opponent_club_id, 50)
-        self.assertEqual(len(cards[0].squads), 2)
+        self.assertFalse(cards[0].upcoming)
         self.assertEqual([row.age_group for row in cards[0].squads], ["U13", "U14"])
-        self.assertTrue(cards[0].upcoming)
-        self.assertEqual(upcoming, "Nov 6–8 vs Rival FC")
-        self.assertNotIn(earlier, [card.weekend_start for card in cards])
+        self.assertEqual(cards[0].squads[0].result, "W")
+        self.assertEqual(cards[0].squads[0].tier, "ECNL")
+        self.assertEqual(cards[0].squads[0].opponent_squad_name, "Probe Squad 10")
+        self.assertNotIn(friday, [card.weekend_start for card in cards])
+        self.assertNotIn(lone, [card.weekend_start for card in cards])
+        self.assertIsNotNone(upcoming)
+        assert upcoming is not None
+        self.assertEqual(upcoming.weekend_start, friday)
+        self.assertEqual(upcoming.label, "Nov 6\u20138")
+        self.assertEqual([item.opponent_name for item in upcoming.opponents], ["Rival FC", "Solo FC"])
+        self.assertEqual(len(upcoming.opponents[0].squads), 2)
+        self.assertEqual(len(upcoming.opponents[1].squads), 1)
+        self.assertEqual(upcoming.opponents[1].squads[0].age_group, "U13")
 
 
 class ClubRouteTests(unittest.TestCase):
@@ -419,36 +437,47 @@ class ClubRouteTests(unittest.TestCase):
         self.assertEqual(boys_u13[0]["conference_rank"], 2)
         self.assertIsNone(boys_u13[1]["conference_rank"])
 
-        self.assertEqual(len(body["weekends"]), 3)
-        self.assertEqual(body["weekends"][0]["opponent_name"], "Probe Club Page Other")
-        self.assertEqual(body["weekends"][1]["opponent_name"], "Probe Club Page Rival")
-        self.assertTrue(body["weekends"][0]["upcoming"])
-        self.assertTrue(body["weekends"][1]["upcoming"])
-        self.assertEqual(body["weekends"][0]["weekend_start"], coming.isoformat())
-        self.assertEqual(len(body["weekends"][0]["squads"]), 2)
-        self.assertEqual(body["weekends"][1]["wins"], 0)
-        rival_ages = [(row["age_group"], row["gender"]) for row in body["weekends"][1]["squads"]]
-        self.assertEqual(rival_ages, [("U13", "boys"), ("U13", "girls")])
-        recent_card = body["weekends"][2]
+        self.assertEqual(len(body["weekends"]), 1)
+        recent_card = body["weekends"][0]
         self.assertFalse(recent_card["upcoming"])
         self.assertEqual(recent_card["opponent_name"], "Probe Club Page Rival")
-        self.assertEqual((recent_card["wins"], recent_card["losses"], recent_card["draws"]), (1, 1, 0))
-        self.assertEqual(len(recent_card["squads"]), 2)
         self.assertEqual(recent_card["weekend_start"], recent.isoformat())
+        self.assertEqual((recent_card["wins"], recent_card["losses"], recent_card["draws"]), (1, 1, 0))
+        self.assertEqual(
+            [(row["age_group"], row["gender"], row["tier"], row["result"], row["opponent_squad_name"], row["goals_for"], row["goals_against"]) for row in recent_card["squads"]],
+            [
+                ("U13", "boys", "ECNL", "W", "Probe Club Page Rival U13", 2, 0),
+                ("U14", "boys", "ECNL-RL", "L", "Probe Club Page Rival U14", 0, 1),
+            ],
+        )
         self.assertNotIn(single.isoformat(), [card["weekend_start"] for card in body["weekends"]])
-        self.assertNotIn("U16", [row["age_group"] for card in body["weekends"] for row in card["squads"]])
-        self.assertIn("Probe Club Page Other", body["next_weekend"])
-        self.assertIn("Probe Club Page Rival", body["next_weekend"])
+        self.assertNotIn(coming.isoformat(), [card["weekend_start"] for card in body["weekends"]])
+
+        upcoming = body["next_weekend"]
+        self.assertEqual(upcoming["weekend_start"], coming.isoformat())
+        self.assertEqual([item["opponent_name"] for item in upcoming["opponents"]], ["Probe Club Page Other", "Probe Club Page Rival"])
+        self.assertEqual(
+            [(row["age_group"], row["gender"], row["tier"]) for row in upcoming["opponents"][0]["squads"]],
+            [("U14", "boys", "ECNL-RL"), ("U17", "girls", "ECNL")],
+        )
+        self.assertEqual(
+            [(row["age_group"], row["gender"], row["tier"]) for row in upcoming["opponents"][1]["squads"]],
+            [("U13", "boys", "ECNL"), ("U13", "girls", "ECNL")],
+        )
+        played_ages = [row["age_group"] for item in upcoming["opponents"] for row in item["squads"]]
+        self.assertNotIn("U16", played_ages)
 
         venue_names = [venue["venue_name"] for venue in body["venues"]]
-        self.assertEqual(venue_names, ["Probe Annex", "Probe Complex", "Probe Complex"])
+        self.assertEqual(venue_names, ["Probe Annex", "Probe Complex"])
         annex = body["venues"][0]
         self.assertEqual(annex["city"], "Orlando")
         self.assertIsNone(annex["field_name"])
         self.assertIsNone(annex["latitude"])
-        north = next(venue for venue in body["venues"] if venue["field_name"] == "North Pitch")
-        self.assertEqual(north["latitude"], 30.5)
-        self.assertEqual(north["longitude"], -81.25)
+        complex_row = body["venues"][1]
+        self.assertEqual(complex_row["city"], "Jacksonville")
+        self.assertIsNone(complex_row["field_name"])
+        self.assertEqual(complex_row["latitude"], 30.5)
+        self.assertEqual(complex_row["longitude"], -81.25)
         self.assertNotIn("Rival Stadium", venue_names)
         self.assertNotIn("address", body["venues"][0])
 

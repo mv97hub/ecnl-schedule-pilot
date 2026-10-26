@@ -269,6 +269,8 @@ class WeekendSquadOut(BaseModel):
     team_id: int
     age_group: str
     gender: Literal["boys", "girls"]
+    tier: str
+    opponent_squad_name: str
     status: GameStatus
     result: TeamResult | None = None
     goals_for: int | None = None
@@ -290,6 +292,26 @@ class WeekendScorecardOut(BaseModel):
     squads: list[WeekendSquadOut]
 
 
+class NextWeekendSquadOut(BaseModel):
+    team_id: int
+    age_group: str
+    gender: Literal["boys", "girls"]
+    tier: str
+
+
+class NextWeekendOpponentOut(BaseModel):
+    opponent_club_id: int
+    opponent_name: str
+    opponent_logo_url: str | None = None
+    squads: list[NextWeekendSquadOut]
+
+
+class NextWeekendOut(BaseModel):
+    weekend_start: date
+    label: str
+    opponents: list[NextWeekendOpponentOut]
+
+
 class ClubDetailOut(BaseModel):
     id: int
     name: str
@@ -303,4 +325,4 @@ class ClubDetailOut(BaseModel):
     squads: list[ClubSquadOut]
     venues: list[ClubVenueOut]
     weekends: list[WeekendScorecardOut]
-    next_weekend: str | None = None
+    next_weekend: NextWeekendOut | None = None

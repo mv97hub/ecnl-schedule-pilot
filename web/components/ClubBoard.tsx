@@ -8,12 +8,20 @@ import { useEffect, useState } from "react";
 import { ClubMark } from "@/components/ClubMark";
 import { fetchClub, fetchClubs } from "@/lib/api";
 import { goalDifference, mapsUrl } from "@/lib/format";
-import { ageGroupsFor } from "@/lib/leagues";
 import type { ClubDetail, ClubListItem, ClubRecord, ClubSquad, ClubVenue, WeekendScorecard, WeekendSquad } from "@/lib/types";
 
-function ageLabel(ageGroup: string, gender: "boys" | "girls"): string {
-  return ageGroupsFor(gender).find((item) => item.value === ageGroup)?.label ?? ageGroup;
-}
+const AGE_ORDER = ["U13", "U14", "U15", "U16", "U17", "U18/19"];
+
+const RANK_ROWS: { gender: "boys" | "girls"; tier: string; title: string }[][] = [
+  [
+    { gender: "boys", tier: "ECNL", title: "Boys ECNL" },
+    { gender: "boys", tier: "ECNL-RL", title: "Boys ECNL-RL" },
+  ],
+  [
+    { gender: "girls", tier: "ECNL", title: "Girls ECNL" },
+    { gender: "girls", tier: "ECNL-RL", title: "Girls ECNL-RL" },
+  ],
+];
 
 function recordText(record: ClubRecord): string {
   return `${record.wins}-${record.losses}-${record.draws}`;
@@ -27,18 +35,41 @@ function tally(wins: number, losses: number, draws: number): string {
   return `${countWord(wins, "win", "wins")}, ${countWord(losses, "loss", "losses")}, ${countWord(draws, "draw", "draws")}`;
 }
 
-function scoreText(row: WeekendSquad): string {
-  if (row.result && row.goals_for != null && row.goals_against != null) {
-    return `${row.result} ${row.goals_for}\u2013${row.goals_against}`;
+function ordinal(rank: number): string {
+  const mod100 = rank % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${rank}th`;
+  switch (rank % 10) {
+    case 1:
+      return `${rank}st`;
+    case 2:
+      return `${rank}nd`;
+    case 3:
+      return `${rank}rd`;
+    default:
+      return `${rank}th`;
   }
-  if (row.status === "POSTPONED") return "Postponed";
-  if (row.status === "CANCELLED") return "Cancelled";
-  return "Scheduled";
 }
 
-function placeText(row: WeekendSquad): string {
-  if (row.field_name) return row.field_name;
-  return row.venue_name;
+function ageIndex(ageGroup: string): number {
+  const index = AGE_ORDER.indexOf(ageGroup);
+  return index === -1 ? AGE_ORDER.length : index;
+}
+
+function sideWord(gender: "boys" | "girls"): string {
+  return gender === "girls" ? "Girls" : "Boys";
+}
+
+function squadPhrase(squad: { age_group: string; gender: "boys" | "girls"; tier: string }): string {
+  return `${squad.age_group} ${sideWord(squad.gender)} ${squad.tier}`;
+}
+
+function resultRest(row: WeekendSquad): string {
+  const score = row.goals_for != null && row.goals_against != null ? `${row.goals_for}\u2013${row.goals_against}` : "";
+  const opponent = row.opponent_squad_name;
+  if (row.result === "W") return `${sideWord(row.gender)} ${row.tier} won against ${opponent}, ${score}`;
+  if (row.result === "L") return `${sideWord(row.gender)} ${row.tier} lost to ${opponent}, ${score}`;
+  if (row.result === "D") return `${sideWord(row.gender)} ${row.tier} drew with ${opponent}, ${score}`;
+  return `${sideWord(row.gender)} ${row.tier}`;
 }
 
 function fieldMapsUrl(venue: ClubVenue): string {
@@ -48,40 +79,57 @@ function fieldMapsUrl(venue: ClubVenue): string {
   return mapsUrl(venue.venue_name, venue.city, venue.state);
 }
 
-function SquadCard({ squad }: { squad: ClubSquad }) {
-  const label = ageLabel(squad.age_group, squad.gender);
-  const rank = squad.conference_rank == null ? "—" : `#${squad.conference_rank}`;
+function RankBox({ title, squads }: { title: string; squads: ClubSquad[] }) {
+  if (squads.length === 0) return null;
   return (
-    <Link
-      href={`/?team=${squad.id}`}
-      data-age-card
-      data-team-id={squad.id}
-      data-gender={squad.gender}
-      className="flex min-w-0 flex-col gap-2 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm outline-offset-2 hover:border-emerald-700"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <span className="min-w-0 text-base font-semibold leading-snug text-stone-950">{label}</span>
-        <span className="shrink-0 rounded-full bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-600">{squad.tier}</span>
+    <section data-rank-box={title} aria-label={title} className="rounded-2xl border border-stone-200 bg-white px-3 py-3 shadow-sm">
+      <h3 className="text-sm font-semibold text-stone-950">{title}</h3>
+      <div className="mt-2 grid grid-cols-6 gap-1">
+        {squads.map((squad) => {
+          const rank = squad.conference_rank == null ? "—" : ordinal(squad.conference_rank);
+          return (
+            <div key={squad.id} className="min-w-0 text-center">
+              <Link
+                href={`/?team=${squad.id}`}
+                data-team-id={squad.id}
+                className="block text-[11px] font-semibold leading-tight text-emerald-900 underline-offset-2 hover:underline sm:text-xs"
+              >
+                {squad.age_group}
+              </Link>
+              <p data-rank={rank} className="text-[11px] leading-tight text-stone-700 sm:text-xs">
+                {rank}
+              </p>
+            </div>
+          );
+        })}
       </div>
-      <p className="text-sm leading-snug text-stone-600">{squad.conference}</p>
-      <p className="text-sm text-stone-800">
-        <span className="text-stone-400">Rank </span>
-        {rank}
-      </p>
-      <span className="text-xs font-medium text-emerald-800">Schedule</span>
-    </Link>
+    </section>
   );
 }
 
-function SquadGroup({ title, squads }: { title: string; squads: ClubSquad[] }) {
-  if (squads.length === 0) return null;
+function TeamRanks({ squads }: { squads: ClubSquad[] }) {
   return (
-    <section className="mt-8" aria-label={title}>
-      <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">{title}</h2>
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {squads.map((squad) => (
-          <SquadCard key={squad.id} squad={squad} />
-        ))}
+    <section className="mt-8" aria-label="Team Ranks">
+      <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">Team Ranks</h2>
+      <div className="mt-3 flex flex-col gap-3">
+        {RANK_ROWS.map((row) => {
+          const boxes = row
+            .map((group) => ({
+              ...group,
+              squads: squads
+                .filter((squad) => squad.gender === group.gender && squad.tier === group.tier)
+                .sort((a, b) => ageIndex(a.age_group) - ageIndex(b.age_group) || a.id - b.id),
+            }))
+            .filter((group) => group.squads.length > 0);
+          if (boxes.length === 0) return null;
+          return (
+            <div key={row[0].gender} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {boxes.map((group) => (
+                <RankBox key={group.title} title={group.title} squads={group.squads} />
+              ))}
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -100,17 +148,53 @@ function WeekendCard({ card }: { card: WeekendScorecard }) {
       </div>
       <ul className="mt-3">
         {card.squads.map((row) => (
-          <li key={row.game_id} className="grid grid-cols-1 gap-1 border-t border-stone-100 py-2.5 sm:grid-cols-[minmax(0,1.3fr)_4.5rem_6.5rem_minmax(0,1fr)] sm:items-center sm:gap-3">
-            <Link href={`/?team=${row.team_id}`} data-team-id={row.team_id} className="text-sm font-medium text-emerald-900 underline-offset-4 hover:underline">
-              {ageLabel(row.age_group, row.gender)}
-            </Link>
-            <span className="text-sm text-stone-600">{row.gender === "girls" ? "Girls" : "Boys"}</span>
-            <span className="text-sm font-medium text-stone-900">{scoreText(row)}</span>
-            <span className="min-w-0 truncate text-sm text-stone-600">{placeText(row)}</span>
+          <li key={row.game_id} data-score-line className="border-t border-stone-100 py-2.5 text-sm text-stone-800">
+            <Link href={`/?team=${row.team_id}`} data-team-id={row.team_id} className="font-medium text-emerald-900 underline-offset-4 hover:underline">
+              {row.age_group}
+            </Link>{" "}
+            {resultRest(row)}
           </li>
         ))}
       </ul>
     </article>
+  );
+}
+
+function NextWeekendBox({ club }: { club: ClubDetail }) {
+  const weekend = club.next_weekend;
+  return (
+    <section className="mt-8" aria-label="Next weekend">
+      <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">Next weekend</h2>
+      {weekend == null || weekend.opponents.length === 0 ? (
+        <p className="mt-3 text-sm text-stone-500">No upcoming weekend.</p>
+      ) : (
+        <article data-next-weekend={weekend.label} className="mt-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+          <p className="text-sm text-stone-500">{weekend.label}</p>
+          <ul className="mt-2">
+            {weekend.opponents.map((opponent) => (
+              <li key={opponent.opponent_club_id} data-next-opponent={opponent.opponent_name} className="border-t border-stone-100 py-3 first:border-t-0">
+                <div className="flex items-start gap-3">
+                  <ClubMark name={opponent.opponent_name} src={opponent.opponent_logo_url} />
+                  <div className="min-w-0">
+                    <h3 className="text-base font-semibold leading-snug text-stone-950">{opponent.opponent_name}</h3>
+                    <p className="mt-1 text-sm text-stone-700">
+                      {opponent.squads.map((squad, index) => (
+                        <span key={squad.team_id}>
+                          {index > 0 ? ", " : ""}
+                          <Link href={`/?team=${squad.team_id}`} data-team-id={squad.team_id} className="font-medium text-emerald-900 underline-offset-4 hover:underline">
+                            {squadPhrase(squad)}
+                          </Link>
+                        </span>
+                      ))}
+                    </p>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </article>
+      )}
+    </section>
   );
 }
 
@@ -229,9 +313,6 @@ export function ClubBoard({ clubId }: { clubId: string }) {
     };
   }, [id, valid]);
 
-  const boys = club?.squads.filter((squad) => squad.gender === "boys") ?? [];
-  const girls = club?.squads.filter((squad) => squad.gender === "girls") ?? [];
-
   return (
     <div className="min-h-full bg-stone-100">
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
@@ -275,20 +356,14 @@ export function ClubBoard({ clubId }: { clubId: string }) {
                   </div>
                 </dl>
               </div>
-              {club.next_weekend && (
-                <p data-next-weekend className="mt-4 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-950">
-                  Next weekend · {club.next_weekend}
-                </p>
-              )}
             </section>
 
-            <SquadGroup title="Boys" squads={boys} />
-            <SquadGroup title="Girls" squads={girls} />
+            <TeamRanks squads={club.squads} />
 
             <section className="mt-8" aria-label="Weekend scorecard">
               <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">Weekend scorecard</h2>
               {club.weekends.length === 0 ? (
-                <p className="mt-3 text-sm text-stone-500">No weekend with two or more squads against the same club.</p>
+                <p className="mt-3 text-sm text-stone-500">No completed weekend with two or more squads against the same club.</p>
               ) : (
                 <div className="mt-3 grid grid-cols-1 gap-3">
                   {club.weekends.map((card) => (
@@ -298,6 +373,8 @@ export function ClubBoard({ clubId }: { clubId: string }) {
               )}
             </section>
 
+            <NextWeekendBox club={club} />
+
             <section className="mt-8" aria-label="Fields">
               <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">Fields</h2>
               {club.venues.length === 0 ? (
@@ -306,25 +383,21 @@ export function ClubBoard({ clubId }: { clubId: string }) {
                 <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {club.venues.map((venue) => {
                     const href = fieldMapsUrl(venue);
-                    const label = [venue.venue_name, venue.field_name].filter(Boolean).join(", ");
+                    const place = `${venue.city}, ${venue.state}`;
                     return (
-                      <li key={`${venue.venue_name}-${venue.field_name ?? ""}-${venue.city}`}>
+                      <li key={`${venue.venue_name}-${venue.city}-${venue.state}`}>
                         <a
                           href={href}
                           target="_blank"
                           rel="noopener noreferrer"
                           data-field-link
-                          aria-label={`Open ${label} in Google Maps`}
+                          data-location={`${venue.venue_name}|${venue.city}|${venue.state}`}
+                          aria-label={`Open ${venue.venue_name}, ${place} in Google Maps`}
                           className="flex items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-white p-4 text-sm shadow-sm hover:border-emerald-700"
                         >
                           <span className="min-w-0">
-                            <span className="block font-semibold text-stone-950">
-                              {venue.venue_name}
-                              {venue.field_name ? <span className="font-medium text-stone-500"> · {venue.field_name}</span> : null}
-                            </span>
-                            <span className="mt-0.5 block text-stone-500">
-                              {venue.city}, {venue.state}
-                            </span>
+                            <span className="block font-semibold text-stone-950">{venue.venue_name}</span>
+                            <span className="mt-0.5 block text-stone-500">{place}</span>
                           </span>
                           <ExternalLink className="size-4 shrink-0 text-stone-400" />
                         </a>
