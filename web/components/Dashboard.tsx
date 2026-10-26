@@ -68,6 +68,7 @@ export function Dashboard() {
   const [games, setGames] = useState<Game[]>([]);
   const [summary, setSummary] = useState<TeamRecordSummary | null>(null);
   const [teamLogo, setTeamLogo] = useState<string | null>(null);
+  const [clubId, setClubId] = useState<number | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dataAsOf, setDataAsOf] = useState<string | null>(null);
@@ -158,6 +159,7 @@ export function Dashboard() {
           setGames([]);
           setSummary(null);
           setTeamLogo(null);
+          setClubId(null);
           setScheduleLoading(true);
         }
         setSelectedId(team.id);
@@ -198,6 +200,7 @@ export function Dashboard() {
           setGames(payload.games);
           setSummary(payload.team_record_summary);
           setTeamLogo(payload.logo_url ?? null);
+          setClubId(payload.club_id ?? null);
         }
       })
       .catch((err: unknown) => {
@@ -206,6 +209,7 @@ export function Dashboard() {
         setGames([]);
         setSummary(null);
         setTeamLogo(null);
+        setClubId(null);
       })
       .finally(() => {
         if (!cancelled) setScheduleLoading(false);
@@ -243,6 +247,7 @@ export function Dashboard() {
     setGames([]);
     setSummary(null);
     setTeamLogo(null);
+    setClubId(null);
     setError(null);
     setScheduleLoading(Boolean(nextTeam));
     setSelectedId(nextTeam?.id ?? null);
@@ -344,7 +349,9 @@ export function Dashboard() {
 
       <main className="mx-auto max-w-6xl px-6 py-8">
         {visible && conference && <BreadcrumbTrail items={[tier, conference, visible.name, ageLabel]} />}
-        {visible && summary && <TeamHero team={visible} summary={summary} games={games} ageLabel={ageLabel} logoUrl={teamLogo} />}
+        {visible && summary && (
+          <TeamHero team={visible} summary={summary} games={games} ageLabel={ageLabel} logoUrl={teamLogo} clubId={clubId} />
+        )}
         {visible && games.length > 0 && <SeasonTimeline games={games} />}
 
         {error && (

@@ -1,5 +1,5 @@
 import type { LeagueGender } from "@/lib/leagues";
-import type { HeadToHeadReport, ScheduleFilter, ScheduleResponse, StandingRow, StandingsMode, Team } from "@/lib/types";
+import type { ClubDetail, ClubListItem, HeadToHeadReport, ScheduleFilter, ScheduleResponse, StandingRow, StandingsMode, Team } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
@@ -25,6 +25,17 @@ export function fetchTeams(q?: string, gender: LeagueGender = "boys"): Promise<T
 
 export function fetchSchedule(teamId: number, filter: ScheduleFilter): Promise<ScheduleResponse> {
   return request<ScheduleResponse>(`/teams/${teamId}/schedule?filter=${filter}`);
+}
+
+export function fetchClubs(q?: string): Promise<ClubListItem[]> {
+  const params = new URLSearchParams();
+  if (q?.trim()) params.set("q", q.trim());
+  const query = params.toString();
+  return request<ClubListItem[]>(`/clubs${query ? `?${query}` : ""}`);
+}
+
+export function fetchClub(clubId: number): Promise<ClubDetail> {
+  return request<ClubDetail>(`/clubs/${clubId}`);
 }
 
 export function fetchHeadToHead(teamAId: number, teamBId: number, conferenceOnly: boolean): Promise<HeadToHeadReport> {

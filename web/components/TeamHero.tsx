@@ -24,12 +24,14 @@ export function TeamHero({
   games,
   ageLabel,
   logoUrl,
+  clubId,
 }: {
   team: Team;
   summary: TeamRecordSummary;
   games: Game[];
   ageLabel: string;
   logoUrl?: string | null;
+  clubId?: number | null;
 }) {
   const recent = lastResults(games);
   const upcoming = nextMatch(games);
@@ -42,10 +44,22 @@ export function TeamHero({
     <section className="rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-sm" aria-label="Team summary">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
         <div className="flex min-w-0 items-center gap-3">
-          <ClubMark name={team.name} src={logoUrl} />
+          {clubId != null ? (
+            <Link href={`/clubs/${clubId}`} aria-label={`${team.name} club`} className="shrink-0 rounded-lg">
+              <ClubMark name={team.name} src={logoUrl} />
+            </Link>
+          ) : (
+            <ClubMark name={team.name} src={logoUrl} />
+          )}
           <div className="min-w-0">
             <h2 className="text-xl font-semibold tracking-tight text-stone-950">
-              {team.name}
+              {clubId != null ? (
+                <Link href={`/clubs/${clubId}`} className="underline-offset-4 hover:underline">
+                  {team.name}
+                </Link>
+              ) : (
+                team.name
+              )}
               <span className="ml-2 text-sm font-medium text-stone-500">{ageLabel}</span>
             </h2>
             <p className="text-xs text-stone-500">
