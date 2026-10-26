@@ -2,11 +2,25 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Suspense } from "react";
 
 import { useLeagueGender } from "@/components/GenderProvider";
 
 export function AppHeader() {
+  // usePathname suspends while prerendering an unknown dynamic segment such as /clubs/[id].
+  return (
+    <Suspense fallback={<AppHeaderBar path="" />}>
+      <AppHeaderPath />
+    </Suspense>
+  );
+}
+
+function AppHeaderPath() {
   const path = usePathname();
+  return <AppHeaderBar path={path} />;
+}
+
+function AppHeaderBar({ path }: { path: string }) {
   const { gender, setGender } = useLeagueGender();
   const schedules = path === "/";
   const clubs = path.startsWith("/clubs");
