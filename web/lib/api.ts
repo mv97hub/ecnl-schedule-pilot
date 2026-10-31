@@ -1,5 +1,5 @@
 import type { LeagueGender } from "@/lib/leagues";
-import type { ClubDetail, ClubListItem, HeadToHeadReport, ScheduleFilter, ScheduleResponse, StandingRow, StandingsMode, Team } from "@/lib/types";
+import type { ClubDetail, ClubListItem, HeadToHeadReport, PredictedStandings, ScheduleFilter, ScheduleResponse, StandingRow, StandingsMode, Team } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
@@ -45,6 +45,16 @@ export function fetchHeadToHead(teamAId: number, teamBId: number, conferenceOnly
     conference_only: conferenceOnly ? "true" : "false",
   });
   return request<HeadToHeadReport>(`/head-to-head?${params.toString()}`);
+}
+
+export function fetchPredictedStandings(
+  conference: string,
+  tier: string,
+  ageGroup: string,
+  gender: LeagueGender,
+): Promise<PredictedStandings> {
+  const params = new URLSearchParams({ conference, tier, age_group: ageGroup, gender });
+  return request<PredictedStandings>(`/standings/predicted?${params.toString()}`);
 }
 
 export function fetchStandings(

@@ -328,3 +328,50 @@ class ClubDetailOut(BaseModel):
     venues: list[ClubVenueOut]
     weekends: list[WeekendScorecardOut]
     upcoming: NextWeekendOut | None = None
+
+
+class PredictedFixtureOut(BaseModel):
+    game_id: int
+    side: Literal["home", "away"]
+    starts_on: str
+    status: Literal["completed", "scheduled"]
+    score: str | None = None
+    result: Literal["W", "D", "L"] | None = None
+    expected_points: float | None = None
+
+
+class PredictedCellOut(BaseModel):
+    opponent_id: int
+    fixtures: list[PredictedFixtureOut]
+
+
+class PredictedRowOut(BaseModel):
+    rank: int
+    team_id: int
+    team_name: str
+    logo_url: str | None = None
+    games_played: int
+    wins: int
+    draws: int
+    losses: int
+    goals_for: int
+    goals_against: int
+    goal_diff: int
+    points: int
+    remaining: int
+    predicted_points: float
+    projected_wins: int
+    projected_draws: int
+    projected_losses: int
+    cells: list[PredictedCellOut]
+
+
+class PredictedStandingsOut(BaseModel):
+    season: str
+    gender: Literal["boys", "girls"]
+    tier: str
+    age_group: str
+    conference: str
+    points_rule: str
+    record_rule: str
+    rows: list[PredictedRowOut]

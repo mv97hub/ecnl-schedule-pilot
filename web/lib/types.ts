@@ -173,6 +173,53 @@ export type StandingRow = {
 
 export type StandingsMode = "official" | "calculated";
 
+export type PredictedFixture = {
+  game_id: number;
+  side: "home" | "away";
+  starts_on: string;
+  status: "completed" | "scheduled";
+  score: string | null;
+  result: "W" | "D" | "L" | null;
+  expected_points: number | null;
+};
+
+export type PredictedCell = {
+  opponent_id: number;
+  fixtures: PredictedFixture[];
+};
+
+export type PredictedRow = {
+  rank: number;
+  team_id: number;
+  team_name: string;
+  logo_url?: string | null;
+  games_played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goals_for: number;
+  goals_against: number;
+  goal_diff: number;
+  points: number;
+  remaining: number;
+  predicted_points: number;
+  projected_wins: number;
+  projected_draws: number;
+  projected_losses: number;
+  cells: PredictedCell[];
+};
+
+export type PredictedStandings = {
+  season: string;
+  gender: "boys" | "girls";
+  tier: string;
+  age_group: string;
+  conference: string;
+  points_rule: string;
+  record_rule: string;
+  rows: PredictedRow[];
+};
+
 export type CountRecord = {
   gp: number;
   w: number;

@@ -350,7 +350,7 @@ export function Dashboard() {
       <main className="mx-auto max-w-6xl px-6 py-8">
         {visible && conference && <BreadcrumbTrail items={[tier, conference, visible.name, ageLabel]} />}
         {visible && summary && (
-          <TeamHero team={visible} summary={summary} games={games} ageLabel={ageLabel} logoUrl={teamLogo} clubId={clubId} />
+          <TeamHero team={visible} summary={summary} games={games} ageLabel={ageLabel} logoUrl={teamLogo} clubId={clubId} gender={gender} />
         )}
         {visible && games.length > 0 && <SeasonTimeline games={games} />}
 

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ClubMark } from "@/components/ClubMark";
 import { ResultMark } from "@/components/ResultMark";
 import { easternStamp, goalDifference } from "@/lib/format";
+import type { LeagueGender } from "@/lib/leagues";
 import type { Game, Team, TeamRecordSummary } from "@/lib/types";
 
 function lastResults(games: Game[]): Game[] {
@@ -25,6 +26,7 @@ export function TeamHero({
   ageLabel,
   logoUrl,
   clubId,
+  gender,
 }: {
   team: Team;
   summary: TeamRecordSummary;
@@ -32,13 +34,22 @@ export function TeamHero({
   ageLabel: string;
   logoUrl?: string | null;
   clubId?: number | null;
+  gender: LeagueGender;
 }) {
   const recent = lastResults(games);
   const upcoming = nextMatch(games);
   const upcomingStamp = upcoming ? easternStamp(upcoming.starts_at) : null;
   const showConference = summary.conference_record !== summary.overall_record;
   const rank = summary.conference_rank == null ? "—" : `#${summary.conference_rank}`;
-  const standingsHref = `/standings?conference=${encodeURIComponent(summary.conference)}&age_group=${encodeURIComponent(team.age_group)}&tier=${encodeURIComponent(team.tier === "ECNL-RL" ? "ECNL-RL" : "ECNL")}&team=${team.id}`;
+  const tableQuery = new URLSearchParams({
+    conference: summary.conference,
+    age_group: team.age_group,
+    tier: team.tier === "ECNL-RL" ? "ECNL-RL" : "ECNL",
+    team: String(team.id),
+    gender,
+  }).toString();
+  const standingsHref = `/standings?${tableQuery}`;
+  const projectedHref = `/projected?${tableQuery}`;
 
   return (
     <section className="rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-sm" aria-label="Team summary">
@@ -89,6 +100,9 @@ export function TeamHero({
             <dd className="text-lg font-semibold leading-tight text-stone-950">
               <Link href={standingsHref} className="underline-offset-4 hover:underline">
                 {rank}
+              </Link>
+              <Link href={projectedHref} className="ml-2 text-xs font-medium text-emerald-800 underline-offset-4 hover:underline">
+                Projected
               </Link>
             </dd>
           </div>
