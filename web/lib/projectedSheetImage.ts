@@ -259,7 +259,15 @@ export function renderProjectedSheet(report: PredictedStandings): HTMLCanvasElem
   return canvas;
 }
 
-export function downloadProjectedSheet(report: PredictedStandings): Promise<void> {
+export type ProjectedSheetPreview = {
+  url: string;
+  filename: string;
+  blob: Blob;
+  width: number;
+  height: number;
+};
+
+export function previewProjectedSheet(report: PredictedStandings): Promise<ProjectedSheetPreview> {
   const sheet = buildProjectedSheet(report);
   const canvas = renderProjectedSheet(report);
   return new Promise((resolve, reject) => {
@@ -268,13 +276,13 @@ export function downloadProjectedSheet(report: PredictedStandings): Promise<void
         reject(new Error("Could not build the image"));
         return;
       }
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = sheet.filename;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1500);
-      resolve();
+      resolve({
+        url: URL.createObjectURL(blob),
+        filename: sheet.filename,
+        blob,
+        width: Math.round(canvas.width / SCALE),
+        height: Math.round(canvas.height / SCALE),
+      });
     }, "image/png");
   });
 }
