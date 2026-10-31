@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_session
-from app.schemas import StandingOut
+from app.predictions import predicted_table
+from app.schemas import PredictedStandingsOut, StandingOut
 from app.standings import ecnl_standings, normalize_age_group, normalize_gender, normalize_tier, official_standings, recent_form, short_conference, sort_standings
 
 router = APIRouter()
@@ -33,6 +34,27 @@ def _ranked(rows: list[dict[str, object]], form_by_team: dict[int, list[str]]) -
             )
         )
     return ranked
+
+
+@router.get("/standings/predicted", response_model=PredictedStandingsOut)
+def list_predicted_standings(
+    session: Annotated[Session, Depends(get_session)],
+    conference: str = Query(min_length=1),
+    tier: str = Query(),
+    age_group: str = Query(),
+    gender: str = Query(default="boys"),
+) -> PredictedStandingsOut:
+    try:
+        tier_name = normalize_tier(tier)
+        age = normalize_age_group(age_group)
+        chosen_gender = normalize_gender(gender)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    short = short_conference(conference)
+    if not short:
+        raise HTTPException(status_code=400, detail="conference is required")
+    table = predicted_table(session, short, tier_name, age, chosen_gender)
+    return PredictedStandingsOut.model_validate(table)
 
 
 @router.get("/standings", response_model=list[StandingOut])

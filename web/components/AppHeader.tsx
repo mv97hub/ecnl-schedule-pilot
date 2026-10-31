@@ -1,15 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
 import { useLeagueGender } from "@/components/GenderProvider";
+import { selectionQuery } from "@/lib/selection";
 
 export function AppHeader() {
-  // usePathname suspends while prerendering an unknown dynamic segment such as /clubs/[id].
+  // usePathname and useSearchParams suspend while prerendering an unknown dynamic segment such as /clubs/[id].
   return (
-    <Suspense fallback={<AppHeaderBar path="" />}>
+    <Suspense fallback={<AppHeaderBar path="" query="" />}>
       <AppHeaderPath />
     </Suspense>
   );
@@ -17,14 +18,16 @@ export function AppHeader() {
 
 function AppHeaderPath() {
   const path = usePathname();
-  return <AppHeaderBar path={path} />;
+  const params = useSearchParams();
+  return <AppHeaderBar path={path} query={selectionQuery(params)} />;
 }
 
-function AppHeaderBar({ path }: { path: string }) {
+function AppHeaderBar({ path, query }: { path: string; query: string }) {
   const { gender, setGender } = useLeagueGender();
   const schedules = path === "/";
   const clubs = path.startsWith("/clubs");
-  const standings = path.startsWith("/standings");
+  const standings = path === "/standings" || (path.startsWith("/standings/") && !path.startsWith("/projected"));
+  const projected = path === "/projected" || path.startsWith("/projected/");
   const headToHead = path.startsWith("/head-to-head");
   const profile = path.startsWith("/profile");
 
@@ -48,9 +51,9 @@ function AppHeaderBar({ path }: { path: string }) {
             </button>
           ))}
         </div>
-        <nav className="flex items-center gap-1 text-sm" aria-label="Primary">
+        <nav className="flex min-w-0 max-w-full flex-wrap items-center gap-1 text-sm" aria-label="Primary">
           <Link
-            href="/"
+            href={`/${query}`}
             aria-current={schedules ? "page" : undefined}
             className={`rounded-full px-3 py-1.5 ${schedules ? "bg-white/15 text-white" : "text-emerald-100/80 hover:bg-white/10"}`}
           >
@@ -64,11 +67,18 @@ function AppHeaderBar({ path }: { path: string }) {
             Clubs
           </Link>
           <Link
-            href="/standings"
+            href={`/standings${query}`}
             aria-current={standings ? "page" : undefined}
             className={`rounded-full px-3 py-1.5 ${standings ? "bg-white/15 text-white" : "text-emerald-100/80 hover:bg-white/10"}`}
           >
             Conference Standings
+          </Link>
+          <Link
+            href={`/projected${query}`}
+            aria-current={projected ? "page" : undefined}
+            className={`rounded-full px-3 py-1.5 ${projected ? "bg-white/15 text-white" : "text-emerald-100/80 hover:bg-white/10"}`}
+          >
+            Projected
           </Link>
           <Link
             href="/head-to-head"

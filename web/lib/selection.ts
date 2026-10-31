@@ -10,6 +10,18 @@ export type RememberedSquad = {
 
 const KEY = "ecnl-selected-squad";
 
+const SELECTION_KEYS = ["team", "gender", "conference", "age_group", "tier"] as const;
+
+export function selectionQuery(params: { get(name: string): string | null }): string {
+  const next = new URLSearchParams();
+  for (const key of SELECTION_KEYS) {
+    const value = params.get(key);
+    if (value) next.set(key, value);
+  }
+  const query = next.toString();
+  return query ? `?${query}` : "";
+}
+
 export function shortConference(name: string): string {
   return name.replace(/^ECNL(?:\s+RL)?\s+(?:Boys|Girls)\s+/i, "").replace(/\s+20\d{2}-\d{2}$/i, "").trim();
 }
