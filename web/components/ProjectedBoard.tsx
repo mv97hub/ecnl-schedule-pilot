@@ -92,12 +92,13 @@ function otherGender(gender: LeagueGender): LeagueGender {
   return gender === "girls" ? "boys" : "girls";
 }
 
-function Crest({ name, src }: { name: string; src?: string | null }) {
+function Crest({ name, src, compact = false }: { name: string; src?: string | null; compact?: boolean }) {
   const [failed, setFailed] = useState(false);
   const url = src && !failed ? src : null;
+  const box = compact ? "size-4 text-[8px]" : "size-6 text-[10px]";
   return (
-    <span className="inline-flex size-6 shrink-0 items-center justify-center overflow-hidden rounded bg-stone-100" data-club-mark={url ? "logo" : "placeholder"}>
-      {url ? <img src={url} alt="" className="size-full object-contain" onError={() => setFailed(true)} /> : <span className="text-[10px] font-semibold text-stone-500">{name.slice(0, 1)}</span>}
+    <span className={`inline-flex ${box} shrink-0 items-center justify-center overflow-hidden rounded bg-stone-100`} data-club-mark={url ? "logo" : "placeholder"}>
+      {url ? <img src={url} alt="" className="size-full object-contain" onError={() => setFailed(true)} /> : <span className="font-semibold text-stone-500">{name.slice(0, 1)}</span>}
     </span>
   );
 }
@@ -484,11 +485,44 @@ export function ProjectedBoard() {
           </div>
         ) : (
           <>
-            <ol aria-label="Projected standings" className="mt-4 divide-y divide-stone-200 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm md:hidden">
-              {rows.map((row) => (
-                <SummaryRow key={row.team_id} row={row} filters={view} heat={heatBackground(row.predicted_points, heat.min, heat.max)} />
-              ))}
-            </ol>
+            <div className="mt-4 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm md:hidden">
+              <table className="w-full table-fixed border-separate border-spacing-0 text-left text-[11px] tabular-nums">
+                <caption className="sr-only">Projected standings</caption>
+                <colgroup>
+                  <col className="w-6" />
+                  <col />
+                  <col className="w-6" />
+                  <col className="w-6" />
+                  <col className="w-6" />
+                  <col className="w-7" />
+                  <col className="w-7" />
+                  <col className="w-8" />
+                  <col className="w-11" />
+                </colgroup>
+                <thead className="bg-stone-50 text-[10px] font-medium uppercase tracking-wide text-stone-500">
+                  <tr>
+                    {["#", "Team", "W", "D", "L", "GF", "GA", "Pts", "Pred Pts"].map((heading) => (
+                      <th key={heading} scope="col" className={`px-0.5 py-2 font-medium ${heading === "Team" ? "px-1 text-left" : "text-center"} ${heading === "Pred Pts" ? "normal-case" : ""}`}>
+                        {heading === "Pred Pts" ? (
+                          <span className="inline-block leading-tight">
+                            Pred
+                            <br />
+                            Pts
+                          </span>
+                        ) : (
+                          heading
+                        )}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <MobileStatRow key={row.team_id} row={row} filters={view} heat={heatBackground(row.predicted_points, heat.min, heat.max)} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
             <h2 className="mb-2 mt-6 text-sm font-semibold text-stone-800 md:hidden">Opponent results</h2>
             <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm md:mt-4">
@@ -533,27 +567,31 @@ export function ProjectedBoard() {
   );
 }
 
-function SummaryRow({ row, filters, heat }: { row: PredictedRow; filters: ProjectedFilters; heat: string }) {
+function MobileStatRow({ row, filters, heat }: { row: PredictedRow; filters: ProjectedFilters; heat: string }) {
   const selected = filters.team != null && row.team_id === filters.team;
+  const tone = selected ? "bg-stone-100" : "bg-white";
+  const number = `px-0.5 py-2 text-center text-stone-700 ${tone}`;
   return (
-    <li data-selected={selected ? "true" : undefined} className={`flex items-center gap-3 px-3 py-3 ${selected ? "bg-stone-100" : "bg-white"}`}>
-      <span className="w-5 shrink-0 text-sm tabular-nums text-stone-500">{row.rank}</span>
-      <Crest name={row.team_name} src={row.logo_url} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-stone-950">
-          <TeamLink filters={filters} teamId={row.team_id} name={row.team_name} />
+    <tr data-selected={selected ? "true" : undefined}>
+      <td className={`px-0.5 py-2 text-center text-stone-500 ${tone}`}>{row.rank}</td>
+      <td className={`px-1 py-2 font-medium text-stone-950 ${tone}`}>
+        <div className="flex min-w-0 items-center gap-1">
+          <Crest name={row.team_name} src={row.logo_url} compact />
+          <span className="min-w-0 truncate">
+            <TeamLink filters={filters} teamId={row.team_id} name={row.team_name} />
+          </span>
         </div>
-        <p className="mt-0.5 text-[11px] tabular-nums text-stone-500">
-          MP {row.games_played} · Pts {row.points} · ROS {row.remaining}
-        </p>
-        <p className="text-[11px] tabular-nums text-stone-500">
-          Proj {row.projected_wins}-{row.projected_draws}-{row.projected_losses} W-D-L
-        </p>
-      </div>
-      <span className="rounded-md px-2 py-1 text-sm font-semibold tabular-nums text-stone-950" style={{ backgroundColor: heat }}>
+      </td>
+      <td className={number}>{row.wins}</td>
+      <td className={number}>{row.draws}</td>
+      <td className={number}>{row.losses}</td>
+      <td className={number}>{row.goals_for}</td>
+      <td className={number}>{row.goals_against}</td>
+      <td className={number}>{row.points}</td>
+      <td className="px-0.5 py-2 text-center font-semibold text-stone-950" style={{ backgroundColor: heat }}>
         {formatPts(row.predicted_points)}
-      </span>
-    </li>
+      </td>
+    </tr>
   );
 }
 
