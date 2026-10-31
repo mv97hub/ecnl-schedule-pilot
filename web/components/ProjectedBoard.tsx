@@ -319,13 +319,6 @@ export function ProjectedBoard() {
     team: read.team,
   };
   const conferenceOptions = useMemo(() => conferencesFor(roster, view.tier), [roster, view.tier]);
-  const teamsInView = useMemo(
-    () =>
-      roster
-        .filter((team) => (team.tier === "ECNL-RL" ? "ECNL-RL" : "ECNL") === view.tier && shortConference(team.conference) === view.conference && team.age_group === view.ageGroup)
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [roster, view.tier, view.conference, view.ageGroup],
-  );
   const rows = useMemo(() => report?.rows ?? [], [report]);
   const heat = useMemo(() => {
     const values = rows.map((row) => row.predicted_points);
@@ -366,16 +359,6 @@ export function ProjectedBoard() {
     router.push(`/projected?${query}`, { scroll: false });
   }
 
-  function chooseTeam(value: string) {
-    if (!value) {
-      update({ team: null });
-      return;
-    }
-    const teamId = Number(value);
-    if (!Number.isInteger(teamId) || teamId === view.team) return;
-    update({ team: teamId });
-  }
-
   return (
     <div className="min-h-full bg-stone-100">
       <main className="mx-auto max-w-6xl px-3 py-6 sm:px-6 sm:py-8 xl:max-w-[90rem]">
@@ -384,7 +367,7 @@ export function ProjectedBoard() {
           {view.tier} {view.conference}
         </p>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-6 grid gap-3 sm:grid-cols-3">
           <label className="text-sm font-medium text-slate-700">
             Tier
             <select
@@ -432,17 +415,6 @@ export function ProjectedBoard() {
               {ages.map((item) => (
                 <option key={item.value} value={item.value}>
                   {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            Team
-            <select aria-label="Team" value={teamsInView.some((team) => team.id === view.team) ? String(view.team) : ""} onChange={(event) => chooseTeam(event.target.value)} className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
-              <option value="">All teams</option>
-              {teamsInView.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
                 </option>
               ))}
             </select>
