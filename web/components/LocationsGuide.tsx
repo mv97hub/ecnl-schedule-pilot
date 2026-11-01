@@ -285,13 +285,22 @@ function ClubFilter({
 
 function Aggregate({ scores }: { scores: LocationAggregate }) {
   return (
-    <section data-aggregate className="mt-3 text-center" aria-label="Club Ratings">
-      <h2 className="text-sm font-semibold text-stone-950">Club Ratings</h2>
-      <p className="mt-0.5 text-xs text-stone-500">{overallLine(scores.overall, scores.ratings_count)}</p>
-      <div className="mt-1 flex justify-center">
-        <div className="w-fit max-w-full overflow-x-auto">
-          <ScoreRow scores={scores} />
-        </div>
+    <section data-aggregate className="mt-4 text-center" aria-label="Club Ratings">
+      <h2 className="text-base font-semibold text-stone-950">Club Ratings</h2>
+      <p className="mt-1 text-sm text-stone-500">{overallLine(scores.overall, scores.ratings_count)}</p>
+      <div className="mt-3 flex flex-wrap items-start justify-center gap-x-8 gap-y-4">
+        {CRITERIA.map((item) => {
+          const value = scores[item.key];
+          return (
+            <div key={item.key} className="flex min-w-24 flex-col items-center" data-club-score={item.key}>
+              <span className="inline-flex items-center gap-1.5 text-3xl font-semibold tracking-tight text-stone-950">
+                {scoreText(value)}
+                <Star className={`size-5 ${value == null ? "text-stone-300" : "fill-amber-400 text-amber-500"}`} />
+              </span>
+              <span className="mt-1 text-sm font-medium text-stone-700">{item.label}</span>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
