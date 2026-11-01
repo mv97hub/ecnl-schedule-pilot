@@ -143,10 +143,12 @@ function FieldCard({ card, home }: { card: LocationCard; home: HomeAddress | nul
 function ClubFilter({
   selectedId,
   selectedName,
+  selectedLogo,
   onSelect,
 }: {
   selectedId: string;
   selectedName: string | null;
+  selectedLogo: string | null;
   onSelect: (club: ClubListItem) => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -211,7 +213,10 @@ function ClubFilter({
         onClick={() => setOpen((current) => !current)}
         className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white px-2.5 text-sm text-stone-950 shadow-sm"
       >
-        <span className="truncate">{label}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          {selectedId ? <ClubMark name={label} src={selectedLogo} size="sm" /> : null}
+          <span className="truncate">{label}</span>
+        </span>
         <ChevronDown className={`size-4 shrink-0 text-stone-400 ${open ? "rotate-180" : ""}`} />
       </button>
       {open ? (
@@ -414,6 +419,7 @@ export function LocationsDirectory() {
   }
 
   const selectedName = directory?.club_name ?? (picked && String(picked.id) === selectedId ? picked.name : null);
+  const selectedLogo = directory?.logo_url ?? (picked && String(picked.id) === selectedId ? picked.logo_url ?? null : null);
 
   return (
     <div className="min-h-full bg-stone-100">
@@ -423,7 +429,7 @@ export function LocationsDirectory() {
           Choose a club to see its fields. Scores and family tips are combined across those fields. Ratings are entered on each field.
         </p>
         <div className="mt-4">
-          <ClubFilter selectedId={selectedId} selectedName={selectedName} onSelect={selectClub} />
+          <ClubFilter selectedId={selectedId} selectedName={selectedName} selectedLogo={selectedLogo} onSelect={selectClub} />
         </div>
         {selectedId ? (
           directoryLoading && !directory ? (
