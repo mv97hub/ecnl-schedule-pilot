@@ -14,8 +14,9 @@ router = APIRouter()
 def list_clubs(
     session: Annotated[Session, Depends(get_session)],
     q: str | None = Query(default=None, description="Case-insensitive substring of the club name"),
+    include_all: bool = Query(default=False, alias="all", description="Return every matching club instead of the short list"),
 ) -> list[ClubListItemOut]:
-    return search_clubs(session, q)
+    return search_clubs(session, q, limit=-1 if include_all else None)
 
 
 @router.get("/clubs/{club_key}", response_model=ClubDetailOut)

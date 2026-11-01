@@ -61,32 +61,7 @@ function scoreText(value: number | null): string {
   return value == null ? "—" : value.toFixed(1);
 }
 
-function Meter({ label, value }: { label: string; value: number | null }) {
-  const width = value == null ? 0 : Math.max(0, Math.min(100, (value / 5) * 100));
-  return (
-    <div>
-      <div className="flex items-center justify-between text-[10px] font-medium uppercase tracking-wide text-stone-400">
-        <span>{label}</span>
-        <span>{value == null ? "—" : value.toFixed(1)}</span>
-      </div>
-      <div className="mt-1 h-1.5 rounded-full bg-stone-100">
-        <div className="h-1.5 rounded-full bg-emerald-700" style={{ width: `${width}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function ScoreBars({ scores }: { scores: LocationAggregate | LocationCard }) {
-  return (
-    <div className="grid grid-cols-1 gap-2">
-      {CRITERIA.map((item) => (
-        <Meter key={item.key} label={item.label} value={scores[item.key]} />
-      ))}
-    </div>
-  );
-}
-
-function ScoreRow({ scores }: { scores: LocationCard }) {
+function ScoreRow({ scores }: { scores: LocationAggregate | LocationCard }) {
   return (
     <div className="mt-1 flex items-center gap-x-3 overflow-x-auto text-xs text-stone-600">
       {CRITERIA.map((item) => (
@@ -153,6 +128,8 @@ function ClubFilter({
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const hintRef = useRef<HTMLParagraphElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [clubs, setClubs] = useState<ClubListItem[]>([]);
@@ -164,7 +141,7 @@ function ClubFilter({
     let active = true;
     const timer = setTimeout(() => {
       setLoading(true);
-      fetchClubs(query)
+      fetchClubs(query, { all: true })
         .then((rows) => {
           if (!active) return;
           setClubs(rows);
@@ -202,6 +179,25 @@ function ClubFilter({
     };
   }, [open]);
 
+  useEffect(() => {
+    const list = listRef.current;
+    const hint = hintRef.current;
+    if (!open || !hint) return;
+    const fit = () => {
+      hint.hidden = !(list && list.scrollHeight > list.clientHeight + 1);
+    };
+    const frame = requestAnimationFrame(fit);
+    if (!list) return () => cancelAnimationFrame(frame);
+    const observer = new ResizeObserver(() => {
+      requestAnimationFrame(fit);
+    });
+    observer.observe(list);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [open, clubs]);
+
   const label = selectedName || (selectedId ? "Selected club" : "Choose a club");
 
   return (
@@ -233,6 +229,9 @@ function ClubFilter({
               className="h-8 w-full bg-transparent pr-2 pl-8 text-sm text-stone-950 outline-none placeholder:text-stone-400"
             />
           </div>
+          <p ref={hintRef} hidden data-club-filter-hint className="border-b border-stone-100 px-3 py-1.5 text-xs text-stone-500">
+            Type to filter more clubs
+          </p>
           {error ? <p className="px-3 py-2 text-xs text-stone-700">{error}. Confirm the API is running on port 8000.</p> : null}
           {loading && clubs.length === 0 ? (
             <p className="flex items-center gap-2 px-3 py-2 text-xs text-stone-500">
@@ -242,11 +241,11 @@ function ClubFilter({
           ) : clubs.length === 0 ? (
             <p className="px-3 py-2 text-xs text-stone-500">No clubs match.</p>
           ) : (
-            <ul role="listbox" aria-label="Clubs" className="max-h-56 overflow-y-auto py-1">
+            <ul ref={listRef} role="listbox" aria-label="Clubs" className="max-h-[min(28rem,50vh)] overflow-y-auto py-1">
               {clubs.map((club) => {
                 const active = String(club.id) === selectedId;
                 return (
-                  <li key={club.id}>
+                  <li key={`${club.id}:${club.name}`}>
                     <button
                       type="button"
                       role="option"
@@ -279,13 +278,12 @@ function ClubFilter({
 
 function Aggregate({ scores }: { scores: LocationAggregate }) {
   return (
-    <section data-aggregate className="mt-8 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm" aria-label="Club Ratings">
-      <h2 className="text-lg font-semibold text-stone-950">Club Ratings</h2>
-      <p className="mt-1 text-sm text-stone-500">Field quality, referees, parent vibe, parking, and amenities from every rating at these fields.</p>
-      <p className="mt-3 text-sm font-medium text-stone-800">{overallLine(scores.overall, scores.ratings_count)}</p>
-      <div className="mt-4">
-        <ScoreBars scores={scores} />
+    <section data-aggregate className="mt-3 rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-sm" aria-label="Club Ratings">
+      <div className="flex items-center gap-2">
+        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-stone-950">Club Ratings</h2>
+        <p className="shrink-0 text-xs text-stone-500">{overallLine(scores.overall, scores.ratings_count)}</p>
       </div>
+      <ScoreRow scores={scores} />
     </section>
   );
 }
@@ -443,14 +441,14 @@ export function LocationsDirectory() {
             <p className="mt-4 text-sm text-stone-500">No home fields stored.</p>
           ) : (
             <>
-              <ul className="mt-3 grid grid-cols-1 gap-2">
+              <Aggregate scores={directory.aggregate} />
+              <ul className="mt-2 grid grid-cols-1 gap-2">
                 {directory.fields.map((card) => (
                   <li key={card.venue_key}>
                     <FieldCard card={card} home={home} />
                   </li>
                 ))}
               </ul>
-              <Aggregate scores={directory.aggregate} />
               <Tips tips={directory.tips} clubId={selectedId} />
             </>
           )

@@ -28,9 +28,10 @@ export function fetchSchedule(teamId: number, filter: ScheduleFilter): Promise<S
   return request<ScheduleResponse>(`/teams/${teamId}/schedule?filter=${filter}`);
 }
 
-export function fetchClubs(q?: string): Promise<ClubListItem[]> {
+export function fetchClubs(q?: string, options?: { all?: boolean }): Promise<ClubListItem[]> {
   const params = new URLSearchParams();
   if (q?.trim()) params.set("q", q.trim());
+  if (options?.all) params.set("all", "true");
   const query = params.toString();
   return request<ClubListItem[]>(`/clubs${query ? `?${query}` : ""}`);
 }

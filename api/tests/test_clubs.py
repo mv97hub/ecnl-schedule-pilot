@@ -738,6 +738,7 @@ class ClubRouteTests(unittest.TestCase):
                 listed = client.get("/clubs")
                 narrowed = client.get("/clubs", params={"q": "Probe Club Page Cap"})
                 named = client.get("/clubs", params={"q": "Probe Club Page Cap 2"})
+                everything = client.get("/clubs", params={"all": "true", "q": "Probe Club Page Cap"})
         finally:
             clubs_module.CLUB_LIST_LIMIT = original
 
@@ -747,3 +748,8 @@ class ClubRouteTests(unittest.TestCase):
         self.assertEqual(len(narrowed.json()), 1)
         self.assertEqual(named.json()[0]["name"], "Probe Club Page Cap 2")
         self.assertEqual(CLUB_LIST_LIMIT, 30)
+        self.assertEqual(everything.status_code, 200)
+        self.assertGreaterEqual(len(everything.json()), 3)
+        self.assertTrue(
+            {"Probe Club Page Cap 0", "Probe Club Page Cap 1", "Probe Club Page Cap 2"} <= {row["name"] for row in everything.json()}
+        )
