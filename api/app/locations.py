@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.clubs import club_detail
 from app.database import get_session
 from app.ingestion.normalizer import split_venue
 from app.models import ScheduleGame, VenueRating, VenueRecommendation
@@ -328,6 +329,16 @@ class LocationCard(AveragesOut):
     drive_minutes: int | None
 
 
+class ScoreRollup(BaseModel):
+    field_quality: float | None
+    referees: float | None
+    parent_vibe: float | None
+    parking_access: float | None
+    amenities: float | None
+    overall: float | None
+    ratings_count: int
+
+
 class LocationGameOut(BaseModel):
     id: int
     starts_at: datetime
@@ -351,6 +362,19 @@ class RecommendationOut(BaseModel):
     upvotes: int
     created_at: datetime
     map_url: str
+
+
+class ClubTipOut(RecommendationOut):
+    venue_name: str
+
+
+class ClubLocationsOut(BaseModel):
+    club_id: int | str
+    club_name: str
+    logo_url: str | None
+    fields: list[LocationCard]
+    aggregate: ScoreRollup
+    tips: list[ClubTipOut]
 
 
 class LocationDetailOut(LocationCard):
@@ -564,6 +588,90 @@ def list_locations(
     ]
     cards.sort(key=lambda card: (card.venue_name.casefold(), card.city.casefold(), card.state, card.venue_key))
     return cards
+
+
+def _rollup(rows: list[VenueRating]) -> ScoreRollup:
+    summary = _summarize(rows)
+    return ScoreRollup(
+        field_quality=summary["field_quality"],  # type: ignore[arg-type]
+        referees=summary["referees"],  # type: ignore[arg-type]
+        parent_vibe=summary["parent_vibe"],  # type: ignore[arg-type]
+        parking_access=summary["parking_access"],  # type: ignore[arg-type]
+        amenities=summary["amenities"],  # type: ignore[arg-type]
+        overall=summary["overall"],  # type: ignore[arg-type]
+        ratings_count=int(summary["ratings_count"] or 0),
+    )
+
+
+def _bucket_for_venue(grouped: dict[str, ComplexBucket], venue_name: str, city: str, state: str, latitude: float | None, longitude: float | None) -> ComplexBucket:
+    key = make_venue_key(venue_name, city, state)
+    bucket = grouped.get(key)
+    if bucket is not None:
+        return bucket
+    bucket = ComplexBucket(key)
+    bucket.names[_display_name(venue_name)] += 1
+    city_text = _display_city(city)
+    state_text = _display_state(state)
+    if city_text:
+        bucket.cities[city_text] += 1
+    if state_text:
+        bucket.states[state_text] += 1
+    if latitude is not None and longitude is not None:
+        bucket.latitudes.append(latitude)
+        bucket.longitudes.append(longitude)
+    return bucket
+
+
+@router.get("/locations/club", response_model=ClubLocationsOut)
+def list_club_locations(
+    session: Annotated[Session, Depends(get_session)],
+    club: str = Query(description="Club id, or the split id used on the club page"),
+    home_lat: float | None = None,
+    home_lng: float | None = None,
+) -> ClubLocationsOut:
+    """Home complexes for one club, with scores and tips pooled across those fields."""
+
+    detail = club_detail(session, club)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Club not found")
+    origin_lat, origin_lng = _home_pair(home_lat, home_lng)
+    grouped = _complexes(session, datetime.now(UTC))
+    ratings = _ratings_by_key(session)
+    tip_counts = _recommendation_counts(session)
+    fields: list[LocationCard] = []
+    names: dict[str, str] = {}
+    seen: set[str] = set()
+    for venue in detail.venues:
+        key = make_venue_key(venue.venue_name, venue.city, venue.state)
+        if key in seen:
+            continue
+        seen.add(key)
+        bucket = _bucket_for_venue(grouped, venue.venue_name, venue.city, venue.state, venue.latitude, venue.longitude)
+        card = _card(bucket, ratings.get(key, []), tip_counts.get(key, 0), origin_lat, origin_lng)
+        fields.append(card)
+        names[key] = card.venue_name
+    fields.sort(key=lambda card: (card.venue_name.casefold(), card.city.casefold(), card.state, card.venue_key))
+    pooled: list[VenueRating] = []
+    for key in seen:
+        pooled.extend(ratings.get(key, []))
+    tips: list[ClubTipOut] = []
+    if seen:
+        statement = (
+            select(VenueRecommendation)
+            .where(VenueRecommendation.venue_key.in_(seen))
+            .order_by(VenueRecommendation.upvotes.desc(), VenueRecommendation.created_at.desc(), VenueRecommendation.id.desc())
+        )
+        for row in session.scalars(statement).all():
+            packed = _recommendation_out(row)
+            tips.append(ClubTipOut(**packed.model_dump(), venue_name=names.get(row.venue_key, row.venue_name)))
+    return ClubLocationsOut(
+        club_id=detail.id,
+        club_name=detail.name,
+        logo_url=detail.logo_url,
+        fields=fields,
+        aggregate=_rollup(pooled),
+        tips=tips,
+    )
 
 
 def _resolve_key(

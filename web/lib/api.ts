@@ -1,6 +1,6 @@
 import type { LeagueGender } from "@/lib/leagues";
 import { profileKey } from "@/lib/profileKey";
-import type { ClubDetail, ClubListItem, HeadToHeadReport, LocationCard, LocationDetail, LocationTip, PredictedStandings, ScheduleFilter, ScheduleResponse, StandingRow, StandingsMode, Team } from "@/lib/types";
+import type { ClubDetail, ClubListItem, ClubLocations, HeadToHeadReport, LocationCard, LocationDetail, LocationTip, PredictedStandings, ScheduleFilter, ScheduleResponse, StandingRow, StandingsMode, Team } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
@@ -28,9 +28,10 @@ export function fetchSchedule(teamId: number, filter: ScheduleFilter): Promise<S
   return request<ScheduleResponse>(`/teams/${teamId}/schedule?filter=${filter}`);
 }
 
-export function fetchClubs(q?: string): Promise<ClubListItem[]> {
+export function fetchClubs(q?: string, options?: { all?: boolean }): Promise<ClubListItem[]> {
   const params = new URLSearchParams();
   if (q?.trim()) params.set("q", q.trim());
+  if (options?.all) params.set("all", "true");
   const query = params.toString();
   return request<ClubListItem[]>(`/clubs${query ? `?${query}` : ""}`);
 }
@@ -85,6 +86,18 @@ async function sendJson<T>(path: string, body: unknown): Promise<T> {
     throw new Error(detail);
   }
   return payload as T;
+}
+
+export function fetchClubLocations(
+  clubId: string,
+  home?: { latitude: number | null; longitude: number | null } | null,
+): Promise<ClubLocations> {
+  const params = new URLSearchParams({ club: clubId });
+  if (home?.latitude != null && home.longitude != null) {
+    params.set("home_lat", String(home.latitude));
+    params.set("home_lng", String(home.longitude));
+  }
+  return request<ClubLocations>(`/locations/club?${params.toString()}`);
 }
 
 export function fetchLocations(home?: { latitude: number | null; longitude: number | null } | null): Promise<LocationCard[]> {

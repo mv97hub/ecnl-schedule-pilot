@@ -5,7 +5,7 @@ import { LocationsDirectory } from "@/components/LocationsGuide";
 
 export const metadata: Metadata = {
   title: "Locations Guide | ECNL",
-  description: "Rate complexes and read hotel, food, and sideline tips from ECNL families.",
+  description: "Choose a club and see its fields, the scores across those fields, and family tips.",
 };
 
 export default function LocationsPage() {

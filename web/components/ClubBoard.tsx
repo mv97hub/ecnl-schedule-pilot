@@ -384,7 +384,16 @@ export function ClubBoard({ clubId }: { clubId: string }) {
             <UpcomingBox club={club} />
 
             <section className="mt-8" aria-label="Fields">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">Fields</h2>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">Fields</h2>
+                <Link
+                  href={`/locations?club=${encodeURIComponent(String(club.id))}`}
+                  data-venue-guide={club.id}
+                  className="text-sm font-medium text-emerald-800 underline-offset-4 hover:underline"
+                >
+                  Venue Guide
+                </Link>
+              </div>
               {club.venues.length === 0 ? (
                 <p className="mt-3 text-sm text-stone-500">No home fields stored.</p>
               ) : (

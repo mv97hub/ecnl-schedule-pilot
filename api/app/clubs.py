@@ -608,8 +608,12 @@ def _expand_clubs(session: Session, clubs: list[Club]) -> list[ClubListItemOut]:
     return items
 
 
-def search_clubs(session: Session, q: str | None) -> list[ClubListItemOut]:
-    """Clubs that have at least one squad. Empty q is a short capped list, not the whole league."""
+def search_clubs(session: Session, q: str | None, *, limit: int | None = None) -> list[ClubListItemOut]:
+    """Clubs that have at least one squad.
+
+    A missing limit uses CLUB_LIST_LIMIT at call time, which is the clubs page.
+    A negative limit returns every match, which is the locations filter.
+    """
 
     counts = (
         select(ScheduleTeam.club_id.label("club_id"), func.count(ScheduleTeam.id).label("team_count"))
@@ -633,7 +637,10 @@ def search_clubs(session: Session, q: str | None) -> list[ClubListItemOut]:
         items.sort(key=lambda item: (item.name.casefold(), str(item.id)))
     else:
         items.sort(key=lambda item: (-item.team_count, item.name.casefold(), str(item.id)))
-    return items[:CLUB_LIST_LIMIT]
+    cap = CLUB_LIST_LIMIT if limit is None else limit
+    if cap < 0:
+        return items
+    return items[:cap]
 
 
 def _squad_key(team: ScheduleTeam) -> tuple:
