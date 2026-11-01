@@ -36,6 +36,19 @@ export function fetchClubs(q?: string, options?: { all?: boolean }): Promise<Clu
   return request<ClubListItem[]>(`/clubs${query ? `?${query}` : ""}`);
 }
 
+let clubCatalogRequest: Promise<ClubListItem[]> | null = null;
+
+/** Every club, fetched once per page load. The locations filter narrows this list locally. */
+export function fetchClubCatalog(): Promise<ClubListItem[]> {
+  if (!clubCatalogRequest) {
+    clubCatalogRequest = fetchClubs(undefined, { all: true }).catch((error: unknown) => {
+      clubCatalogRequest = null;
+      throw error;
+    });
+  }
+  return clubCatalogRequest;
+}
+
 export function fetchClub(clubKey: string): Promise<ClubDetail> {
   return request<ClubDetail>(`/clubs/${encodeURIComponent(clubKey)}`);
 }
