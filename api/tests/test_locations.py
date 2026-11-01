@@ -17,7 +17,7 @@ from sqlmodel import SQLModel
 from app.database import engine
 from app.locations import make_venue_key
 from app.main import app
-from app.models import Base, ScheduleGame, ScheduleTeam, VenueRating, VenueRecommendation
+from app.models import Base, Club, ScheduleGame, ScheduleTeam, VenueRating, VenueRecommendation
 
 PROFILE = "probe-location-same"
 OTHER = "probe-location-other"
@@ -73,6 +73,8 @@ class LocationGuideTests(unittest.TestCase):
                 )
             if connection.execute(text("SELECT to_regclass('public.team')")).scalar() is not None:
                 connection.execute(text("DELETE FROM team WHERE name LIKE 'Probe Location %'"))
+            if connection.execute(text("SELECT to_regclass('public.club')")).scalar() is not None:
+                connection.execute(text("DELETE FROM club WHERE id IN (8803301, 8803302) OR name LIKE 'Probe Location %'"))
 
     def test_api_starts(self) -> None:
         with TestClient(app) as client:
@@ -244,6 +246,118 @@ class LocationGuideTests(unittest.TestCase):
             assert row is not None
             self.assertIsNone(row.user_id)
             self.assertEqual(row.upvotes, 1)
+
+    def test_club_directory_pools_home_fields(self) -> None:
+        now = datetime.now(UTC)
+        with Session(engine) as session:
+            session.add_all(
+                (
+                    Club(id=8803301, name="Probe Location FC", logo_url="https://example.com/probe-location.png"),
+                    Club(id=8803302, name="Probe Location Rival FC"),
+                )
+            )
+            home = ScheduleTeam(
+                name="Probe Location Home",
+                age_group="U14",
+                tier="ECNL",
+                conference="Probe Location East",
+                city="Probeville",
+                state="FL",
+                gender="boys",
+                club_id=8803301,
+            )
+            rival = ScheduleTeam(
+                name="Probe Location Rival",
+                age_group="U14",
+                tier="ECNL",
+                conference="Probe Location East",
+                city="Rivalton",
+                state="GA",
+                gender="boys",
+                club_id=8803302,
+            )
+            session.add_all((home, rival))
+            session.flush()
+
+            def add_game(home_id: int, away_id: int, venue: str, city: str, state: str) -> None:
+                session.add(
+                    ScheduleGame(
+                        home_team_id=home_id,
+                        away_team_id=away_id,
+                        starts_at=now + timedelta(days=3),
+                        venue_name=venue,
+                        city=city,
+                        state=state,
+                        timezone="America/New_York",
+                        status="SCHEDULED",
+                    )
+                )
+
+            add_game(home.id, rival.id, "Davis Park - Field 1", "Probeville", "FL")
+            add_game(home.id, rival.id, "Davis Park - Field 2", "Probeville", "FL")
+            add_game(home.id, rival.id, "Annex Grounds", "Probeville", "FL")
+            add_game(rival.id, home.id, "Rival Stadium", "Rivalton", "GA")
+            session.commit()
+
+        with TestClient(app) as client:
+            davis = _rating("Davis Park - Field 1", 4, "Main field", "GRASS")
+            davis_again = _rating("Davis Park - Field 2", 2, "Other family", "TURF")
+            annex = _rating("Annex Grounds", 2, "Annex", "TURF")
+            annex["referees"] = 5
+            annex["parent_vibe"] = 1
+            annex["parking_access"] = 4
+            annex["amenities"] = 3
+            self.assertEqual(client.post("/locations/rate", json=davis, headers={"X-Profile-Key": PROFILE}).status_code, 200)
+            self.assertEqual(client.post("/locations/rate", json=davis_again, headers={"X-Profile-Key": OTHER}).status_code, 200)
+            self.assertEqual(client.post("/locations/rate", json=annex, headers={"X-Profile-Key": PROFILE}).status_code, 200)
+
+            def tip(venue: str, city: str, state: str, title: str) -> None:
+                created = client.post(
+                    "/locations/recommendations",
+                    json={
+                        "venue_name": venue,
+                        "city": city,
+                        "state": state,
+                        "category": "HOTEL",
+                        "title": title,
+                        "rating": 4,
+                        "review_text": f"Stay near {title}.",
+                        "tags": ["Close to Fields"],
+                    },
+                    headers={"X-Profile-Key": PROFILE},
+                )
+                self.assertEqual(created.status_code, 200, created.text)
+
+            tip("Davis Park - Field 1", "Probeville", "FL", "Davis Inn")
+            tip("Annex Grounds", "Probeville", "FL", "Annex Inn")
+            tip("Rival Stadium", "Rivalton", "GA", "Rival Inn")
+
+            missing = client.get("/locations/club", params={"club": "8803999"})
+            self.assertEqual(missing.status_code, 404)
+
+            listed = client.get("/locations/club", params={"club": "8803301"})
+            self.assertEqual(listed.status_code, 200, listed.text)
+            body = listed.json()
+            self.assertEqual(body["club_name"], "Probe Location FC")
+            self.assertEqual([row["venue_name"] for row in body["fields"]], ["Annex Grounds", "Davis Park"])
+            davis_card = next(row for row in body["fields"] if row["venue_name"] == "Davis Park")
+            annex_card = next(row for row in body["fields"] if row["venue_name"] == "Annex Grounds")
+            self.assertEqual(davis_card["ratings_count"], 2)
+            self.assertEqual(annex_card["ratings_count"], 1)
+            self.assertEqual(davis_card["parking_access"], 2)
+            self.assertEqual(annex_card["referees"], 5)
+            self.assertNotIn("Rival Stadium", [row["venue_name"] for row in body["fields"]])
+
+            aggregate = body["aggregate"]
+            self.assertEqual(aggregate["ratings_count"], 3)
+            self.assertEqual(aggregate["field_quality"], 2.67)
+            self.assertEqual(aggregate["referees"], 3.67)
+            self.assertEqual(aggregate["parent_vibe"], 3.67)
+            self.assertEqual(aggregate["parking_access"], 2.67)
+            self.assertEqual(aggregate["amenities"], 3.67)
+            self.assertEqual(aggregate["overall"], 3.27)
+            self.assertEqual(sorted(row["title"] for row in body["tips"]), ["Annex Inn", "Davis Inn"])
+            self.assertEqual(sorted(row["venue_name"] for row in body["tips"]), ["Annex Grounds", "Davis Park"])
 
 
 if __name__ == "__main__":

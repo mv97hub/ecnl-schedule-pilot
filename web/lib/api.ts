@@ -1,6 +1,6 @@
 import type { LeagueGender } from "@/lib/leagues";
 import { profileKey } from "@/lib/profileKey";
-import type { ClubDetail, ClubListItem, HeadToHeadReport, LocationCard, LocationDetail, LocationTip, PredictedStandings, ScheduleFilter, ScheduleResponse, StandingRow, StandingsMode, Team } from "@/lib/types";
+import type { ClubDetail, ClubListItem, ClubLocations, HeadToHeadReport, LocationCard, LocationDetail, LocationTip, PredictedStandings, ScheduleFilter, ScheduleResponse, StandingRow, StandingsMode, Team } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
@@ -85,6 +85,18 @@ async function sendJson<T>(path: string, body: unknown): Promise<T> {
     throw new Error(detail);
   }
   return payload as T;
+}
+
+export function fetchClubLocations(
+  clubId: string,
+  home?: { latitude: number | null; longitude: number | null } | null,
+): Promise<ClubLocations> {
+  const params = new URLSearchParams({ club: clubId });
+  if (home?.latitude != null && home.longitude != null) {
+    params.set("home_lat", String(home.latitude));
+    params.set("home_lng", String(home.longitude));
+  }
+  return request<ClubLocations>(`/locations/club?${params.toString()}`);
 }
 
 export function fetchLocations(home?: { latitude: number | null; longitude: number | null } | null): Promise<LocationCard[]> {

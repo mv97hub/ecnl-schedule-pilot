@@ -408,6 +408,29 @@ export type LocationTip = {
   map_url: string;
 };
 
+export type LocationAggregate = {
+  field_quality: number | null;
+  referees: number | null;
+  parent_vibe: number | null;
+  parking_access: number | null;
+  amenities: number | null;
+  overall: number | null;
+  ratings_count: number;
+};
+
+export type ClubLocationTip = LocationTip & {
+  venue_name: string;
+};
+
+export type ClubLocations = {
+  club_id: number | string;
+  club_name: string;
+  logo_url: string | null;
+  fields: LocationCard[];
+  aggregate: LocationAggregate;
+  tips: ClubLocationTip[];
+};
+
 export type LocationDetail = LocationCard & {
   my_rating: MyRating | null;
   recommendations: LocationTip[];
