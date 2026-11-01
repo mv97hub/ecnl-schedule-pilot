@@ -344,6 +344,82 @@ export type ScoutingReport = {
   insights: ScoutingInsight[];
 };
 
+export type SurfaceVote = "GRASS" | "TURF" | "MIXED";
+
+export type TipCategory = "HOTEL" | "RESTAURANT" | "COFFEE_GAP" | "ACTIVITY" | "SIDELINE_TIP";
+
+export type LocationScores = {
+  field_quality: number | null;
+  referees: number | null;
+  parent_vibe: number | null;
+  parking_access: number | null;
+  amenities: number | null;
+  overall: number | null;
+  ratings_count: number;
+  dominant_surface: SurfaceVote | null;
+};
+
+export type LocationCard = LocationScores & {
+  venue_key: string;
+  venue_name: string;
+  city: string;
+  state: string;
+  listed_surface: SurfaceVote | null;
+  recommendations_count: number;
+  upcoming_games: number;
+  total_games: number;
+  drive_minutes: number | null;
+};
+
+export type MyRating = {
+  field_quality: number;
+  referees: number;
+  parent_vibe: number;
+  parking_access: number;
+  amenities: number;
+  surface_vote: SurfaceVote | null;
+  comment: string | null;
+  author_name: string | null;
+  updated_at: string;
+};
+
+export type LocationGame = {
+  id: number;
+  starts_at: string;
+  home_team: string;
+  away_team: string;
+  status: string;
+  home_score: number | null;
+  away_score: number | null;
+  field_name: string | null;
+};
+
+export type LocationTip = {
+  id: number;
+  venue_key: string;
+  category: TipCategory;
+  title: string;
+  rating: number;
+  review_text: string;
+  tags: string[];
+  author_name: string;
+  upvotes: number;
+  created_at: string;
+  map_url: string;
+};
+
+export type LocationDetail = LocationCard & {
+  my_rating: MyRating | null;
+  recommendations: LocationTip[];
+  upcoming: LocationGame[];
+  recent: LocationGame[];
+  links: {
+    directions: string;
+    hotels: string;
+    restaurants: string;
+  };
+};
+
 export type HeadToHeadReport = {
   team_a_stats: TeamTape;
   team_b_stats: TeamTape;

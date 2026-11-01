@@ -2,6 +2,7 @@ import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 
 import { ClubMark } from "@/components/ClubMark";
+import { VenueGuideLink } from "@/components/VenueGuideLink";
 import { easternStamp, mapsUrl } from "@/lib/format";
 import type { Game } from "@/lib/types";
 
@@ -98,6 +99,7 @@ export function ScheduleCard({ game, teamName, teamId, teamLogo }: { game: Game;
             {field ? <FieldBadge name={field} /> : null}
             <ExternalLink className="size-3 shrink-0 text-stone-400" />
           </a>
+          <VenueGuideLink venueName={game.venue_name} city={game.city} state={game.state} className="text-xs" />
         </div>
         <ClubMark name={awayName} src={awayLogo} align="end" />
       </div>

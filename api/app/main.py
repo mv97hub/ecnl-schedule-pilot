@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel
 
 from app.database import engine, ensure_capture_columns, ensure_result_columns, ensure_source_columns
+from app.locations import router as locations_router
 from app.models import Base
 from app.routers.clubs import router as clubs_router
 from app.routers.data_refresh import router as data_refresh_router
@@ -50,6 +51,7 @@ app.include_router(teams_router)
 app.include_router(standings_router)
 app.include_router(head_to_head_router)
 app.include_router(clubs_router)
+app.include_router(locations_router)
 app.include_router(ingest_router)
 
 

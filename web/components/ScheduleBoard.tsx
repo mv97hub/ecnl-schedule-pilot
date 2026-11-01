@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import { ClubMark } from "@/components/ClubMark";
 import { FieldBadge, ScheduleCard, ScoutLink, fieldLabel } from "@/components/ScheduleCard";
+import { VenueGuideLink } from "@/components/VenueGuideLink";
 import { easternStamp, easternToday, mapsUrl, teamScoreline } from "@/lib/format";
 import type { Game } from "@/lib/types";
 
@@ -96,6 +97,7 @@ function ListView({ games, teamId }: { games: Game[]; teamId: number }) {
                           {game.venue_name}
                         </a>
                         {field ? <FieldBadge name={field} /> : null}
+                        <VenueGuideLink venueName={game.venue_name} city={game.city} state={game.state} className="text-xs" />
                       </span>
                       </span>
                     </span>
@@ -206,6 +208,7 @@ export function CalendarView({ games, teamName }: { games: Game[]; teamName: str
                           <p className="min-w-0 text-stone-500" title={`${game.venue_name}${field ? ` · ${field}` : ""}, ${game.city}, ${game.state}`}>
                             <span className="block truncate">{game.venue_name}</span>
                             {field ? <FieldBadge name={field} className="mt-0.5" /> : null}
+                            <VenueGuideLink venueName={game.venue_name} city={game.city} state={game.state} className="mt-0.5 block whitespace-normal text-[10px] leading-tight" />
                           </p>
                         </div>
                       );
