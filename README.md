@@ -1,6 +1,6 @@
 # ECNL Schedule Pilot
 
-Published ECNL and ECNL-RL schedules for boys and girls, plus conference standings and head-to-head comparisons. A FastAPI service under `api/` stores the league in PostgreSQL 16. A Next.js app under `web/` is the dashboard.
+Published ECNL and ECNL-RL schedules for boys and girls, plus conference standings, head-to-head comparisons, club pages, and a locations guide for home fields. A FastAPI service under `api/` stores the league in PostgreSQL 16. A Next.js app under `web/` is the dashboard.
 
 The league file is the public AthleteOne JSON at `api.athleteone.com`, season `2026-27`. `api/load_league.py` reads four orgs: 12 (ECNL Boys), 16 (ECNL-RL Boys), 9 (ECNL Girls), and 13 (ECNL-RL Girls). Pre-ECNL orgs 21 and 22 are not loaded. Event ids 4423 and 4424 (a QA event and a non-US test event) are skipped.
 
@@ -14,13 +14,38 @@ The header switches Boys and Girls. The choice is stored in `sessionStorage` und
 
 | Page | Route | What it shows |
 | --- | --- | --- |
-| Team Schedules | `/` | Conference, age group, and team, then that team's games. Filters are all, home, and away. |
+| Team Schedules | `/` | Conference, age group, and team, then that team's games. Filters are all, home, and away. A Venue Guide link on a game opens that complex at `/locations/{venue_key}`. |
+| Clubs | `/clubs` | Club search. The list is capped at 30 clubs that have at least one squad. A club page is `/clubs/{id}` and shows boys and girls together. Its Venue Guide link opens `/locations?club=` for that club. The field rows on the club page open Google Maps. |
 | Conference Standings | `/standings` | One conference table. The client asks for `mode=official` (stored rows) or `mode=calculated` (rows built from completed conference games). |
+| Projected | `/projected` | One conference table of predicted standings. Predicted points are current points plus max(0, 3 − opponent points per game) for each remaining conference game. |
 | Head-to-Head | `/head-to-head` | Two teams in the same gender: direct meetings, common opponents, and a scouting report built in `api/scouting.py` with no model calls. |
+| Locations Guide | `/locations` | A club filter, then that club's home fields, Club Ratings, and family tips. Details are in [Locations Guide](#locations-guide). |
+| Field | `/locations/{venue_key}` | One complex: scorecard, rating form, family tips, then upcoming and recent games. |
+| Add a family tip | `/locations/tip` | A dropdown of the club's fields (`?club=`), then the tip form. |
 | Profile | `/profile` | A home address saved in `sessionStorage` for this browser tab. It is not written to the database. |
 | Share image | `/api/og/h2h` | A 1200×630 image for a head-to-head link. It calls the API `/head-to-head` route. |
 
 The browser calls `NEXT_PUBLIC_API_URL`, or `http://127.0.0.1:8000` when that variable is unset. The Open Graph route uses the same variable, or `http://localhost:8000`.
+
+### Locations Guide
+
+`/locations` opens on the club filter. No fields are listed until a club is chosen. The choice is stored as `?club=` and the page loads `GET /locations/club`. The closed filter shows the club name. When a club is chosen, that club's logo is shown once, inside the closed filter. Opening the filter calls `GET /clubs?all=true`, which is every club that has a squad, not the 30-club cap used by `/clubs`. Typing filters that list. When the open list scrolls, the page shows `Type to filter more clubs`. Each row has the club logo and the squad count. A club that the API splits into more than one public name uses that public id, such as `1353-sporting-sa-jax`. The bare AthleteOne id is 404 for a split club.
+
+The fields are that club's home complexes. A game is included only when one of the club's teams is the home team. `make_venue_key` in `api/app/locations.py` drops a trailing field number, so `Davis Park - Field 1` and `Field 2` are one place. The key is the cleaned name, the lowercase city, and the state. Away venues are not listed. Cards are ordered by venue name, city, state, then key. If the profile tab has a home latitude and longitude, a card can also show a straight-line drive estimate. That estimate uses a 1.3 road factor and 45 miles per hour. It is not live traffic.
+
+Club Ratings is above the field cards. It is a centered heading, an overall line, and one score line. It has no card, border, or background. The scores are field quality, referees, parent vibe, parking, and amenities. Each one is a one-decimal number and a star. The overall line is like `3.6 overall · 2 ratings`, or `No ratings yet` when the count is zero. The numbers are one pooled average of every `venue_rating` row on those fields. They are not the average of each field's own average. Overall is the mean of the five criteria across those rows.
+
+Each field card shows the complex name, a Rate control, and the same five scores on one line. On a wide screen it also shows city and state, the surface, and the drive estimate when one exists. Rate opens `/locations/{venue_key}`.
+
+Family tips are under the field cards. They are every tip stored for those fields, ordered by upvotes, then newest, then id. The filters are All, Hotel, Food, Hangout, Activity, and Parking. Those map to every tip, `HOTEL`, `RESTAURANT`, `COFFEE_GAP`, `ACTIVITY`, and `SIDELINE_TIP`. The filter runs in the browser on the tips already returned. A tip's field name opens that field page.
+
+Add a family tip sits next to the Family tips heading and opens `/locations/tip?club=`. The page requires that club query. Its field dropdown is the same home-field list. Place name starts as the selected field's name. Changing the field updates the place name only while it is empty or still equal to the previous field name. Saving posts `POST /locations/recommendations` and returns to `/locations?club=`. The field page keeps its own tip form. On that form, place name starts as the complex name.
+
+The field page scorecard does not grow a second block for tips. Under the Scorecard heading, one line shows the overall rating, or `No family ratings yet`, the tip count, and the average of the tip stars when there is at least one tip. Family tips, including that page's add-a-tip form, are above Upcoming games and Recent games. Each of those lists is at most eight games. Category tabs on the field page use the full names: Hotel, Team Food and Dining, Between-Game Hangout, Activity, and Sideline and Parking Tip.
+
+There is no account. The browser stores `ecnl-profile-key` in `localStorage` and sends it as `X-Profile-Key` (at most 80 characters). A second rating from the same key updates the same `venue_rating` row. `user_id` stays empty. The display name is `ecnl-author-name` in `localStorage`. A tip with no display name is stored as `ECNL Family`.
+
+The club page Venue Guide link goes to `/locations?club=` for that club. The field rows under it still open Google Maps. A Venue Guide link on a team schedule opens `/locations/{venue_key}` for that one complex.
 
 ### API (`api/`)
 
@@ -32,6 +57,15 @@ The browser calls `NEXT_PUBLIC_API_URL`, or `http://127.0.0.1:8000` when that va
 | GET | `/teams` | Lists `team` rows. Optional `q` (name substring), `age_group` (`U13`, `U14`, `U15`, `U16`, `U17`, or `U18/19`), and `gender` (`boys` or `girls`, default `boys`). Ordered by age group, name, then id. |
 | GET | `/teams/{team_id}/schedule` | Games for one team. `filter` is `all`, `home`, or `away`. |
 | GET | `/standings` | One conference table. Required: `conference`, `tier` (`ECNL` or `ECNL-RL`), `age_group`. `mode` is `official` or `calculated`. `gender` defaults to `boys`. Rank is points per game, then goal difference, then goals for, then name. Form is the last five completed conference results, computed when the request runs. |
+| GET | `/standings/predicted` | One projected conference table. Required: `conference`, `tier`, `age_group`. `gender` defaults to `boys`. Completed conference games keep their points. Each remaining scheduled conference game adds max(0, 3 − opponent points per game). |
+| GET | `/clubs` | Clubs that have at least one squad. Optional `q` is a case-insensitive name substring. Without `all=true` the list stops at `CLUB_LIST_LIMIT` (30). `all=true` returns every match. An empty query is ordered by squad count, then name. A club with more than one public spelling is returned as separate ids. |
+| GET | `/clubs/{club_key}` | One club: squads, record, home venues, and recent weekends. An unknown key is 404, including a bare AthleteOne id when that club is split. |
+| GET | `/locations` | Every published complex. Optional `search`, `state`, `home_lat`, and `home_lng`. The locations page does not call this route. It calls `/locations/club`. |
+| GET | `/locations/club` | Required `club` (the public id). Home complexes, the Club Ratings `aggregate`, and `tips` for those fields. Unknown club is 404. Optional `home_lat` and `home_lng` fill `drive_minutes`. |
+| GET | `/locations/detail` | `venue_key`, or venue name plus city and state. Optional `category` is one of the five tip categories. Optional `home`, `home_lat`, and `home_lng`. Optional `X-Profile-Key` fills `my_rating`. 404 when that complex has no games, ratings, or tips. |
+| POST | `/locations/rate` | Requires `X-Profile-Key`. Scores are integers 1–5 for field quality, referees, parent vibe, parking, and amenities. `surface_vote` is `GRASS`, `TURF`, `MIXED`, or omitted. One row per `venue_key` and profile key. A later post from that key updates the row. |
+| POST | `/locations/recommendations` | Requires `X-Profile-Key`. `category` is `HOTEL`, `RESTAURANT`, `COFFEE_GAP`, `ACTIVITY`, or `SIDELINE_TIP`. `rating` is 1–5. `tags` must be in `TIP_TAGS` in `api/app/locations.py`. The route builds `venue_key` from the venue name, city, and state. |
+| POST | `/locations/recommendations/{recommendation_id}/upvote` | Adds one to `upvotes`. An unknown id is 404. No profile key. |
 | GET | `/head-to-head` | Compares `team_a_id` and `team_b_id`. They must differ and share a gender. `conference_only` limits the games used. |
 | GET | `/data-refresh` | `last_successful_finish` for the newest successful `data_refresh` row whose `job` is `schedule`. People and reference runs are not included. |
 | POST | `/ingest/ics` | Fetches a public calendar and upserts `ingest_team` / `ingest_game`. |
@@ -59,7 +93,10 @@ api/
   app/refresh.py           In-place upsert of team, game, and standings; data_refresh rows
   app/capture.py           Clubs, coaches, players, ratings, playoff, weather, live events
   app/standings.py         Official and calculated conference tables
+  app/predictions.py       Predicted conference table
   app/head_to_head.py      Matchup comparison
+  app/clubs.py             Club search, club page, and home venues
+  app/locations.py         Complex keys, ratings, tips, and the club field directory
   app/logos.py             Club logo lookup for a team
   app/ingestion/           Parse and upsert pasted or fetched club schedules
   load_league.py           Download AthleteOne JSON
@@ -71,8 +108,8 @@ api/
   tests/                   unittest modules
   scouting.py              Head-to-head scouting report
 web/
-  app/                     Routes /, /standings, /head-to-head, /profile, /api/og/h2h
-  components/              Schedule, standings, head-to-head, profile, and ingest UI
+  app/                     Routes /, /clubs, /standings, /projected, /head-to-head, /locations, /locations/tip, /profile, /api/og/h2h
+  components/              Schedule, standings, projected, clubs, locations, head-to-head, profile, and ingest UI
   lib/                     API client, gender, conferences, formatting
 docker-compose.yml         Postgres 16
 .env.example               Variable names for local Postgres and the web app
@@ -88,6 +125,9 @@ Tests, all under `api/tests/`:
 | `test_capture.py` | People and reference pulls, and that `/data-refresh` ignores a reference job. |
 | `test_ingestion.py` | Ingest parsing, ingest endpoints, and the scouting meter. |
 | `test_startup_schema.py` | Columns added on startup. |
+| `test_clubs.py` | Club search cap, split public ids, club detail, records, and weekend windows. |
+| `test_locations.py` | One complex per field number, one rating per profile, tips, and the pooled club directory. |
+| `test_predictions.py` | Predicted points from opponent points per game, and `/standings/predicted`. |
 
 `web/README.md` is the Next.js template text. It does not describe this project.
 
@@ -204,6 +244,10 @@ Check constraints:
 - `game.status` and `ingest_game.status` are `SCHEDULED`, `COMPLETED`, `POSTPONED`, or `CANCELLED`. The default is `SCHEDULED`.
 - `data_refresh.status` is `running`, `success`, or `failure`.
 - `data_refresh.job` is `schedule`, `people`, or `reference`. The default is `schedule`.
+- Each `venue_rating` score (`field_quality`, `referees`, `parent_vibe`, `parking_access`, `amenities`) is from 1 to 5.
+- `venue_rating.surface_vote` is null or `GRASS`, `TURF`, or `MIXED`.
+- `venue_recommendation.category` is `HOTEL`, `RESTAURANT`, `COFFEE_GAP`, `ACTIVITY`, or `SIDELINE_TIP`.
+- `venue_recommendation.rating` is from 1 to 5, and `upvotes` is at least 0.
 
 `team_rating`, `playoff_picture`, `wildcard_cutoff`, and `showcase` store gender and tier as strings and do not add those checks.
 
@@ -223,6 +267,19 @@ Check constraints:
 `conference_standing` columns: `conference`, `tier`, `gender`, `age_group`, `capped_goal_diff`, `team_id`, `team_name`, `games_played`, `wins`, `losses`, `draws`, `goals_for`, `goals_against`, `goal_diff`, `points`, `points_per_game`, `updated_at`.
 
 `club` columns: `name`, `parent_club_id`, `logo_url`.
+
+### Family location tables
+
+These are written by the locations routes, not by the refresh jobs. `venue_key` is the cleaned complex name, lowercase city, and state from `make_venue_key`.
+
+| Table | Purpose | Primary key and rules | Written by |
+| --- | --- | --- | --- |
+| `venue_rating` | One browser profile's stars for one complex. A second submit from the same profile updates the row. | `id`. Unique on `venue_key`, `author_key`. Score and surface checks above. | `POST /locations/rate`. |
+| `venue_recommendation` | One family tip for one complex: hotel, food, hangout, activity, or sideline and parking. | `id`. Category, rating, and upvote checks above. | `POST /locations/recommendations`. Upvotes use `POST /locations/recommendations/{id}/upvote`. |
+
+`venue_rating` columns: `venue_key`, `venue_name`, `city`, `state`, `author_key`, `user_id` (left null), `author_name`, `field_quality`, `referees`, `parent_vibe`, `parking_access`, `amenities`, `surface_vote`, `comment`, `updated_at`.
+
+`venue_recommendation` columns: `venue_key`, `venue_name`, `city`, `state`, `category`, `title`, `rating`, `review_text`, `tags` (comma-separated, or null), `author_name` (default `ECNL Family`), `author_key`, `user_id` (left null), `upvotes` (default 0), `created_at`.
 
 ### Ingest tables
 
