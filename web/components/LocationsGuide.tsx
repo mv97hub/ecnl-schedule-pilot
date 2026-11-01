@@ -1,10 +1,11 @@
 "use client";
 
-import { ChevronDown, LoaderCircle, Search, Star } from "lucide-react";
+import { ChevronDown, ChevronRight, LoaderCircle, Search, Star } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { ClubMark } from "@/components/ClubMark";
 import { fetchClubLocations, fetchClubs } from "@/lib/api";
 import { readHomeAddress, type HomeAddress } from "@/lib/homeAddress";
 import type { ClubListItem, ClubLocationTip, ClubLocations, LocationAggregate, LocationCard, TipCategory } from "@/lib/types";
@@ -114,11 +115,16 @@ function FieldCard({ card, home }: { card: LocationCard; home: HomeAddress | nul
     <Link
       href={`/locations/${encodeURIComponent(card.venue_key)}`}
       data-field-card={card.venue_key}
+      aria-label={`Open ${card.venue_name} to rate this field and add tips`}
       className="block rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-sm hover:border-emerald-700"
     >
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="min-w-0 truncate text-sm font-semibold text-stone-950">{card.venue_name}</h2>
-        {meta ? <p className="shrink-0 truncate text-xs text-stone-500">{meta}</p> : null}
+      <div className="flex items-center gap-2">
+        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-stone-950">{card.venue_name}</h2>
+        {meta ? <p className="hidden truncate text-xs text-stone-500 sm:block">{meta}</p> : null}
+        <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-emerald-700 px-2 py-0.5 text-[11px] font-medium text-white">
+          Open
+          <ChevronRight className="size-3.5" />
+        </span>
       </div>
       <ScoreRow scores={card} />
     </Link>
@@ -128,11 +134,13 @@ function FieldCard({ card, home }: { card: LocationCard; home: HomeAddress | nul
 function ClubFilter({
   selectedId,
   selectedName,
+  selectedLogo,
   onSelect,
 }: {
   selectedId: string;
   selectedName: string | null;
-  onSelect: (id: number | string) => void;
+  selectedLogo: string | null;
+  onSelect: (club: ClubListItem) => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -188,15 +196,18 @@ function ClubFilter({
   const label = selectedName || (selectedId ? "Selected club" : "Choose a club");
 
   return (
-    <div ref={rootRef} className="relative mt-4 max-w-sm" data-club-filter>
+    <div ref={rootRef} className="relative min-w-0 max-w-sm flex-1" data-club-filter>
       <button
         type="button"
         aria-expanded={open}
         aria-haspopup="listbox"
         onClick={() => setOpen((current) => !current)}
-        className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white px-3 text-sm text-stone-950 shadow-sm"
+        className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white px-2.5 text-sm text-stone-950 shadow-sm"
       >
-        <span className="truncate">{label}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          {selectedId ? <ClubMark name={label} src={selectedLogo} size="sm" /> : null}
+          <span className="truncate">{label}</span>
+        </span>
         <ChevronDown className={`size-4 shrink-0 text-stone-400 ${open ? "rotate-180" : ""}`} />
       </button>
       {open ? (
@@ -232,15 +243,18 @@ function ClubFilter({
                       role="option"
                       aria-selected={active}
                       onClick={() => {
-                        onSelect(club.id);
+                        onSelect(club);
                         setOpen(false);
                         setQuery("");
                       }}
-                      className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm hover:bg-stone-50 ${
+                      className={`flex w-full items-center justify-between gap-3 px-2.5 py-1.5 text-left text-sm hover:bg-stone-50 ${
                         active ? "bg-stone-50 font-medium text-stone-950" : "text-stone-800"
                       }`}
                     >
-                      <span className="truncate">{club.name}</span>
+                      <span className="flex min-w-0 items-center gap-2">
+                        <ClubMark name={club.name} src={club.logo_url} size="sm" />
+                        <span className="truncate">{club.name}</span>
+                      </span>
                       <span className="shrink-0 text-xs text-stone-400">{club.team_count}</span>
                     </button>
                   </li>
@@ -256,8 +270,8 @@ function ClubFilter({
 
 function Aggregate({ scores }: { scores: LocationAggregate }) {
   return (
-    <section data-aggregate className="mt-8 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm" aria-label="Scores across these fields">
-      <h2 className="text-lg font-semibold text-stone-950">Across these fields</h2>
+    <section data-aggregate className="mt-8 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm" aria-label="Club Ratings">
+      <h2 className="text-lg font-semibold text-stone-950">Club Ratings</h2>
       <p className="mt-1 text-sm text-stone-500">Field quality, referees, parent vibe, parking, and amenities from every rating at these fields.</p>
       <p className="mt-3 text-sm font-medium text-stone-800">{overallLine(scores.overall, scores.ratings_count)}</p>
       <div className="mt-4">
@@ -320,6 +334,7 @@ export function LocationsDirectory() {
   const [directory, setDirectory] = useState<ClubLocations | null>(null);
   const [directoryLoading, setDirectoryLoading] = useState(false);
   const [directoryError, setDirectoryError] = useState<string | null>(null);
+  const [picked, setPicked] = useState<ClubListItem | null>(null);
 
   useEffect(() => {
     setHome(readHomeAddress());
@@ -355,11 +370,15 @@ export function LocationsDirectory() {
     };
   }, [selectedId]);
 
-  function selectClub(id: number | string) {
+  function selectClub(club: ClubListItem) {
+    setPicked(club);
     const params = new URLSearchParams(searchParams.toString());
-    params.set("club", String(id));
+    params.set("club", String(club.id));
     router.push(`/locations?${params.toString()}`);
   }
+
+  const selectedName = directory?.club_name ?? (picked && String(picked.id) === selectedId ? picked.name : null);
+  const selectedLogo = directory?.logo_url ?? (picked && String(picked.id) === selectedId ? picked.logo_url ?? null : null);
 
   return (
     <div className="min-h-full bg-stone-100">
@@ -368,7 +387,10 @@ export function LocationsDirectory() {
         <p className="mt-1 max-w-2xl text-sm text-stone-500">
           Choose a club to see its fields. Scores and family tips are combined across those fields. Ratings are entered on each field.
         </p>
-        <ClubFilter selectedId={selectedId} selectedName={directory?.club_name ?? null} onSelect={selectClub} />
+        <div className="mt-4 flex items-center gap-3">
+          {selectedId ? <ClubMark name={selectedName || "Club"} src={selectedLogo} /> : null}
+          <ClubFilter selectedId={selectedId} selectedName={selectedName} selectedLogo={selectedLogo} onSelect={selectClub} />
+        </div>
         {selectedId ? (
           directoryLoading && !directory ? (
             <div className="mt-4 flex items-center gap-2 text-sm text-stone-500">

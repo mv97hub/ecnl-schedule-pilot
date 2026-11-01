@@ -228,6 +228,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
         if (!active) return;
         setDetail(next);
         setError(null);
+        setTitle(next.venue_name);
         if (next.my_rating) {
           setScores({
             field_quality: next.my_rating.field_quality,
@@ -326,6 +327,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
       setReview("");
       const next = await fetchLocationDetail(venueKey, home);
       setDetail(next);
+      setTitle(next.venue_name);
     } catch (err: unknown) {
       setTipError(err instanceof Error ? err.message : "Could not add that tip.");
     } finally {
