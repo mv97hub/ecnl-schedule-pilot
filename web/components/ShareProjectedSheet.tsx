@@ -121,7 +121,7 @@ export function ShareProjectedSheet({ report, disabled = false }: ShareProjected
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-6"
+            className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white p-4 shadow-xl sm:p-6"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
@@ -132,14 +132,6 @@ export function ShareProjectedSheet({ report, disabled = false }: ShareProjected
                 Close
               </button>
             </div>
-            {building ? <p className="mt-4 text-sm text-stone-600">Building the sheet</p> : null}
-            {error ? <p className="mt-4 text-sm text-stone-700">{error}</p> : null}
-            {preview ? (
-              <div className="mt-4 overflow-auto rounded-xl border border-stone-200">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={preview.url} alt={title} width={preview.width} height={preview.height} className="h-auto max-w-none" />
-              </div>
-            ) : null}
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
               <button type="button" data-share-download onClick={downloadGraphic} disabled={!preview} className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
                 Download Graphic (PNG)
@@ -149,6 +141,14 @@ export function ShareProjectedSheet({ report, disabled = false }: ShareProjected
               </button>
             </div>
             {shareNote ? <p className="mt-2 text-sm text-stone-600">{shareNote}</p> : null}
+            {building ? <p className="mt-4 text-sm text-stone-600">Building the sheet</p> : null}
+            {error ? <p className="mt-4 text-sm text-stone-700">{error}</p> : null}
+            {preview ? (
+              <div className="mt-4 overflow-hidden rounded-xl border border-stone-200">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={preview.url} alt={title} className="mx-auto block h-auto max-h-[min(58vh,calc(92vh-12rem))] w-full object-contain" />
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
