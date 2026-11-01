@@ -22,12 +22,13 @@ from sqlalchemy.orm import Session, selectinload
 from app.clubs import club_location_source
 from app.database import get_session
 from app.ingestion.normalizer import split_venue
-from app.models import ScheduleGame, VenueRating, VenueRecommendation
+from app.models import ScheduleGame, VenueRating, VenueRecommendation, VenueTipVote
 
 router = APIRouter(tags=["locations"])
 
 SurfaceVote = Literal["GRASS", "TURF", "MIXED"]
 TipCategory = Literal["HOTEL", "RESTAURANT", "COFFEE_GAP", "ACTIVITY", "SIDELINE_TIP"]
+VoteChoice = Literal["up", "down"]
 CATEGORIES = {"HOTEL", "RESTAURANT", "COFFEE_GAP", "ACTIVITY", "SIDELINE_TIP"}
 SURFACES = {"GRASS", "TURF", "MIXED"}
 TIP_TAGS = (
@@ -394,6 +395,8 @@ class RecommendationOut(BaseModel):
     tags: list[str]
     author_name: str
     upvotes: int
+    downvotes: int
+    my_vote: VoteChoice | None
     created_at: datetime
     map_url: str
 
@@ -443,6 +446,10 @@ class RecommendationIn(BaseModel):
     review_text: str = Field(min_length=1, max_length=4000)
     tags: list[str] = Field(default_factory=list)
     author_name: str | None = Field(default=None, max_length=80)
+
+
+class VoteIn(BaseModel):
+    choice: VoteChoice
 
 
 def _profile_key(x_profile_key: Annotated[str | None, Header()] = None) -> str | None:
@@ -533,7 +540,24 @@ def _mine(rows: list[VenueRating], author_key: str | None) -> RatingMine | None:
     return None
 
 
-def _recommendation_out(row: VenueRecommendation) -> RecommendationOut:
+def _tip_order():
+    score = VenueRecommendation.upvotes - VenueRecommendation.downvotes
+    return (score.desc(), VenueRecommendation.created_at.desc(), VenueRecommendation.id.desc())
+
+
+def _my_votes(session: Session, tip_ids: list[int], author_key: str | None) -> dict[int, str]:
+    if not author_key or not tip_ids:
+        return {}
+    rows = session.scalars(
+        select(VenueTipVote).where(
+            VenueTipVote.recommendation_id.in_(tip_ids),
+            VenueTipVote.author_key == author_key,
+        )
+    ).all()
+    return {row.recommendation_id: row.choice for row in rows}
+
+
+def _recommendation_out(row: VenueRecommendation, my_vote: str | None = None) -> RecommendationOut:
     return RecommendationOut(
         id=row.id,
         venue_key=row.venue_key,
@@ -544,6 +568,8 @@ def _recommendation_out(row: VenueRecommendation) -> RecommendationOut:
         tags=_parse_tags(row.tags),
         author_name=row.author_name,
         upvotes=row.upvotes,
+        downvotes=row.downvotes,
+        my_vote=my_vote if my_vote in ("up", "down") else None,
         created_at=_utc(row.created_at),
         map_url=_maps_search(_place(row.title, row.city, row.state)),
     )
@@ -652,6 +678,7 @@ def _key_place(venue_key: str) -> tuple[str, str] | None:
 @router.get("/locations/club", response_model=ClubLocationsOut)
 def list_club_locations(
     session: Annotated[Session, Depends(get_session)],
+    author_key: Annotated[str | None, Depends(_profile_key)],
     club: str = Query(description="Club id, or the split id used on the club page"),
     home_lat: float | None = None,
     home_lng: float | None = None,
@@ -681,10 +708,12 @@ def list_club_locations(
         statement = (
             select(VenueRecommendation)
             .where(VenueRecommendation.venue_key.in_(seen))
-            .order_by(VenueRecommendation.upvotes.desc(), VenueRecommendation.created_at.desc(), VenueRecommendation.id.desc())
+            .order_by(*_tip_order())
         )
-        for row in session.scalars(statement).all():
-            packed = _recommendation_out(row)
+        rows = list(session.scalars(statement).all())
+        votes = _my_votes(session, [row.id for row in rows], author_key)
+        for row in rows:
+            packed = _recommendation_out(row, votes.get(row.id))
             tips.append(ClubTipOut(**packed.model_dump(), venue_name=names.get(row.venue_key, row.venue_name)))
     return ClubLocationsOut(
         club_id=source.id,
@@ -753,8 +782,9 @@ def location_detail(
     statement = select(VenueRecommendation).where(VenueRecommendation.venue_key == key)
     if category:
         statement = statement.where(VenueRecommendation.category == category)
-    statement = statement.order_by(VenueRecommendation.upvotes.desc(), VenueRecommendation.created_at.desc(), VenueRecommendation.id.desc())
+    statement = statement.order_by(*_tip_order())
     tips = list(session.scalars(statement).all())
+    votes = _my_votes(session, [row.id for row in tips], author_key)
     upcoming, recent = _games(session, bucket.game_ids, now)
     place = _place(bucket.venue_name, bucket.city, bucket.state)
     origin = (home or "").strip()[:240] or None
@@ -762,7 +792,7 @@ def location_detail(
     return LocationDetailOut(
         **card.model_dump(),
         my_rating=_mine(ratings, author_key),
-        recommendations=[_recommendation_out(row) for row in tips],
+        recommendations=[_recommendation_out(row, votes.get(row.id)) for row in tips],
         upcoming=upcoming,
         recent=recent,
         links=PlaceLinks(
@@ -869,6 +899,7 @@ def add_recommendation(
         author_key=author_key,
         user_id=None,
         upvotes=0,
+        downvotes=0,
         created_at=datetime.now(UTC),
     )
     session.add(row)
@@ -877,15 +908,46 @@ def add_recommendation(
     return _recommendation_out(row)
 
 
-@router.post("/locations/recommendations/{recommendation_id}/upvote", response_model=RecommendationOut)
-def upvote_recommendation(
+def _apply_vote(row: VenueRecommendation, previous: str | None, choice: str) -> None:
+    if previous == choice:
+        return
+    if previous == "up":
+        row.upvotes = max(0, int(row.upvotes or 0) - 1)
+    elif previous == "down":
+        row.downvotes = max(0, int(row.downvotes or 0) - 1)
+    if choice == "up":
+        row.upvotes = int(row.upvotes or 0) + 1
+    else:
+        row.downvotes = int(row.downvotes or 0) + 1
+
+
+@router.post("/locations/recommendations/{recommendation_id}/vote", response_model=RecommendationOut)
+def vote_recommendation(
     recommendation_id: int,
+    payload: VoteIn,
     session: Annotated[Session, Depends(get_session)],
+    author_key: Annotated[str, Depends(_require_profile_key)],
 ) -> RecommendationOut:
-    row = session.get(VenueRecommendation, recommendation_id)
+    """One vote per browser profile. The same choice again changes nothing; the other choice moves the counts."""
+
+    row = session.scalar(
+        select(VenueRecommendation).where(VenueRecommendation.id == recommendation_id).with_for_update()
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="Tip not found")
-    row.upvotes = int(row.upvotes or 0) + 1
+    existing = session.scalar(
+        select(VenueTipVote).where(
+            VenueTipVote.recommendation_id == row.id,
+            VenueTipVote.author_key == author_key,
+        )
+    )
+    if existing is None:
+        existing = VenueTipVote(recommendation_id=row.id, author_key=author_key, choice=payload.choice)
+        session.add(existing)
+        _apply_vote(row, None, payload.choice)
+    else:
+        _apply_vote(row, existing.choice, payload.choice)
+        existing.choice = payload.choice
     session.commit()
     session.refresh(row)
-    return _recommendation_out(row)
+    return _recommendation_out(row, payload.choice)

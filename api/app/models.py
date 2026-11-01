@@ -446,6 +446,7 @@ class VenueRecommendation(Base):
         ),
         CheckConstraint("rating BETWEEN 1 AND 5", name="ck_venue_recommendation_rating"),
         CheckConstraint("upvotes >= 0", name="ck_venue_recommendation_upvotes"),
+        CheckConstraint("downvotes >= 0", name="ck_venue_recommendation_downvotes"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -462,4 +463,22 @@ class VenueRecommendation(Base):
     author_key: Mapped[str] = mapped_column(String(80), nullable=False)
     user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     upvotes: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    downvotes: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
+
+
+class VenueTipVote(Base):
+    """The current thumbs up or down from one browser profile. A later vote updates this row."""
+
+    __tablename__ = "venue_tip_vote"
+    __table_args__ = (
+        UniqueConstraint("recommendation_id", "author_key", name="uq_venue_tip_vote_author"),
+        CheckConstraint("choice IN ('up', 'down')", name="ck_venue_tip_vote_choice"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    recommendation_id: Mapped[int] = mapped_column(
+        ForeignKey("venue_recommendation.id", ondelete="CASCADE"), nullable=False
+    )
+    author_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    choice: Mapped[str] = mapped_column(String(8), nullable=False)

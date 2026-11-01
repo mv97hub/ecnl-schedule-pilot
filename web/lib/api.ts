@@ -110,7 +110,7 @@ export function fetchClubLocations(
     params.set("home_lat", String(home.latitude));
     params.set("home_lng", String(home.longitude));
   }
-  return request<ClubLocations>(`/locations/club?${params.toString()}`);
+  return request<ClubLocations>(`/locations/club?${params.toString()}`, { headers: profileHeaders() });
 }
 
 export function fetchLocations(home?: { latitude: number | null; longitude: number | null } | null): Promise<LocationCard[]> {
@@ -144,11 +144,8 @@ export function postRecommendation(body: unknown): Promise<LocationTip> {
   return sendJson<LocationTip>("/locations/recommendations", body);
 }
 
-export function upvoteRecommendation(id: number): Promise<LocationTip> {
-  return request<LocationTip>(`/locations/recommendations/${id}/upvote`, {
-    method: "POST",
-    headers: profileHeaders(),
-  });
+export function voteRecommendation(id: number, choice: "up" | "down"): Promise<LocationTip> {
+  return sendJson<LocationTip>(`/locations/recommendations/${id}/vote`, { choice });
 }
 
 export async function postIngest<T>(path: string, body: unknown): Promise<T> {

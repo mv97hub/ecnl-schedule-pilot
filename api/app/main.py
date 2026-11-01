@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel
 
-from app.database import engine, ensure_capture_columns, ensure_result_columns, ensure_source_columns
+from app.database import engine, ensure_capture_columns, ensure_location_columns, ensure_result_columns, ensure_source_columns
 from app.locations import router as locations_router
 from app.models import Base
 from app.routers.clubs import router as clubs_router
@@ -23,6 +23,7 @@ async def lifespan(_app: FastAPI):
     ensure_result_columns()
     ensure_source_columns()
     ensure_capture_columns()
+    ensure_location_columns()
     yield
 
 

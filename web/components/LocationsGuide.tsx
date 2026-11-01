@@ -6,10 +6,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ClubMark } from "@/components/ClubMark";
-import { fetchClubCatalog, fetchClubLocations } from "@/lib/api";
+import { TipVotes, sortTips } from "@/components/TipVotes";
+import { fetchClubCatalog, fetchClubLocations, voteRecommendation } from "@/lib/api";
 import { easternStamp } from "@/lib/format";
 import { readHomeAddress, type HomeAddress } from "@/lib/homeAddress";
-import type { ClubListItem, ClubLocationTip, ClubLocations, LocationAggregate, LocationCard, TipCategory } from "@/lib/types";
+import type { ClubListItem, ClubLocationTip, ClubLocations, LocationAggregate, LocationCard, TipCategory, TipVote } from "@/lib/types";
 
 const CRITERIA: { key: keyof LocationAggregate; label: string }[] = [
   { key: "field_quality", label: "Field quality" },
@@ -298,7 +299,27 @@ function Aggregate({ scores }: { scores: LocationAggregate }) {
 
 function Tips({ tips, clubId }: { tips: ClubLocationTip[]; clubId: string }) {
   const [filter, setFilter] = useState<(typeof TIP_FILTERS)[number]["id"]>("all");
-  const visible = filter === "all" ? tips : tips.filter((tip) => tip.category === filter);
+  const [rows, setRows] = useState<ClubLocationTip[]>(() => sortTips(tips));
+  const [pendingVote, setPendingVote] = useState<number | null>(null);
+  const [voteError, setVoteError] = useState<string | null>(null);
+  useEffect(() => {
+    setRows(sortTips(tips));
+    setVoteError(null);
+  }, [tips, clubId]);
+  const visible = sortTips(filter === "all" ? rows : rows.filter((tip) => tip.category === filter));
+
+  async function vote(id: number, choice: TipVote) {
+    setPendingVote(id);
+    setVoteError(null);
+    try {
+      const updated = await voteRecommendation(id, choice);
+      setRows((current) => sortTips(current.map((tip) => (tip.id === id ? { ...tip, ...updated } : tip))));
+    } catch (err: unknown) {
+      setVoteError(err instanceof Error ? err.message : "Could not save that vote.");
+    } finally {
+      setPendingVote(null);
+    }
+  }
   const filterLabel = TIP_FILTERS.find((item) => item.id === filter)?.label ?? "All";
   return (
     <section data-family-tips className="mt-8" aria-label="Family tips">
@@ -331,6 +352,7 @@ function Tips({ tips, clubId }: { tips: ClubLocationTip[]; clubId: string }) {
         })}
       </div>
       <p className="mt-3 text-sm text-stone-500">Tips from all of these fields, since the fields are near each other. Add a rating or a tip on the field page.</p>
+      {voteError ? <p className="mt-3 text-sm text-stone-700">{voteError}</p> : null}
       {visible.length === 0 ? (
         <p className="mt-4 text-sm text-stone-500">
           {filter === "all" ? "No family tips for these fields yet." : `No ${filterLabel.toLowerCase()} tips for these fields yet.`}
@@ -364,10 +386,11 @@ function Tips({ tips, clubId }: { tips: ClubLocationTip[]; clubId: string }) {
                 </ul>
               ) : null}
               <p className="mt-2 text-sm text-stone-800">{tip.review_text}</p>
-              <p className="mt-3 flex flex-wrap items-center gap-3 text-xs text-stone-500">
+              <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-stone-500">
                 <span>{tip.author_name}</span>
                 <span data-tip-added={tip.created_at}>{easternStamp(tip.created_at)?.dateLabel}</span>
-              </p>
+                <TipVotes tip={tip} pending={pendingVote === tip.id} onVote={(choice) => void vote(tip.id, choice)} />
+              </div>
             </li>
           ))}
         </ul>
