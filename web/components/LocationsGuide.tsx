@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ClubMark } from "@/components/ClubMark";
 import { fetchClubCatalog, fetchClubLocations } from "@/lib/api";
+import { easternStamp } from "@/lib/format";
 import { readHomeAddress, type HomeAddress } from "@/lib/homeAddress";
 import type { ClubListItem, ClubLocationTip, ClubLocations, LocationAggregate, LocationCard, TipCategory } from "@/lib/types";
 
@@ -363,7 +364,10 @@ function Tips({ tips, clubId }: { tips: ClubLocationTip[]; clubId: string }) {
                 </ul>
               ) : null}
               <p className="mt-2 text-sm text-stone-800">{tip.review_text}</p>
-              <p className="mt-3 text-xs text-stone-500">{tip.author_name}</p>
+              <p className="mt-3 flex flex-wrap items-center gap-3 text-xs text-stone-500">
+                <span>{tip.author_name}</span>
+                <span data-tip-added={tip.created_at}>{easternStamp(tip.created_at)?.dateLabel}</span>
+              </p>
             </li>
           ))}
         </ul>
