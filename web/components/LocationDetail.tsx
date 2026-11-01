@@ -399,8 +399,20 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
               <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm" aria-label="Scorecard">
                 <h2 className="text-lg font-semibold text-stone-950">Scorecard</h2>
-                <p className="mt-1 text-sm text-stone-500">
-                  {detail.overall == null ? "No family ratings yet." : `${detail.overall.toFixed(1)} overall`}
+                <p className="mt-1 flex items-center gap-1 truncate text-sm text-stone-500" data-tip-summary>
+                  <span className="truncate">
+                    {detail.overall == null ? "No family ratings yet" : `${detail.overall.toFixed(1)} overall`}
+                    <span className="text-stone-400"> · </span>
+                    {detail.recommendations.length === 0
+                      ? "No tips"
+                      : `${detail.recommendations.length} ${detail.recommendations.length === 1 ? "tip" : "tips"}`}
+                  </span>
+                  {detail.recommendations.length > 0 ? (
+                    <span className="inline-flex shrink-0 items-center gap-0.5 font-medium text-stone-700">
+                      {(detail.recommendations.reduce((sum, tip) => sum + tip.rating, 0) / detail.recommendations.length).toFixed(1)}
+                      <Star className="size-3.5 fill-amber-400 text-amber-500" />
+                    </span>
+                  ) : null}
                 </p>
                 <div className="mt-4 space-y-3">
                   {CRITERIA.map((item) => (
@@ -458,12 +470,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
               </form>
             </div>
 
-            <div className="mt-6 grid gap-4 lg:grid-cols-2">
-              <GameList title="Upcoming games" games={detail.upcoming} />
-              <GameList title="Recent games" games={detail.recent} />
-            </div>
-
-            <section className="mt-8">
+            <section className="mt-6">
               <h2 className="text-lg font-semibold text-stone-950">Family tips</h2>
               <div className="mt-3 flex flex-wrap gap-1" role="tablist" aria-label="Tip categories">
                 {TABS.map((item) => {
@@ -587,6 +594,11 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                 </button>
               </form>
             </section>
+
+            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+              <GameList title="Upcoming games" games={detail.upcoming} />
+              <GameList title="Recent games" games={detail.recent} />
+            </div>
           </>
         ) : null}
       </main>

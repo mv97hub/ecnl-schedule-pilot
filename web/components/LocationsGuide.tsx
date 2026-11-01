@@ -1,11 +1,10 @@
 "use client";
 
-import { Car, LoaderCircle, Search, Star } from "lucide-react";
+import { ChevronDown, LoaderCircle, Search, Star } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { ClubMark } from "@/components/ClubMark";
 import { fetchClubLocations, fetchClubs } from "@/lib/api";
 import { readHomeAddress, type HomeAddress } from "@/lib/homeAddress";
 import type { ClubListItem, ClubLocationTip, ClubLocations, LocationAggregate, LocationCard, TipCategory } from "@/lib/types";
@@ -34,7 +33,7 @@ const TIP_LABEL: Record<TipCategory, string> = {
 
 function surfaceText(card: LocationCard): string {
   const value = card.dominant_surface || card.listed_surface;
-  return value ? (SURFACE_LABEL[value] ?? value) : "Surface not rated";
+  return value ? (SURFACE_LABEL[value] ?? value) : "";
 }
 
 function formatDrive(minutes: number): string {
@@ -46,6 +45,10 @@ function formatDrive(minutes: number): string {
 
 function countWord(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function scoreText(value: number | null): string {
+  return value == null ? "—" : value.toFixed(1);
 }
 
 function Meter({ label, value }: { label: string; value: number | null }) {
@@ -73,6 +76,20 @@ function ScoreBars({ scores }: { scores: LocationAggregate | LocationCard }) {
   );
 }
 
+function ScoreRow({ scores }: { scores: LocationCard }) {
+  return (
+    <div className="mt-1 flex items-center gap-x-3 overflow-x-auto text-xs text-stone-600">
+      {CRITERIA.map((item) => (
+        <span key={item.key} className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap">
+          <span>{item.label}</span>
+          <span className="font-medium text-stone-800">{scoreText(scores[item.key])}</span>
+          <Star className={`size-3 ${scores[item.key] == null ? "text-stone-300" : "fill-amber-400 text-amber-500"}`} />
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function overallLine(overall: number | null, count: number): string {
   if (count === 0 || overall == null) return "No ratings yet";
   return `${overall.toFixed(1)} overall · ${countWord(count, "rating", "ratings")}`;
@@ -89,34 +106,151 @@ function StarRow({ value }: { value: number }) {
 }
 
 function FieldCard({ card, home }: { card: LocationCard; home: HomeAddress | null }) {
+  const surface = surfaceText(card);
+  const drive = home && card.drive_minutes != null ? formatDrive(card.drive_minutes) : "";
+  const place = [card.city, card.state].filter(Boolean).join(", ");
+  const meta = [place, surface, drive].filter(Boolean).join(" · ");
   return (
     <Link
       href={`/locations/${encodeURIComponent(card.venue_key)}`}
       data-field-card={card.venue_key}
-      className="block rounded-2xl border border-stone-200 bg-white p-4 shadow-sm hover:border-emerald-700"
+      className="block rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-sm hover:border-emerald-700"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="truncate text-base font-semibold text-stone-950">{card.venue_name}</h2>
-          <p className="text-sm text-stone-500">
-            {card.city}, {card.state}
-          </p>
-        </div>
-        <span className="shrink-0 rounded-full bg-stone-100 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-stone-600">
-          {surfaceText(card)}
-        </span>
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="min-w-0 truncate text-sm font-semibold text-stone-950">{card.venue_name}</h2>
+        {meta ? <p className="shrink-0 truncate text-xs text-stone-500">{meta}</p> : null}
       </div>
-      <p className="mt-3 text-sm font-medium text-stone-800">{overallLine(card.overall, card.ratings_count)}</p>
-      <div className="mt-3">
-        <ScoreBars scores={card} />
-      </div>
-      {home && card.drive_minutes != null ? (
-        <p className="mt-3 flex items-center gap-1.5 text-sm font-medium text-stone-800">
-          <Car className="size-4 text-emerald-800" />
-          About {formatDrive(card.drive_minutes)} from home
-        </p>
-      ) : null}
+      <ScoreRow scores={card} />
     </Link>
+  );
+}
+
+function ClubFilter({
+  selectedId,
+  selectedName,
+  onSelect,
+}: {
+  selectedId: string;
+  selectedName: string | null;
+  onSelect: (id: number | string) => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [clubs, setClubs] = useState<ClubListItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    const timer = setTimeout(() => {
+      setLoading(true);
+      fetchClubs(query)
+        .then((rows) => {
+          if (!active) return;
+          setClubs(rows);
+          setError(null);
+        })
+        .catch((err: unknown) => {
+          if (!active) return;
+          setClubs([]);
+          setError(err instanceof Error ? err.message : "Failed to load clubs");
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    }, 200);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [open, query]);
+
+  useEffect(() => {
+    if (!open) return;
+    searchRef.current?.focus();
+    function onPointer(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const label = selectedName || (selectedId ? "Selected club" : "Choose a club");
+
+  return (
+    <div ref={rootRef} className="relative mt-4 max-w-sm" data-club-filter>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onClick={() => setOpen((current) => !current)}
+        className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white px-3 text-sm text-stone-950 shadow-sm"
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown className={`size-4 shrink-0 text-stone-400 ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open ? (
+        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-stone-200 bg-white shadow-lg">
+          <div className="relative border-b border-stone-100">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-stone-400" />
+            <input
+              ref={searchRef}
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Type to filter clubs"
+              aria-label="Filter clubs"
+              className="h-8 w-full bg-transparent pr-2 pl-8 text-sm text-stone-950 outline-none placeholder:text-stone-400"
+            />
+          </div>
+          {error ? <p className="px-3 py-2 text-xs text-stone-700">{error}. Confirm the API is running on port 8000.</p> : null}
+          {loading && clubs.length === 0 ? (
+            <p className="flex items-center gap-2 px-3 py-2 text-xs text-stone-500">
+              <LoaderCircle className="size-3.5 animate-spin" />
+              Loading clubs
+            </p>
+          ) : clubs.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-stone-500">No clubs match.</p>
+          ) : (
+            <ul role="listbox" aria-label="Clubs" className="max-h-56 overflow-y-auto py-1">
+              {clubs.map((club) => {
+                const active = String(club.id) === selectedId;
+                return (
+                  <li key={club.id}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      onClick={() => {
+                        onSelect(club.id);
+                        setOpen(false);
+                        setQuery("");
+                      }}
+                      className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm hover:bg-stone-50 ${
+                        active ? "bg-stone-50 font-medium text-stone-950" : "text-stone-800"
+                      }`}
+                    >
+                      <span className="truncate">{club.name}</span>
+                      <span className="shrink-0 text-xs text-stone-400">{club.team_count}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -182,10 +316,6 @@ export function LocationsDirectory() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedId = (searchParams.get("club") ?? "").trim();
-  const [query, setQuery] = useState("");
-  const [clubs, setClubs] = useState<ClubListItem[]>([]);
-  const [clubsLoading, setClubsLoading] = useState(true);
-  const [clubsError, setClubsError] = useState<string | null>(null);
   const [home, setHome] = useState<HomeAddress | null>(null);
   const [directory, setDirectory] = useState<ClubLocations | null>(null);
   const [directoryLoading, setDirectoryLoading] = useState(false);
@@ -194,31 +324,6 @@ export function LocationsDirectory() {
   useEffect(() => {
     setHome(readHomeAddress());
   }, []);
-
-  useEffect(() => {
-    let active = true;
-    const timer = setTimeout(() => {
-      setClubsLoading(true);
-      fetchClubs(query)
-        .then((rows) => {
-          if (!active) return;
-          setClubs(rows);
-          setClubsError(null);
-        })
-        .catch((err: unknown) => {
-          if (!active) return;
-          setClubs([]);
-          setClubsError(err instanceof Error ? err.message : "Failed to load clubs");
-        })
-        .finally(() => {
-          if (active) setClubsLoading(false);
-        });
-    }, 200);
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [query]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -254,17 +359,7 @@ export function LocationsDirectory() {
     const params = new URLSearchParams(searchParams.toString());
     params.set("club", String(id));
     router.push(`/locations?${params.toString()}`);
-    setQuery("");
   }
-
-  function clearClub() {
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("club");
-    const queryString = params.toString();
-    router.push(queryString ? `/locations?${queryString}` : "/locations");
-  }
-
-  const showChoices = !selectedId || query.trim().length > 0;
 
   return (
     <div className="min-h-full bg-stone-100">
@@ -273,90 +368,29 @@ export function LocationsDirectory() {
         <p className="mt-1 max-w-2xl text-sm text-stone-500">
           Choose a club to see its fields. Scores and family tips are combined across those fields. Ratings are entered on each field.
         </p>
-        <div className="relative mt-6 max-w-xl">
-          <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-stone-400" />
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Filter by club"
-            aria-label="Filter by club"
-            className="h-12 w-full rounded-xl border border-stone-200 bg-white pr-4 pl-10 text-sm text-stone-950 shadow-sm outline-none placeholder:text-stone-400 focus:border-emerald-700"
-          />
-        </div>
-        {clubsError ? <p className="mt-4 text-sm text-stone-700">{clubsError}. Confirm the API is running on port 8000.</p> : null}
-        {showChoices ? (
-          clubsLoading && clubs.length === 0 ? (
-            <div className="mt-6 flex items-center gap-2 text-sm text-stone-500">
-              <LoaderCircle className="size-4 animate-spin" />
-              Loading clubs
-            </div>
-          ) : clubs.length === 0 ? (
-            <p className="mt-6 text-sm text-stone-500">No clubs match that name.</p>
-          ) : (
-            <ul className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="Clubs">
-              {clubs.map((club) => {
-                const active = String(club.id) === selectedId;
-                return (
-                  <li key={club.id}>
-                    <button
-                      type="button"
-                      aria-pressed={active}
-                      onClick={() => selectClub(club.id)}
-                      className={`flex w-full items-center gap-3 rounded-2xl border bg-white p-3 text-left shadow-sm hover:border-emerald-700 ${
-                        active ? "border-emerald-700" : "border-stone-200"
-                      }`}
-                    >
-                      <ClubMark name={club.name} src={club.logo_url} />
-                      <span className="min-w-0">
-                        <span className="block font-semibold text-stone-950">{club.name}</span>
-                        <span className="block text-sm text-stone-500">{countWord(club.team_count, "team", "teams")}</span>
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )
-        ) : null}
+        <ClubFilter selectedId={selectedId} selectedName={directory?.club_name ?? null} onSelect={selectClub} />
         {selectedId ? (
           directoryLoading && !directory ? (
-            <div className="mt-6 flex items-center gap-2 text-sm text-stone-500">
+            <div className="mt-4 flex items-center gap-2 text-sm text-stone-500">
               <LoaderCircle className="size-4 animate-spin" />
               Loading fields
             </div>
           ) : directoryError || !directory ? (
-            <p className="mt-6 text-sm text-stone-700">{directoryError ?? "Club not found"}</p>
+            <p className="mt-4 text-sm text-stone-700">{directoryError ?? "Club not found"}</p>
+          ) : directory.fields.length === 0 ? (
+            <p className="mt-4 text-sm text-stone-500">No home fields stored.</p>
           ) : (
-            <div className="mt-8">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <ClubMark name={directory.club_name} src={directory.logo_url} />
-                  <div className="min-w-0">
-                    <h2 className="text-xl font-semibold tracking-tight text-stone-950">{directory.club_name}</h2>
-                    <p className="text-sm text-stone-500">{countWord(directory.fields.length, "field", "fields")}</p>
-                  </div>
-                </div>
-                <button type="button" onClick={clearClub} className="text-sm font-medium text-emerald-800 underline-offset-4 hover:underline">
-                  Change club
-                </button>
-              </div>
-              {directory.fields.length === 0 ? (
-                <p className="mt-6 text-sm text-stone-500">No home fields stored.</p>
-              ) : (
-                <>
-                  <ul className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {directory.fields.map((card) => (
-                      <li key={card.venue_key}>
-                        <FieldCard card={card} home={home} />
-                      </li>
-                    ))}
-                  </ul>
-                  <Aggregate scores={directory.aggregate} />
-                  <Tips tips={directory.tips} />
-                </>
-              )}
-            </div>
+            <>
+              <ul className="mt-3 grid grid-cols-1 gap-2">
+                {directory.fields.map((card) => (
+                  <li key={card.venue_key}>
+                    <FieldCard card={card} home={home} />
+                  </li>
+                ))}
+              </ul>
+              <Aggregate scores={directory.aggregate} />
+              <Tips tips={directory.tips} />
+            </>
           )
         ) : null}
       </main>
