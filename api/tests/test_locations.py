@@ -124,6 +124,7 @@ class LocationGuideTests(unittest.TestCase):
             self.assertIsNotNone(kept)
             assert kept is not None
             self.assertEqual(kept.field_quality, 2)
+            self.assertIsNotNone(kept.updated_at)
 
     def test_field_numbers_roll_into_one_complex(self) -> None:
         self.assertEqual(
@@ -236,6 +237,7 @@ class LocationGuideTests(unittest.TestCase):
             self.assertEqual(created.status_code, 200, created.text)
             tip = created.json()
             self.assertEqual(tip["author_name"], "ECNL Family")
+            self.assertTrue(tip["created_at"])
             self.assertEqual(tip["venue_key"], make_venue_key("Davis Park - Field 1", "Probeville", "FL"))
             voted = client.post(f"/locations/recommendations/{tip['id']}/upvote")
             self.assertEqual(voted.status_code, 200, voted.text)
@@ -358,6 +360,7 @@ class LocationGuideTests(unittest.TestCase):
             self.assertEqual(aggregate["overall"], 3.27)
             self.assertEqual(sorted(row["title"] for row in body["tips"]), ["Annex Inn", "Davis Inn"])
             self.assertEqual(sorted(row["venue_name"] for row in body["tips"]), ["Annex Grounds", "Davis Park"])
+            self.assertTrue(all(row["created_at"] for row in body["tips"]))
 
 
 if __name__ == "__main__":

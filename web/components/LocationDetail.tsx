@@ -90,9 +90,7 @@ function formatWhen(iso: string): string {
 }
 
 function formatPosted(iso: string): string {
-  const parsed = new Date(iso);
-  if (Number.isNaN(parsed.getTime())) return iso;
-  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return easternStamp(iso)?.dateLabel ?? "";
 }
 
 function surfaceText(detail: LocationDetail): string {
@@ -523,7 +521,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                       <p className="mt-2 text-sm text-stone-800">{tip.review_text}</p>
                       <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-stone-500">
                         <span>{tip.author_name}</span>
-                        <span>{formatPosted(tip.created_at)}</span>
+                        <span data-tip-added={tip.created_at}>{formatPosted(tip.created_at)}</span>
                         <button
                           type="button"
                           onClick={() => void vote(tip.id)}
