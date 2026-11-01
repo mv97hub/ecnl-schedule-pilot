@@ -29,6 +29,7 @@ function AppHeaderBar({ path, query }: { path: string; query: string }) {
   const standings = path === "/standings" || (path.startsWith("/standings/") && !path.startsWith("/projected"));
   const projected = path === "/projected" || path.startsWith("/projected/");
   const headToHead = path.startsWith("/head-to-head");
+  const locations = path.startsWith("/locations");
   const profile = path.startsWith("/profile");
 
   return (
@@ -86,6 +87,13 @@ function AppHeaderBar({ path, query }: { path: string; query: string }) {
             className={`rounded-full px-3 py-1.5 ${headToHead ? "bg-white/15 text-white" : "text-emerald-100/80 hover:bg-white/10"}`}
           >
             Head-to-Head
+          </Link>
+          <Link
+            href="/locations"
+            aria-current={locations ? "page" : undefined}
+            className={`rounded-full px-3 py-1.5 ${locations ? "bg-white/15 text-white" : "text-emerald-100/80 hover:bg-white/10"}`}
+          >
+            Locations Guide
           </Link>
           <Link
             href="/profile"

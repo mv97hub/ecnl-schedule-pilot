@@ -394,3 +394,72 @@ class MatchEvent(Base):
     kind: Mapped[str | None] = mapped_column(String(40), nullable=True)
     detail: Mapped[str | None] = mapped_column(String(240), nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+class VenueRating(Base):
+    """One family's stars for a complex. A second submit from the same browser profile updates this row."""
+
+    __tablename__ = "venue_rating"
+    __table_args__ = (
+        UniqueConstraint("venue_key", "author_key", name="uq_venue_rating_author"),
+        CheckConstraint("field_quality BETWEEN 1 AND 5", name="ck_venue_rating_field_quality"),
+        CheckConstraint("referees BETWEEN 1 AND 5", name="ck_venue_rating_referees"),
+        CheckConstraint("parent_vibe BETWEEN 1 AND 5", name="ck_venue_rating_parent_vibe"),
+        CheckConstraint("parking_access BETWEEN 1 AND 5", name="ck_venue_rating_parking_access"),
+        CheckConstraint("amenities BETWEEN 1 AND 5", name="ck_venue_rating_amenities"),
+        CheckConstraint(
+            "surface_vote IS NULL OR surface_vote IN ('GRASS', 'TURF', 'MIXED')",
+            name="ck_venue_rating_surface",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    venue_key: Mapped[str] = mapped_column(String(300), nullable=False, index=True)
+    venue_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    city: Mapped[str] = mapped_column(String(80), nullable=False)
+    state: Mapped[str] = mapped_column(String(2), nullable=False)
+    author_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    author_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    field_quality: Mapped[int] = mapped_column(Integer, nullable=False)
+    referees: Mapped[int] = mapped_column(Integer, nullable=False)
+    parent_vibe: Mapped[int] = mapped_column(Integer, nullable=False)
+    parking_access: Mapped[int] = mapped_column(Integer, nullable=False)
+    amenities: Mapped[int] = mapped_column(Integer, nullable=False)
+    surface_vote: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
+
+
+class VenueRecommendation(Base):
+    """A hotel, meal, between-game stop, or sideline tip for one complex."""
+
+    __tablename__ = "venue_recommendation"
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('HOTEL', 'RESTAURANT', 'COFFEE_GAP', 'ACTIVITY', 'SIDELINE_TIP')",
+            name="ck_venue_recommendation_category",
+        ),
+        CheckConstraint("rating BETWEEN 1 AND 5", name="ck_venue_recommendation_rating"),
+        CheckConstraint("upvotes >= 0", name="ck_venue_recommendation_upvotes"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    venue_key: Mapped[str] = mapped_column(String(300), nullable=False, index=True)
+    venue_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    city: Mapped[str] = mapped_column(String(80), nullable=False)
+    state: Mapped[str] = mapped_column(String(2), nullable=False)
+    category: Mapped[str] = mapped_column(String(16), nullable=False)
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    review_text: Mapped[str] = mapped_column(Text, nullable=False)
+    tags: Mapped[str | None] = mapped_column(Text, nullable=True)
+    author_name: Mapped[str] = mapped_column(String(80), nullable=False, default="ECNL Family", server_default="ECNL Family")
+    author_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    upvotes: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
