@@ -394,6 +394,8 @@ export type LocationGame = {
   field_name: string | null;
 };
 
+export type TipVote = "up" | "down";
+
 export type LocationTip = {
   id: number;
   venue_key: string;
@@ -404,6 +406,8 @@ export type LocationTip = {
   tags: string[];
   author_name: string;
   upvotes: number;
+  downvotes: number;
+  my_vote: TipVote | null;
   created_at: string;
   map_url: string;
 };

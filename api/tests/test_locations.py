@@ -17,7 +17,7 @@ from sqlmodel import SQLModel
 from app.database import engine
 from app.locations import make_venue_key
 from app.main import app
-from app.models import Base, Club, ScheduleGame, ScheduleTeam, VenueRating, VenueRecommendation
+from app.models import Base, Club, ScheduleGame, ScheduleTeam, VenueRating, VenueRecommendation, VenueTipVote
 
 PROFILE = "probe-location-same"
 OTHER = "probe-location-other"
@@ -53,6 +53,19 @@ class LocationGuideTests(unittest.TestCase):
             if connection.execute(text("SELECT to_regclass('public.venue_rating')")).scalar() is not None:
                 connection.execute(
                     text("DELETE FROM venue_rating WHERE city = 'Probeville' OR author_key LIKE 'probe-location-%'")
+                )
+            if connection.execute(text("SELECT to_regclass('public.venue_tip_vote')")).scalar() is not None:
+                connection.execute(
+                    text(
+                        """
+                        DELETE FROM venue_tip_vote
+                        WHERE author_key LIKE 'probe-location-%'
+                           OR recommendation_id IN (
+                             SELECT id FROM venue_recommendation
+                             WHERE city = 'Probeville' OR author_key LIKE 'probe-location-%'
+                           )
+                        """
+                    )
                 )
             if connection.execute(text("SELECT to_regclass('public.venue_recommendation')")).scalar() is not None:
                 connection.execute(
@@ -218,7 +231,7 @@ class LocationGuideTests(unittest.TestCase):
             self.assertEqual(by_key.status_code, 200)
             self.assertEqual(by_key.json()["total_games"], 2)
 
-    def test_tip_is_created_and_upvoted_without_a_user(self) -> None:
+    def test_tip_vote_is_one_per_profile_and_can_change(self) -> None:
         with TestClient(app) as client:
             created = client.post(
                 "/locations/recommendations",
@@ -238,16 +251,80 @@ class LocationGuideTests(unittest.TestCase):
             tip = created.json()
             self.assertEqual(tip["author_name"], "ECNL Family")
             self.assertTrue(tip["created_at"])
+            self.assertEqual(tip["upvotes"], 0)
+            self.assertEqual(tip["downvotes"], 0)
+            self.assertIsNone(tip["my_vote"])
             self.assertEqual(tip["venue_key"], make_venue_key("Davis Park - Field 1", "Probeville", "FL"))
-            voted = client.post(f"/locations/recommendations/{tip['id']}/upvote")
+
+            other = client.post(
+                "/locations/recommendations",
+                json={
+                    "venue_name": "Davis Park - Field 1",
+                    "city": "Probeville",
+                    "state": "FL",
+                    "category": "RESTAURANT",
+                    "title": "Sideline Pizza",
+                    "rating": 5,
+                    "review_text": "Quick slices between games.",
+                },
+                headers={"X-Profile-Key": "probe-location-tip"},
+            )
+            self.assertEqual(other.status_code, 200, other.text)
+            second = other.json()
+
+            missing = client.post(f"/locations/recommendations/{tip['id']}/vote", json={"choice": "up"})
+            self.assertEqual(missing.status_code, 400, missing.text)
+
+            def vote(tip_id: int, choice: str, profile: str):
+                return client.post(
+                    f"/locations/recommendations/{tip_id}/vote",
+                    json={"choice": choice},
+                    headers={"X-Profile-Key": profile},
+                )
+
+            voted = vote(tip["id"], "up", "probe-location-tip")
             self.assertEqual(voted.status_code, 200, voted.text)
             self.assertEqual(voted.json()["upvotes"], 1)
+            self.assertEqual(voted.json()["downvotes"], 0)
+            self.assertEqual(voted.json()["my_vote"], "up")
+            again = vote(tip["id"], "up", "probe-location-tip")
+            self.assertEqual(again.json()["upvotes"], 1)
+            self.assertEqual(again.json()["downvotes"], 0)
+            changed = vote(tip["id"], "down", "probe-location-tip")
+            self.assertEqual(changed.json()["upvotes"], 0)
+            self.assertEqual(changed.json()["downvotes"], 1)
+            self.assertEqual(changed.json()["my_vote"], "down")
+            other_profile = vote(tip["id"], "up", "probe-location-other-vote")
+            self.assertEqual(other_profile.json()["upvotes"], 1)
+            self.assertEqual(other_profile.json()["downvotes"], 1)
+            self.assertEqual(other_profile.json()["my_vote"], "up")
+            popular = vote(second["id"], "up", "probe-location-other-vote")
+            self.assertEqual(popular.json()["upvotes"], 1)
+            self.assertEqual(popular.json()["downvotes"], 0)
+
             with Session(engine) as session:
                 row = session.get(VenueRecommendation, tip["id"])
+                votes = session.scalars(select(VenueTipVote).where(VenueTipVote.recommendation_id == tip["id"])).all()
             self.assertIsNotNone(row)
             assert row is not None
             self.assertIsNone(row.user_id)
             self.assertEqual(row.upvotes, 1)
+            self.assertEqual(row.downvotes, 1)
+            self.assertEqual(sorted(item.choice for item in votes), ["down", "up"])
+
+            detail = client.get(
+                "/locations/detail",
+                params={"venue_key": tip["venue_key"]},
+                headers={"X-Profile-Key": "probe-location-tip"},
+            )
+            self.assertEqual(detail.status_code, 200, detail.text)
+            ordered_ids = [item["id"] for item in detail.json()["recommendations"]]
+            self.assertLess(ordered_ids.index(second["id"]), ordered_ids.index(tip["id"]))
+            hampton = next(item for item in detail.json()["recommendations"] if item["id"] == tip["id"])
+            pizza = next(item for item in detail.json()["recommendations"] if item["id"] == second["id"])
+            self.assertEqual(hampton["my_vote"], "down")
+            self.assertIsNone(pizza["my_vote"])
+            self.assertGreater(pizza["upvotes"] - pizza["downvotes"], hampton["upvotes"] - hampton["downvotes"])
 
     def test_club_directory_pools_home_fields(self) -> None:
         now = datetime.now(UTC)
@@ -361,6 +438,32 @@ class LocationGuideTests(unittest.TestCase):
             self.assertEqual(sorted(row["title"] for row in body["tips"]), ["Annex Inn", "Davis Inn"])
             self.assertEqual(sorted(row["venue_name"] for row in body["tips"]), ["Annex Grounds", "Davis Park"])
             self.assertTrue(all(row["created_at"] for row in body["tips"]))
+            self.assertTrue(all(row["my_vote"] is None and row["downvotes"] == 0 for row in body["tips"]))
+
+            davis_tip = next(row for row in body["tips"] if row["title"] == "Davis Inn")
+            annex_tip = next(row for row in body["tips"] if row["title"] == "Annex Inn")
+            up = client.post(
+                f"/locations/recommendations/{davis_tip['id']}/vote",
+                json={"choice": "up"},
+                headers={"X-Profile-Key": PROFILE},
+            )
+            down = client.post(
+                f"/locations/recommendations/{annex_tip['id']}/vote",
+                json={"choice": "down"},
+                headers={"X-Profile-Key": PROFILE},
+            )
+            self.assertEqual(up.status_code, 200, up.text)
+            self.assertEqual(down.status_code, 200, down.text)
+            ranked = client.get("/locations/club", params={"club": "8803301"}, headers={"X-Profile-Key": PROFILE})
+            self.assertEqual(ranked.status_code, 200, ranked.text)
+            ordered = ranked.json()["tips"]
+            self.assertEqual([row["title"] for row in ordered], ["Davis Inn", "Annex Inn"])
+            self.assertEqual(ordered[0]["my_vote"], "up")
+            self.assertEqual(ordered[1]["my_vote"], "down")
+            self.assertGreater(
+                ordered[0]["upvotes"] - ordered[0]["downvotes"],
+                ordered[1]["upvotes"] - ordered[1]["downvotes"],
+            )
 
 
 if __name__ == "__main__":

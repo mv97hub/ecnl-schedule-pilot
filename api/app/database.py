@@ -223,6 +223,19 @@ def ensure_capture_columns() -> None:
         )
 
 
+def ensure_location_columns() -> None:
+    """Add tip downvote counts on databases created before votes. New tables come from create_all."""
+
+    with engine.begin() as connection:
+        if not _table_exists(connection, "venue_recommendation"):
+            return
+        if not _column_exists(connection, "venue_recommendation", "downvotes"):
+            connection.execute(
+                text("ALTER TABLE venue_recommendation ADD COLUMN downvotes integer NOT NULL DEFAULT 0")
+            )
+        _add_check(connection, "venue_recommendation", "ck_venue_recommendation_downvotes", "downvotes >= 0")
+
+
 def ensure_source_columns() -> None:
     """Keep external league ids. Skip ALTER TABLE and CREATE UNIQUE INDEX when they already exist."""
 

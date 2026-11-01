@@ -5,11 +5,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-import { fetchLocationDetail, postRating, postRecommendation, upvoteRecommendation } from "@/lib/api";
+import { TipVotes, sortTips } from "@/components/TipVotes";
+import { fetchLocationDetail, postRating, postRecommendation, voteRecommendation } from "@/lib/api";
 import { easternStamp } from "@/lib/format";
 import { readHomeAddress, type HomeAddress } from "@/lib/homeAddress";
 import { profileKey, readAuthorName, saveAuthorName } from "@/lib/profileKey";
-import type { LocationDetail, LocationGame, LocationTip, SurfaceVote, TipCategory } from "@/lib/types";
+import type { LocationDetail, LocationGame, SurfaceVote, TipCategory, TipVote } from "@/lib/types";
 
 const CRITERIA = [
   { key: "field_quality", label: "Field quality" },
@@ -176,10 +177,6 @@ function GameList({ title, games }: { title: string; games: LocationGame[] }) {
   );
 }
 
-function sortTips(tips: LocationTip[]): LocationTip[] {
-  return [...tips].sort((a, b) => b.upvotes - a.upvotes || b.created_at.localeCompare(a.created_at) || b.id - a.id);
-}
-
 export function LocationRoute() {
   const params = useParams<{ venueKey: string }>();
   const venueKey = readVenueKey(params?.venueKey);
@@ -254,7 +251,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
   }, [venueKey]);
 
   const visibleTips = useMemo(() => {
-    const tips = detail?.recommendations ?? [];
+    const tips = sortTips(detail?.recommendations ?? []);
     const chosen = TABS.find((item) => item.id === tab);
     if (!chosen?.categories) return tips;
     const allowed = new Set(chosen.categories);
@@ -333,19 +330,19 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
     }
   }
 
-  async function vote(id: number) {
+  async function vote(id: number, choice: TipVote) {
     setPendingVote(id);
     try {
-      const updated = await upvoteRecommendation(id);
+      const updated = await voteRecommendation(id, choice);
       setDetail((current) => {
         if (!current) return current;
         return {
           ...current,
-          recommendations: sortTips(current.recommendations.map((tip) => (tip.id === id ? updated : tip))),
+          recommendations: current.recommendations.map((tip) => (tip.id === id ? updated : tip)),
         };
       });
     } catch (err: unknown) {
-      setTipError(err instanceof Error ? err.message : "Could not mark that tip helpful.");
+      setTipError(err instanceof Error ? err.message : "Could not save that vote.");
     } finally {
       setPendingVote(null);
     }
@@ -522,14 +519,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                       <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-stone-500">
                         <span>{tip.author_name}</span>
                         <span data-tip-added={tip.created_at}>{formatPosted(tip.created_at)}</span>
-                        <button
-                          type="button"
-                          onClick={() => void vote(tip.id)}
-                          disabled={pendingVote === tip.id}
-                          className="rounded-full border border-stone-300 bg-white px-2.5 py-1 text-xs font-medium text-stone-800 disabled:opacity-60"
-                        >
-                          Helpful {tip.upvotes}
-                        </button>
+                        <TipVotes tip={tip} pending={pendingVote === tip.id} onVote={(choice) => void vote(tip.id, choice)} />
                       </div>
                     </li>
                   ))}
