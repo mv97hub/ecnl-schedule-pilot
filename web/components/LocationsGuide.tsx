@@ -32,6 +32,15 @@ const TIP_LABEL: Record<TipCategory, string> = {
   SIDELINE_TIP: "Sideline and Parking Tip",
 };
 
+const TIP_FILTERS: { id: "all" | TipCategory; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "HOTEL", label: "Hotel" },
+  { id: "RESTAURANT", label: "Food" },
+  { id: "COFFEE_GAP", label: "Hangout" },
+  { id: "ACTIVITY", label: "Activity" },
+  { id: "SIDELINE_TIP", label: "Parking" },
+];
+
 function surfaceText(card: LocationCard): string {
   const value = card.dominant_surface || card.listed_surface;
   return value ? (SURFACE_LABEL[value] ?? value) : "";
@@ -115,14 +124,14 @@ function FieldCard({ card, home }: { card: LocationCard; home: HomeAddress | nul
     <Link
       href={`/locations/${encodeURIComponent(card.venue_key)}`}
       data-field-card={card.venue_key}
-      aria-label={`Open ${card.venue_name} to rate this field and add tips`}
+      aria-label={`Rate ${card.venue_name} and add tips`}
       className="block rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-sm hover:border-emerald-700"
     >
       <div className="flex items-center gap-2">
         <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-stone-950">{card.venue_name}</h2>
         {meta ? <p className="hidden truncate text-xs text-stone-500 sm:block">{meta}</p> : null}
         <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-emerald-700 px-2 py-0.5 text-[11px] font-medium text-white">
-          Open
+          Rate
           <ChevronRight className="size-3.5" />
         </span>
       </div>
@@ -134,12 +143,10 @@ function FieldCard({ card, home }: { card: LocationCard; home: HomeAddress | nul
 function ClubFilter({
   selectedId,
   selectedName,
-  selectedLogo,
   onSelect,
 }: {
   selectedId: string;
   selectedName: string | null;
-  selectedLogo: string | null;
   onSelect: (club: ClubListItem) => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -204,10 +211,7 @@ function ClubFilter({
         onClick={() => setOpen((current) => !current)}
         className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white px-2.5 text-sm text-stone-950 shadow-sm"
       >
-        <span className="flex min-w-0 items-center gap-2">
-          {selectedId ? <ClubMark name={label} src={selectedLogo} size="sm" /> : null}
-          <span className="truncate">{label}</span>
-        </span>
+        <span className="truncate">{label}</span>
         <ChevronDown className={`size-4 shrink-0 text-stone-400 ${open ? "rotate-180" : ""}`} />
       </button>
       {open ? (
@@ -282,15 +286,38 @@ function Aggregate({ scores }: { scores: LocationAggregate }) {
 }
 
 function Tips({ tips }: { tips: ClubLocationTip[] }) {
+  const [filter, setFilter] = useState<(typeof TIP_FILTERS)[number]["id"]>("all");
+  const visible = filter === "all" ? tips : tips.filter((tip) => tip.category === filter);
+  const filterLabel = TIP_FILTERS.find((item) => item.id === filter)?.label ?? "All";
   return (
     <section data-family-tips className="mt-8" aria-label="Family tips">
       <h2 className="text-lg font-semibold text-stone-950">Family tips</h2>
-      <p className="mt-1 text-sm text-stone-500">Tips from all of these fields, since the fields are near each other. Add a rating or a tip on the field page.</p>
-      {tips.length === 0 ? (
-        <p className="mt-4 text-sm text-stone-500">No family tips for these fields yet.</p>
+      <div className="mt-3 flex flex-wrap gap-1" role="group" aria-label="Filter family tips">
+        {TIP_FILTERS.map((item) => {
+          const active = item.id === filter;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => setFilter(item.id)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
+                active ? "border-stone-900 bg-stone-900 text-white" : "border-stone-200 bg-white text-stone-700 hover:border-stone-400"
+              }`}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-3 text-sm text-stone-500">Tips from all of these fields, since the fields are near each other. Add a rating or a tip on the field page.</p>
+      {visible.length === 0 ? (
+        <p className="mt-4 text-sm text-stone-500">
+          {filter === "all" ? "No family tips for these fields yet." : `No ${filterLabel.toLowerCase()} tips for these fields yet.`}
+        </p>
       ) : (
         <ul className="mt-4 space-y-3">
-          {tips.map((tip) => (
+          {visible.map((tip) => (
             <li key={tip.id} className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -378,7 +405,6 @@ export function LocationsDirectory() {
   }
 
   const selectedName = directory?.club_name ?? (picked && String(picked.id) === selectedId ? picked.name : null);
-  const selectedLogo = directory?.logo_url ?? (picked && String(picked.id) === selectedId ? picked.logo_url ?? null : null);
 
   return (
     <div className="min-h-full bg-stone-100">
@@ -387,9 +413,8 @@ export function LocationsDirectory() {
         <p className="mt-1 max-w-2xl text-sm text-stone-500">
           Choose a club to see its fields. Scores and family tips are combined across those fields. Ratings are entered on each field.
         </p>
-        <div className="mt-4 flex items-center gap-3">
-          {selectedId ? <ClubMark name={selectedName || "Club"} src={selectedLogo} /> : null}
-          <ClubFilter selectedId={selectedId} selectedName={selectedName} selectedLogo={selectedLogo} onSelect={selectClub} />
+        <div className="mt-4">
+          <ClubFilter selectedId={selectedId} selectedName={selectedName} onSelect={selectClub} />
         </div>
         {selectedId ? (
           directoryLoading && !directory ? (
