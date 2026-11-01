@@ -285,13 +285,22 @@ function Aggregate({ scores }: { scores: LocationAggregate }) {
   );
 }
 
-function Tips({ tips }: { tips: ClubLocationTip[] }) {
+function Tips({ tips, clubId }: { tips: ClubLocationTip[]; clubId: string }) {
   const [filter, setFilter] = useState<(typeof TIP_FILTERS)[number]["id"]>("all");
   const visible = filter === "all" ? tips : tips.filter((tip) => tip.category === filter);
   const filterLabel = TIP_FILTERS.find((item) => item.id === filter)?.label ?? "All";
   return (
     <section data-family-tips className="mt-8" aria-label="Family tips">
-      <h2 className="text-lg font-semibold text-stone-950">Family tips</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold text-stone-950">Family tips</h2>
+        <Link
+          href={`/locations/tip?club=${encodeURIComponent(clubId)}`}
+          data-add-family-tip
+          className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white"
+        >
+          Add a family tip
+        </Link>
+      </div>
       <div className="mt-3 flex flex-wrap gap-1" role="group" aria-label="Filter family tips">
         {TIP_FILTERS.map((item) => {
           const active = item.id === filter;
@@ -436,7 +445,7 @@ export function LocationsDirectory() {
                 ))}
               </ul>
               <Aggregate scores={directory.aggregate} />
-              <Tips tips={directory.tips} />
+              <Tips tips={directory.tips} clubId={selectedId} />
             </>
           )
         ) : null}
