@@ -21,7 +21,9 @@ export function ClubMark({
       className={`flex shrink-0 items-center justify-center overflow-hidden bg-stone-100 ${box} ${align === "end" ? "ml-auto justify-self-end" : "justify-self-start"}`}
       data-club-mark={url ? "logo" : "placeholder"}
     >
-      {url ? <img src={url} alt={`${name} logo`} className="size-full object-contain" onError={() => setFailed(true)} /> : null}
+      {url ? (
+        <img src={url} alt={`${name} logo`} loading="lazy" decoding="async" className="size-full object-contain" onError={() => setFailed(true)} />
+      ) : null}
     </div>
   );
 }

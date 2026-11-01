@@ -3,10 +3,10 @@
 import { ChevronDown, ChevronRight, LoaderCircle, Search, Star } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ClubMark } from "@/components/ClubMark";
-import { fetchClubLocations, fetchClubs } from "@/lib/api";
+import { fetchClubCatalog, fetchClubLocations } from "@/lib/api";
 import { readHomeAddress, type HomeAddress } from "@/lib/homeAddress";
 import type { ClubListItem, ClubLocationTip, ClubLocations, LocationAggregate, LocationCard, TipCategory } from "@/lib/types";
 
@@ -139,28 +139,33 @@ function ClubFilter({
   useEffect(() => {
     if (!open) return;
     let active = true;
-    const timer = setTimeout(() => {
-      setLoading(true);
-      fetchClubs(query, { all: true })
-        .then((rows) => {
-          if (!active) return;
-          setClubs(rows);
-          setError(null);
-        })
-        .catch((err: unknown) => {
-          if (!active) return;
-          setClubs([]);
-          setError(err instanceof Error ? err.message : "Failed to load clubs");
-        })
-        .finally(() => {
-          if (active) setLoading(false);
-        });
-    }, 200);
+    setLoading(true);
+    fetchClubCatalog()
+      .then((rows) => {
+        if (!active) return;
+        setClubs(rows);
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        setClubs([]);
+        setError(err instanceof Error ? err.message : "Failed to load clubs");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
     return () => {
       active = false;
-      clearTimeout(timer);
     };
-  }, [open, query]);
+  }, [open]);
+
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return clubs;
+    return clubs
+      .filter((club) => club.name.toLowerCase().includes(needle))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || String(a.id).localeCompare(String(b.id)));
+  }, [clubs, query]);
 
   useEffect(() => {
     if (!open) return;
@@ -196,7 +201,7 @@ function ClubFilter({
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [open, clubs]);
+  }, [open, visible]);
 
   const label = selectedName || (selectedId ? "Selected club" : "Choose a club");
 
@@ -238,11 +243,11 @@ function ClubFilter({
               <LoaderCircle className="size-3.5 animate-spin" />
               Loading clubs
             </p>
-          ) : clubs.length === 0 ? (
+          ) : visible.length === 0 ? (
             <p className="px-3 py-2 text-xs text-stone-500">No clubs match.</p>
           ) : (
             <ul ref={listRef} role="listbox" aria-label="Clubs" className="max-h-[min(28rem,50vh)] overflow-y-auto py-1">
-              {clubs.map((club) => {
+              {visible.map((club) => {
                 const active = String(club.id) === selectedId;
                 return (
                   <li key={`${club.id}:${club.name}`}>

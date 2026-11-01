@@ -654,7 +654,19 @@ def _squad_key(team: ScheduleTeam) -> tuple:
     )
 
 
-def club_detail(session: Session, club_key: str) -> ClubDetailOut | None:
+@dataclass(frozen=True)
+class ClubLocationSource:
+    """Identity and home games for the locations directory. No records or ranks."""
+
+    id: int | str
+    name: str
+    logo_url: str | None
+    games: list[ScheduleGame]
+
+
+def _club_page(session: Session, club_key: str) -> tuple[Club, list[ScheduleTeam], str, bool] | None:
+    """The squads on one club page. Split clubs require the public slug."""
+
     parsed = parse_club_key(club_key)
     if parsed is None:
         return None
@@ -682,6 +694,34 @@ def club_detail(session: Session, club_key: str) -> ClubDetailOut | None:
         teams = grouped[page_key]
     elif grouped:
         page_key = next(iter(grouped))
+    return club, teams, page_key, split
+
+
+def club_location_source(session: Session, club_key: str) -> ClubLocationSource | None:
+    """Home games for one club page, without standings, weekends, or opponent clubs."""
+
+    page = _club_page(session, club_key)
+    if page is None:
+        return None
+    club, teams, page_key, split = page
+    team_ids = [int(team.id) for team in teams if team.id is not None]
+    games: list[ScheduleGame] = []
+    if team_ids:
+        games = list(session.scalars(select(ScheduleGame).where(ScheduleGame.home_team_id.in_(team_ids))).all())
+    return ClubLocationSource(
+        id=_public_id(club.id, name_slug(page_key) if split else None, split=split),
+        name=canonical_name([team.name for team in teams]) if split else club.name,
+        logo_url=_logo(club.logo_url),
+        games=games,
+    )
+
+
+def club_detail(session: Session, club_key: str) -> ClubDetailOut | None:
+    page = _club_page(session, club_key)
+    if page is None:
+        return None
+    club, teams, page_key, split = page
+    club_id = club.id
     team_ids = {int(team.id) for team in teams if team.id is not None}
     games: list[ScheduleGame] = []
     if team_ids:

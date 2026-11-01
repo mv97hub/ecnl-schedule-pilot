@@ -16,10 +16,10 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.clubs import club_detail
+from app.clubs import club_location_source
 from app.database import get_session
 from app.ingestion.normalizer import split_venue
 from app.models import ScheduleGame, VenueRating, VenueRecommendation
@@ -214,24 +214,40 @@ class ComplexBucket:
         return self.states.most_common(1)[0][0] if self.states else ""
 
 
-def _complexes(session: Session, now: datetime) -> dict[str, ComplexBucket]:
-    rows = session.execute(
-        select(
-            ScheduleGame.id,
-            ScheduleGame.venue_name,
-            ScheduleGame.city,
-            ScheduleGame.state,
-            ScheduleGame.starts_at,
-            ScheduleGame.status,
-            ScheduleGame.venue_lat,
-            ScheduleGame.venue_lng,
-            ScheduleGame.field_surface,
-        )
-    ).all()
+def _collapsed(column: object, *, upper: bool):
+    """Same whitespace and case folding as the venue key, evaluated in Postgres."""
+
+    collapsed = func.regexp_replace(func.replace(func.coalesce(column, ""), "\xa0", " "), r"\s+", " ", "g")
+    trimmed = func.trim(collapsed)
+    return func.upper(trimmed) if upper else func.lower(trimmed)
+
+
+def _game_rows(session: Session, *, city: str | None = None, state: str | None = None):
+    statement = select(
+        ScheduleGame.id,
+        ScheduleGame.venue_name,
+        ScheduleGame.city,
+        ScheduleGame.state,
+        ScheduleGame.starts_at,
+        ScheduleGame.status,
+        ScheduleGame.venue_lat,
+        ScheduleGame.venue_lng,
+        ScheduleGame.field_surface,
+    )
+    if state:
+        statement = statement.where(_collapsed(ScheduleGame.state, upper=True) == _display_state(state))
+    if city:
+        statement = statement.where(_collapsed(ScheduleGame.city, upper=False) == _display_city(city).lower())
+    return session.execute(statement).all()
+
+
+def _buckets_from_rows(rows, now: datetime, *, require_name: bool = False) -> dict[str, ComplexBucket]:
     grouped: dict[str, ComplexBucket] = {}
     moment = _utc(now)
     for row in rows:
         raw_name = (row.venue_name or "").strip()
+        if require_name and not raw_name:
+            continue
         display = _display_name(raw_name)
         city = _display_city(row.city or "")
         state = _display_state(row.state or "")
@@ -259,6 +275,19 @@ def _complexes(session: Session, now: datetime) -> dict[str, ComplexBucket]:
     return grouped
 
 
+def _complexes(session: Session, now: datetime, *, city: str | None = None, state: str | None = None) -> dict[str, ComplexBucket]:
+    return _buckets_from_rows(_game_rows(session, city=city, state=state), now)
+
+
+def _ratings_for_keys(session: Session, keys: set[str]) -> dict[str, list[VenueRating]]:
+    grouped: dict[str, list[VenueRating]] = defaultdict(list)
+    if not keys:
+        return grouped
+    for row in session.scalars(select(VenueRating).where(VenueRating.venue_key.in_(keys))):
+        grouped[row.venue_key].append(row)
+    return grouped
+
+
 def _ratings_by_key(session: Session) -> dict[str, list[VenueRating]]:
     grouped: dict[str, list[VenueRating]] = defaultdict(list)
     for row in session.scalars(select(VenueRating)).all():
@@ -266,9 +295,14 @@ def _ratings_by_key(session: Session) -> dict[str, list[VenueRating]]:
     return grouped
 
 
-def _recommendation_counts(session: Session) -> dict[str, int]:
+def _recommendation_counts(session: Session, keys: set[str] | None = None) -> dict[str, int]:
     counts: dict[str, int] = defaultdict(int)
-    for row in session.scalars(select(VenueRecommendation.venue_key)).all():
+    statement = select(VenueRecommendation.venue_key)
+    if keys is not None:
+        if not keys:
+            return counts
+        statement = statement.where(VenueRecommendation.venue_key.in_(keys))
+    for row in session.scalars(statement).all():
         counts[row] += 1
     return counts
 
@@ -578,7 +612,7 @@ def list_locations(
     home_lng: float | None = None,
 ) -> list[LocationCard]:
     origin_lat, origin_lng = _home_pair(home_lat, home_lng)
-    grouped = _complexes(session, datetime.now(UTC))
+    grouped = _complexes(session, datetime.now(UTC), state=state)
     ratings = _ratings_by_key(session)
     tips = _recommendation_counts(session)
     cards = [
@@ -603,23 +637,16 @@ def _rollup(rows: list[VenueRating]) -> ScoreRollup:
     )
 
 
-def _bucket_for_venue(grouped: dict[str, ComplexBucket], venue_name: str, city: str, state: str, latitude: float | None, longitude: float | None) -> ComplexBucket:
-    key = make_venue_key(venue_name, city, state)
-    bucket = grouped.get(key)
-    if bucket is not None:
-        return bucket
-    bucket = ComplexBucket(key)
-    bucket.names[_display_name(venue_name)] += 1
-    city_text = _display_city(city)
-    state_text = _display_state(state)
-    if city_text:
-        bucket.cities[city_text] += 1
-    if state_text:
-        bucket.states[state_text] += 1
-    if latitude is not None and longitude is not None:
-        bucket.latitudes.append(latitude)
-        bucket.longitudes.append(longitude)
-    return bucket
+def _key_place(venue_key: str) -> tuple[str, str] | None:
+    """City and state stored in a venue key. The name may itself contain a pipe."""
+
+    parts = venue_key.rsplit("|", 2)
+    if len(parts) != 3:
+        return None
+    _name, city, state = parts
+    if not city or not state:
+        return None
+    return city, state
 
 
 @router.get("/locations/club", response_model=ClubLocationsOut)
@@ -631,27 +658,22 @@ def list_club_locations(
 ) -> ClubLocationsOut:
     """Home complexes for one club, with scores and tips pooled across those fields."""
 
-    detail = club_detail(session, club)
-    if detail is None:
+    source = club_location_source(session, club)
+    if source is None:
         raise HTTPException(status_code=404, detail="Club not found")
     origin_lat, origin_lng = _home_pair(home_lat, home_lng)
-    grouped = _complexes(session, datetime.now(UTC))
-    ratings = _ratings_by_key(session)
-    tip_counts = _recommendation_counts(session)
+    grouped = _buckets_from_rows(source.games, datetime.now(UTC), require_name=True)
+    ratings = _ratings_for_keys(session, set(grouped))
+    tip_counts = _recommendation_counts(session, set(grouped))
     fields: list[LocationCard] = []
     names: dict[str, str] = {}
-    seen: set[str] = set()
-    for venue in detail.venues:
-        key = make_venue_key(venue.venue_name, venue.city, venue.state)
-        if key in seen:
-            continue
-        seen.add(key)
-        bucket = _bucket_for_venue(grouped, venue.venue_name, venue.city, venue.state, venue.latitude, venue.longitude)
+    for key, bucket in grouped.items():
         card = _card(bucket, ratings.get(key, []), tip_counts.get(key, 0), origin_lat, origin_lng)
         fields.append(card)
         names[key] = card.venue_name
     fields.sort(key=lambda card: (card.venue_name.casefold(), card.city.casefold(), card.state, card.venue_key))
     pooled: list[VenueRating] = []
+    seen = set(grouped)
     for key in seen:
         pooled.extend(ratings.get(key, []))
     tips: list[ClubTipOut] = []
@@ -665,9 +687,9 @@ def list_club_locations(
             packed = _recommendation_out(row)
             tips.append(ClubTipOut(**packed.model_dump(), venue_name=names.get(row.venue_key, row.venue_name)))
     return ClubLocationsOut(
-        club_id=detail.id,
-        club_name=detail.name,
-        logo_url=detail.logo_url,
+        club_id=source.id,
+        club_name=source.name,
+        logo_url=source.logo_url,
         fields=fields,
         aggregate=_rollup(pooled),
         tips=tips,
@@ -707,8 +729,13 @@ def location_detail(
     origin_lat, origin_lng = _home_pair(home_lat, home_lng)
     key = _resolve_key(session, venue_key, venue_name, city, state)
     now = datetime.now(UTC)
-    bucket = _complexes(session, now).get(key)
-    ratings = _ratings_by_key(session).get(key, [])
+    place = _key_place(key)
+    if place is None:
+        grouped = _complexes(session, now)
+    else:
+        grouped = _complexes(session, now, city=place[0], state=place[1])
+    bucket = grouped.get(key)
+    ratings = list(session.scalars(select(VenueRating).where(VenueRating.venue_key == key)).all())
     if bucket is None and not ratings:
         stored = session.scalars(select(VenueRecommendation).where(VenueRecommendation.venue_key == key).limit(1)).first()
         if stored is None:
