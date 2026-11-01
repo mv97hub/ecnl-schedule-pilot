@@ -278,12 +278,14 @@ function ClubFilter({
 
 function Aggregate({ scores }: { scores: LocationAggregate }) {
   return (
-    <section data-aggregate className="mt-3 rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-sm" aria-label="Club Ratings">
-      <div className="flex items-center gap-2">
-        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-stone-950">Club Ratings</h2>
-        <p className="shrink-0 text-xs text-stone-500">{overallLine(scores.overall, scores.ratings_count)}</p>
+    <section data-aggregate className="mt-3 text-center" aria-label="Club Ratings">
+      <h2 className="text-sm font-semibold text-stone-950">Club Ratings</h2>
+      <p className="mt-0.5 text-xs text-stone-500">{overallLine(scores.overall, scores.ratings_count)}</p>
+      <div className="mt-1 flex justify-center">
+        <div className="w-fit max-w-full overflow-x-auto">
+          <ScoreRow scores={scores} />
+        </div>
       </div>
-      <ScoreRow scores={scores} />
     </section>
   );
 }
