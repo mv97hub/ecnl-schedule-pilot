@@ -13,7 +13,8 @@ import type {
   Team,
 } from "@/lib/types";
 
-const FALLBACK_API = "https://ecnl-schedule-pilot-node1.onrender.com";
+/** Website proxy. The Next.js route forwards to the FastAPI service. */
+const FALLBACK_API = "https://ecnl-schedule-pilot-node1.onrender.com/backend";
 
 export class ApiError extends Error {
   status: number;
@@ -25,7 +26,7 @@ export class ApiError extends Error {
   }
 }
 
-/** Published league API. Override with EXPO_PUBLIC_API_URL at build time. */
+/** League API. `EXPO_PUBLIC_API_URL` overrides the published fallback. */
 export function apiBaseUrl(): string {
   const fromEnv = process.env.EXPO_PUBLIC_API_URL?.trim();
   if (fromEnv) return fromEnv.replace(/\/$/, "");
@@ -43,7 +44,21 @@ async function request<T>(path: string): Promise<T> {
   if (!response.ok) {
     throw new ApiError(response.status, `API ${response.status}`);
   }
-  return response.json() as Promise<T>;
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    throw new ApiError(response.status, `API ${response.status}`);
+  }
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new ApiError(response.status, `API ${response.status}`);
+  }
+}
+
+/** Status line for a failed picker request. Network failures have no HTTP status. */
+export function requestErrorText(error: unknown): string {
+  if (error instanceof ApiError) return `Request failed (HTTP ${error.status}).`;
+  return "Request failed.";
 }
 
 export function fetchTeams(options?: {
@@ -81,8 +96,8 @@ export function fetchDashboard(teamIds: number[], clubId: string | null): Promis
 export function fetchClubs(q?: string): Promise<ClubListItem[]> {
   const params = new URLSearchParams();
   if (q?.trim()) params.set("q", q.trim());
-  const query = params.toString();
-  return request<ClubListItem[]>(`/clubs${query ? `?${query}` : ""}`);
+  params.set("all", "true");
+  return request<ClubListItem[]>(`/clubs?${params.toString()}`);
 }
 
 export function fetchClub(clubKey: string): Promise<ClubDetail> {

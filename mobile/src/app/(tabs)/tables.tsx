@@ -4,7 +4,7 @@ import { Modal, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Chip, Crest, GoldButton, Hit, Loading, Notice, ProjectionBar, ResultBadge, Segmented } from "@/components/ui";
-import { fetchPredicted, fetchStandings, fetchTeams } from "@/lib/api";
+import { fetchPredicted, fetchStandings, fetchTeams, requestErrorText } from "@/lib/api";
 import { AGE_GROUPS, CONFERENCES, TIERS, ageGroupsFor, type LeagueGender } from "@/lib/leagues";
 import { shareText } from "@/lib/maps";
 import { ordinal, ppg, shortConference, signed } from "@/lib/present";
@@ -105,9 +105,12 @@ export default function TablesScreen() {
           ))}
           <Chip label="Change division" onPress={() => setChanging(true)} />
         </ScrollView>
-        {chosen == null ? <Notice title="No division yet" body="Add a favorite team, or choose a division." action="Change division" onAction={() => setChanging(true)} /> : null}
+        {teams.isError ? (
+          <Notice title="Could not load divisions" body={requestErrorText(teams.error)} action="Try again" onAction={() => void teams.refetch()} />
+        ) : null}
+        {chosen == null && !teams.isError ? <Notice title="No division yet" body="Add a favorite team, or choose a division." action="Change division" onAction={() => setChanging(true)} /> : null}
         {active.isPending && chosen ? <Loading /> : null}
-        {active.isError ? <Notice title="Table unavailable" body="Pull to refresh." action="Try again" onAction={() => void active.refetch()} /> : null}
+        {active.isError ? <Notice title="Table unavailable" body={requestErrorText(active.error)} action="Try again" onAction={() => void active.refetch()} /> : null}
 
         {mode === "current"
           ? (current.data ?? []).map((row) => <CurrentRow key={`${row.rank}-${row.team_name}`} row={row} favorite={row.team_id != null && favorites.includes(row.team_id)} />)
@@ -132,7 +135,12 @@ export default function TablesScreen() {
           </View>
         ) : null}
       </View>
-      <DivisionSheet visible={changing} onClose={() => setChanging(false)} onPick={(next) => { setDivision(next); setChanging(false); }} />
+      <DivisionSheet
+        visible={changing}
+        loadError={teams.isError ? requestErrorText(teams.error) : null}
+        onClose={() => setChanging(false)}
+        onPick={(next) => { setDivision(next); setChanging(false); }}
+      />
     </ScrollView>
   );
 }
@@ -187,7 +195,17 @@ function ProjectedRow({ row, open, favorite, onPress }: { row: PredictedRow; ope
   );
 }
 
-function DivisionSheet({ visible, onClose, onPick }: { visible: boolean; onClose: () => void; onPick: (division: Division) => void }) {
+function DivisionSheet({
+  visible,
+  onClose,
+  onPick,
+  loadError,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onPick: (division: Division) => void;
+  loadError?: string | null;
+}) {
   const [gender, setGender] = useState<LeagueGender>("boys");
   const [tier, setTier] = useState<string>(TIERS[0]);
   const [age, setAge] = useState(AGE_GROUPS[0]?.value ?? "U13");
@@ -197,6 +215,7 @@ function DivisionSheet({ visible, onClose, onPick }: { visible: boolean; onClose
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <ScrollView style={{ flex: 1, backgroundColor: colors.bone }} contentContainerStyle={{ padding: 20, gap: 12 }}>
         <Text style={{ color: colors.navy, fontSize: 28, fontWeight: "800" }}>Change division</Text>
+        {loadError ? <Notice title="Could not load divisions" body={loadError} /> : null}
         <View style={{ flexDirection: "row", gap: 8 }}>
           <Chip label="Boys" selected={gender === "boys"} onPress={() => setGender("boys")} />
           <Chip label="Girls" selected={gender === "girls"} onPress={() => setGender("girls")} />

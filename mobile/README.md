@@ -6,9 +6,11 @@ The app lives in this folder so the Render web build under `web/` stays unchange
 
 ## API
 
-Requests go to `EXPO_PUBLIC_API_URL` when that variable is set at build time, otherwise the `extra.apiUrl` value in `app.json`:
+Requests go to `EXPO_PUBLIC_API_URL` when that variable is set at build time. Otherwise they use `extra.apiUrl` in `app.json`, then the fallback in `src/lib/api.ts`:
 
-`https://ecnl-schedule-pilot-node1.onrender.com`
+`https://ecnl-schedule-pilot-node1.onrender.com/backend`
+
+`/backend` is a proxy on the website. It forwards to the FastAPI service (`NEXT_PUBLIC_API_URL`).
 
 Home calls `GET /mobile/dashboard` from the API pull request. Schedules, tables, matchup, and club call the existing `/teams`, `/teams/{id}/schedule`, `/standings`, `/standings/predicted`, `/head-to-head`, and `/clubs` routes.
 
