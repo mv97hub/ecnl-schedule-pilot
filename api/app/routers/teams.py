@@ -17,6 +17,36 @@ router = APIRouter()
 EASTERN = ZoneInfo("America/New_York")
 AGE_GROUPS = {"U13", "U14", "U15", "U16", "U17", "U18/19"}
 FILTERS = {"all", "home", "away"}
+MAX_TEAM_IDS = 100
+
+
+def parse_team_ids(raw: str | None, *, limit: int, field: str = "ids") -> list[int]:
+    """Comma-separated team ids, de-duplicated, in request order.
+
+    A missing or blank value is an empty list. Non-integers and lists over
+    `limit` are 400.
+    """
+
+    if raw is None or not str(raw).strip():
+        return []
+    found: list[int] = []
+    seen: set[int] = set()
+    for piece in str(raw).split(","):
+        text = piece.strip()
+        if not text:
+            continue
+        if not text.isdigit():
+            raise HTTPException(status_code=400, detail=f"{field} must be comma-separated integers")
+        value = int(text)
+        if value < 1 or value > 2_147_483_647:
+            raise HTTPException(status_code=400, detail=f"{field} must be comma-separated integers")
+        if value in seen:
+            continue
+        seen.add(value)
+        found.append(value)
+    if len(found) > limit:
+        raise HTTPException(status_code=400, detail=f"{field} accepts at most {limit} ids")
+    return found
 
 
 def _contains(value: str) -> str:
@@ -34,21 +64,52 @@ def _gender(value: str) -> str:
 @router.get("/teams", response_model=list[TeamOut])
 def list_teams(
     session: Annotated[Session, Depends(get_session)],
-    q: str | None = Query(default=None, description="Case-insensitive substring of the team name"),
-    age_group: str | None = Query(default=None, description="U13 or U14"),
-    gender: str = "boys",
-) -> list[Team]:
+    q: Annotated[str | None, Query(description="Case-insensitive substring of the team name")] = None,
+    age_group: Annotated[str | None, Query(description="U13, U14, U15, U16, U17, or U18/19")] = None,
+    gender: Annotated[str | None, Query(description="boys or girls. Defaults to boys unless ids is set.")] = None,
+    ids: Annotated[str | None, Query(description="Comma-separated team ids, for example 53,108")] = None,
+) -> list[TeamOut]:
     if age_group is not None and age_group not in AGE_GROUPS:
         raise HTTPException(status_code=400, detail="age_group must be U13, U14, U15, U16, U17, or U18/19")
-    chosen = _gender(gender)
+    requested = parse_team_ids(ids, limit=MAX_TEAM_IDS)
+    chosen: str | None
+    if gender is not None and gender.strip():
+        chosen = _gender(gender)
+    elif requested:
+        chosen = None
+    else:
+        chosen = "boys"
 
-    statement = select(Team).where(Team.gender == chosen)
+    statement = select(Team)
+    if chosen is not None:
+        statement = statement.where(Team.gender == chosen)
     if q and q.strip():
         statement = statement.where(Team.name.ilike(_contains(q.strip()), escape="\\"))
     if age_group is not None:
         statement = statement.where(Team.age_group == age_group)
+    if requested:
+        statement = statement.where(Team.id.in_(requested))
     statement = statement.order_by(Team.age_group, Team.name, Team.id)
-    return list(session.scalars(statement).all())
+    teams = list(session.scalars(statement).all())
+    if requested:
+        by_id = {team.id: team for team in teams}
+        teams = [by_id[team_id] for team_id in requested if team_id in by_id]
+    logos = club_logos(session, teams)
+    return [
+        TeamOut(
+            id=team.id,
+            name=team.name,
+            age_group=team.age_group,
+            tier=team.tier,
+            conference=team.conference,
+            city=team.city,
+            state=team.state,
+            gender="girls" if team.gender == "girls" else "boys",
+            club_id=team.club_id,
+            logo_url=logos.get(team.id),
+        )
+        for team in teams
+    ]
 
 
 def _marker(goals_for: int, goals_against: int) -> str:

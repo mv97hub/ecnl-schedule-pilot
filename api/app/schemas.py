@@ -18,6 +18,9 @@ class TeamOut(BaseModel):
     conference: str
     city: str
     state: str
+    gender: Literal["boys", "girls"] = "boys"
+    club_id: int | None = None
+    logo_url: str | None = None
 
 
 class OpponentOut(BaseModel):
@@ -375,3 +378,58 @@ class PredictedStandingsOut(BaseModel):
     points_rule: str
     record_rule: str
     rows: list[PredictedRowOut]
+
+
+class MobileGameOut(BaseModel):
+    id: int
+    starts_at: datetime
+    opponent: OpponentOut
+    side: Literal["home", "away"]
+    venue_name: str
+    city: str
+    state: str
+    field_name: str | None = None
+    timezone: str
+    status: GameStatus
+    home_score: int | None = None
+    away_score: int | None = None
+    team_result: TeamResult | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+
+
+class MobileTeamOut(BaseModel):
+    """One favorite team on the mobile home screen."""
+
+    id: int
+    name: str
+    age_group: str
+    gender: Literal["boys", "girls"]
+    tier: str
+    conference: str
+    logo_url: str | None = None
+    club_id: int | None = None
+    rank: int | None
+    ppg: float
+    record: ClubRecordOut
+    conference_record: ClubRecordOut
+    next_game: MobileGameOut | None = None
+    last_result: MobileGameOut | None = None
+
+
+class MobileClubOut(BaseModel):
+    """Favorite club summary. Past and next windows match the club page."""
+
+    id: int | str
+    name: str
+    logo_url: str | None = None
+    record: ClubRecordOut
+    conference_record: ClubRecordOut
+    squads: list[ClubSquadOut]
+    past_10_days: list[WeekendScorecardOut]
+    next_10_days: NextWeekendOut | None = None
+
+
+class MobileDashboardOut(BaseModel):
+    teams: list[MobileTeamOut]
+    club: MobileClubOut | None = None

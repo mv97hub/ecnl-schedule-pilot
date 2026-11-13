@@ -191,8 +191,10 @@ class CaptureTests(unittest.TestCase):
             )
 
         self.assertEqual([team["name"] for team in teams], ["ProbeCaptureBoy"])
-        self.assertNotIn("gender", teams[0])
-        self.assertNotIn("club_id", teams[0])
+        self.assertEqual(teams[0]["gender"], "boys")
+        self.assertIsNone(teams[0]["club_id"])
+        self.assertIsNone(teams[0]["logo_url"])
+        self.assertEqual(teams[0]["tier"], "ECNL")
         self.assertEqual([row["team_name"] for row in standings], ["ProbeCaptureBoy"])
         self.assertNotIn("gender", standings[0])
         self.assertNotIn("capped_goal_diff", standings[0])

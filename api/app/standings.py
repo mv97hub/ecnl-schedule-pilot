@@ -406,3 +406,21 @@ def conference_rank(session: Session, team: ScheduleTeam) -> int | None:
         if row["team_id"] == team.id or _canonical_name(str(row["team_name"])) == _canonical_name(team.name):
             return index
     return None
+
+
+def official_points_per_game(session: Session, team: ScheduleTeam) -> float | None:
+    """Stored conference points per game, or None when this squad has no official row."""
+
+    if team.id is None:
+        return None
+    peers = official_standings(session, team.conference, team.tier, team.age_group, team.gender or "boys")
+    matched: ConferenceStanding | None = None
+    for peer in peers:
+        if peer.team_id == team.id:
+            matched = peer
+            break
+        if matched is None and _canonical_name(str(peer.team_name)) == _canonical_name(team.name):
+            matched = peer
+    if matched is None:
+        return None
+    return round(float(matched.points_per_game or 0), 2)
