@@ -115,7 +115,7 @@ class StartupSchemaTests(unittest.TestCase):
             ensure_capture_columns()
             with Session(engine) as session:
                 teams = list_teams(session, q=None, age_group=None)
-                match = next(team for team in teams if team.source_id == HOME_SOURCE)
+                match = next(team for team in teams if team.name == "Probe Startup Home")
                 self.assertEqual(match.city, "Jacksonville")
                 schedule = team_schedule(home_id, session, filter="all")
             self.assertEqual(len(schedule.games), 1)

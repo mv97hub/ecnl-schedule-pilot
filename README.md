@@ -23,6 +23,8 @@ The header switches Boys and Girls. The choice is stored in `sessionStorage` und
 | Field | `/locations/{venue_key}` | One complex: scorecard, rating form, family tips, then upcoming and recent games. |
 | Add a family tip | `/locations/tip` | A dropdown of the club's fields (`?club=`), then the tip form. |
 | Profile | `/profile` | A home address saved in `sessionStorage` for this browser tab. It is not written to the database. |
+| Privacy | `/privacy` | Privacy policy for the Soccer Away Day app. Favorites stay on the device. The app has no account and does not send personal data to the server. |
+| Support | `/support` | How to use Soccer Away Day without an account. A contact email will be added before App Store submission. |
 | Share image | `/api/og/h2h` | A 1200×630 image for a head-to-head link. It calls the API `/head-to-head` route. |
 
 The browser calls `NEXT_PUBLIC_API_URL`, or `http://127.0.0.1:8000` when that variable is unset. The Open Graph route uses the same variable, or `http://localhost:8000`.
@@ -54,8 +56,9 @@ The club page Venue Guide link goes to `/locations?club=` for that club. The fie
 | Method | Path | What it does |
 | --- | --- | --- |
 | GET | `/health` | Returns `{"status": "ok"}`. |
-| GET | `/teams` | Lists `team` rows. Optional `q` (name substring), `age_group` (`U13`, `U14`, `U15`, `U16`, `U17`, or `U18/19`), and `gender` (`boys` or `girls`, default `boys`). Ordered by age group, name, then id. |
+| GET | `/teams` | Lists `team` rows. Optional `q` (name substring), `age_group` (`U13`, `U14`, `U15`, `U16`, `U17`, or `U18/19`), `gender` (`boys` or `girls`), and `ids` (comma-separated team ids, for example `53,108`, at most 100). When `gender` and `ids` are both omitted, `gender` defaults to `boys`. When `ids` is set and `gender` is omitted, both genders are returned, in the order of `ids`. Each row includes `gender`, `tier`, `club_id`, and `logo_url` (the club logo, or null). |
 | GET | `/teams/{team_id}/schedule` | Games for one team. `filter` is `all`, `home`, or `away`. |
+| GET | `/mobile/dashboard` | Home payload for the mobile app. Optional `team_ids` (comma-separated, at most 4, favorite order) and `club_id` (the same public club key as `/clubs/{club_key}`). Unknown team ids are skipped. An unknown `club_id` is 404. More than 4 ids, or a non-integer, is 400. Each team includes the next scheduled game, the latest completed result, conference rank, points per game (the official table when a row exists, otherwise conference games), and the overall and conference records. The club includes the combined record, the conference record, squad ranks, the past 10 days, and the next 10 days. The route does not read a profile key. |
 | GET | `/standings` | One conference table. Required: `conference`, `tier` (`ECNL` or `ECNL-RL`), `age_group`. `mode` is `official` or `calculated`. `gender` defaults to `boys`. Rank is points per game, then goal difference, then goals for, then name. Form is the last five completed conference results, computed when the request runs. |
 | GET | `/standings/predicted` | One projected conference table. Required: `conference`, `tier`, `age_group`. `gender` defaults to `boys`. Completed conference games keep their points. Each remaining scheduled conference game adds max(0, 3 − opponent points per game). |
 | GET | `/clubs` | Clubs that have at least one squad. Optional `q` is a case-insensitive name substring. Without `all=true` the list stops at `CLUB_LIST_LIMIT` (30). `all=true` returns every match. An empty query is ordered by squad count, then name. A club with more than one public spelling is returned as separate ids. |
@@ -108,7 +111,7 @@ api/
   tests/                   unittest modules
   scouting.py              Head-to-head scouting report
 web/
-  app/                     Routes /, /clubs, /standings, /projected, /head-to-head, /locations, /locations/tip, /profile, /api/og/h2h
+  app/                     Routes /, /clubs, /standings, /projected, /head-to-head, /locations, /locations/tip, /profile, /privacy, /support, /api/og/h2h
   components/              Schedule, standings, projected, clubs, locations, head-to-head, profile, and ingest UI
   lib/                     API client, gender, conferences, formatting
 docker-compose.yml         Postgres 16
@@ -128,6 +131,7 @@ Tests, all under `api/tests/`:
 | `test_clubs.py` | Club search cap, split public ids, club detail, records, and weekend windows. |
 | `test_locations.py` | One complex per field number, one rating per profile, tips, and the pooled club directory. |
 | `test_predictions.py` | Predicted points from opponent points per game, and `/standings/predicted`. |
+| `test_mobile.py` | Enriched `/teams` rows and `GET /mobile/dashboard`. |
 
 `web/README.md` is the Next.js template text. It does not describe this project.
 
