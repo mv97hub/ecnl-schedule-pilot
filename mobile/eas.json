@@ -11,7 +11,7 @@
         "simulator": true
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://ecnl-schedule-pilot-node1.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://ecnl-schedule-pilot-node1.onrender.com/backend"
       }
     },
     "preview": {
@@ -20,13 +20,13 @@
         "simulator": true
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://ecnl-schedule-pilot-node1.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://ecnl-schedule-pilot-node1.onrender.com/backend"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://ecnl-schedule-pilot-node1.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://ecnl-schedule-pilot-node1.onrender.com/backend"
       }
     }
   }

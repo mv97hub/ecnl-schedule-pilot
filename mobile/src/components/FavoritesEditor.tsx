@@ -3,7 +3,7 @@ import { Text, TextInput, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 
 import { Chip, Crest, GoldButton, Hit, OutlineButton } from "@/components/ui";
-import { fetchClub, fetchClubs, fetchTeams } from "@/lib/api";
+import { fetchClub, fetchClubs, fetchTeams, requestErrorText } from "@/lib/api";
 import type { LeagueGender } from "@/lib/leagues";
 import { MAX_FAVORITE_TEAMS, useFavorites } from "@/store/favorites";
 import { colors } from "@/theme";
@@ -93,13 +93,17 @@ export function FavoritesEditor({
           autoCorrect={false}
           style={inputStyle}
         />
-        {(clubs.data ?? []).slice(0, 8).map((item) => (
-          <Hit key={String(item.id)} label={`Choose ${item.name}`} onPress={() => setClub(String(item.id))} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <Crest uri={item.logo_url} name={item.name} size={32} />
-            <Text style={{ color: colors.white, fontWeight: "700", flex: 1 }}>{item.name}</Text>
-            <Text style={{ color: colors.gold }}>{item.team_count}</Text>
-          </Hit>
-        ))}
+        {clubs.isError ? (
+          <Text style={{ color: colors.gold, fontWeight: "700" }}>{requestErrorText(clubs.error)}</Text>
+        ) : (
+          (clubs.data ?? []).slice(0, 8).map((item) => (
+            <Hit key={String(item.id)} label={`Choose ${item.name}`} onPress={() => setClub(String(item.id))} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Crest uri={item.logo_url} name={item.name} size={32} />
+              <Text style={{ color: colors.white, fontWeight: "700", flex: 1 }}>{item.name}</Text>
+              <Text style={{ color: colors.gold }}>{item.team_count}</Text>
+            </Hit>
+          ))
+        )}
       </View> : null}
 
       {showTeams ? (
@@ -112,6 +116,7 @@ export function FavoritesEditor({
       </View>
       <Text style={{ color: colors.secondary }}>Slot 1 is the default team on Schedules, Tables, and Matchup.</Text>
 
+      {savedTeams.isError ? <Text style={{ color: colors.loss, fontWeight: "700" }}>{requestErrorText(savedTeams.error)}</Text> : null}
       {teamIds.map((id, index) => {
         const team = byId.get(id);
         return (
@@ -168,7 +173,8 @@ export function FavoritesEditor({
         style={[inputStyle, { color: colors.ink, backgroundColor: colors.white }]}
       />
       {teamQueryText.length > 0 && teamQueryText.length < 2 ? <Text style={{ color: colors.secondary }}>Type at least 2 letters.</Text> : null}
-      {(teamSearch.data ?? []).slice(0, 12).map((team) => {
+      {teamSearch.isError ? <Text style={{ color: colors.loss, fontWeight: "700" }}>{requestErrorText(teamSearch.error)}</Text> : null}
+      {teamSearch.isError ? null : (teamSearch.data ?? []).slice(0, 12).map((team) => {
         const selected = teamIds.includes(team.id);
         return (
           <Hit key={team.id} label={`${selected ? "Remove" : "Add"} ${team.name}`} onPress={() => (selected ? removeTeam(team.id) : addTeam(team.id))} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
