@@ -21,6 +21,9 @@ export default function SupportPage() {
         Schedules, conference tables, and club pages on this website show the same published league data the app uses. If a kickoff or score looks wrong, it follows that published data.
       </p>
       <p>A contact email will be added before App Store submission. There is no support email yet.</p>
+      <p>
+        Independent platform built for youth soccer families. Not affiliated with, endorsed by, or sponsored by the Elite Clubs National League (ECNL), Athlete One, Total Global Sports, or any member clubs.
+      </p>
     </LegalArticle>
   );
 }

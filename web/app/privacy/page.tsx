@@ -30,6 +30,9 @@ export default function PrivacyPage() {
         The schedule website on this domain has its own pages. Its locations guide is separate from Soccer Away Day and is not part of the app.
       </p>
       <p>A contact email will be added before App Store submission.</p>
+      <p>
+        Independent platform built for youth soccer families. Not affiliated with, endorsed by, or sponsored by the Elite Clubs National League (ECNL), Athlete One, Total Global Sports, or any member clubs.
+      </p>
     </LegalArticle>
   );
 }
