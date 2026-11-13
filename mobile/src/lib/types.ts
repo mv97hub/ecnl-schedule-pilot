@@ -1,0 +1,530 @@
+export type ScheduleFilter = "all" | "home" | "away";
+
+export type Team = {
+  id: number;
+  name: string;
+  age_group: string;
+  conference: string;
+  city: string;
+  state: string;
+  tier?: string;
+  gender?: "boys" | "girls";
+  club_id?: number | null;
+  logo_url?: string | null;
+};
+
+export type Opponent = {
+  id: number;
+  name: string;
+  logo_url?: string | null;
+};
+
+export type GameStatus = "SCHEDULED" | "COMPLETED" | "POSTPONED" | "CANCELLED";
+export type VenueType = "Home" | "Away" | "Showcase";
+export type TeamResult = "W" | "L" | "D" | null;
+
+export type Game = {
+  id: number;
+  starts_at: string;
+  opponent: Opponent;
+  side: "home" | "away";
+  venue_name: string;
+  city: string;
+  state: string;
+  field_name: string | null;
+  timezone: string;
+  event: string | null;
+  status: GameStatus;
+  home_score: number | null;
+  away_score: number | null;
+  is_conference_game: boolean;
+  venue_type: VenueType;
+  team_result: TeamResult;
+};
+
+export type TeamRecordSummary = {
+  overall_record: string;
+  conference_record: string;
+  goals_for: number;
+  goals_against: number;
+  ppg: number;
+  conference_rank: number | null;
+  conference: string;
+};
+
+export type ScheduleResponse = {
+  team_record_summary: TeamRecordSummary;
+  logo_url?: string | null;
+  club_id?: number | null;
+  games: Game[];
+};
+
+export type ClubListItem = {
+  id: number | string;
+  name: string;
+  logo_url?: string | null;
+  team_count: number;
+};
+
+export type ClubRecord = {
+  wins: number;
+  losses: number;
+  draws: number;
+  goal_diff: number;
+};
+
+export type ClubSquad = {
+  id: number;
+  name: string;
+  age_group: string;
+  gender: "boys" | "girls";
+  tier: string;
+  conference: string;
+  conference_rank: number | null;
+};
+
+export type ClubVenue = {
+  venue_name: string;
+  field_name: string | null;
+  city: string;
+  state: string;
+  latitude: number | null;
+  longitude: number | null;
+};
+
+export type WeekendSquad = {
+  game_id: number;
+  team_id: number;
+  age_group: string;
+  gender: "boys" | "girls";
+  tier: string;
+  opponent_squad_name: string;
+  status: GameStatus;
+  result: "W" | "L" | "D" | null;
+  goals_for: number | null;
+  goals_against: number | null;
+  field_name: string | null;
+  venue_name: string;
+  played_on: string;
+};
+
+export type NextWeekendSquad = {
+  team_id: number;
+  age_group: string;
+  gender: "boys" | "girls";
+  tier: string;
+  game_date: string;
+};
+
+export type NextWeekendOpponent = {
+  opponent_club_id: number | string;
+  opponent_name: string;
+  opponent_logo_url?: string | null;
+  squads: NextWeekendSquad[];
+};
+
+export type NextWeekend = {
+  weekend_start: string;
+  label: string;
+  opponents: NextWeekendOpponent[];
+};
+
+export type WeekendScorecard = {
+  opponent_club_id: number | string;
+  opponent_name: string;
+  opponent_logo_url?: string | null;
+  weekend_start: string;
+  label: string;
+  upcoming: boolean;
+  wins: number;
+  losses: number;
+  draws: number;
+  squads: WeekendSquad[];
+};
+
+export type ClubDetail = {
+  id: number | string;
+  name: string;
+  logo_url?: string | null;
+  summary: string;
+  team_count: number;
+  tiers: string[];
+  conferences: string[];
+  record: ClubRecord;
+  conference_record: ClubRecord;
+  squads: ClubSquad[];
+  venues: ClubVenue[];
+  weekends: WeekendScorecard[];
+  upcoming: NextWeekend | null;
+};
+
+export type StandingRow = {
+  rank: number;
+  team_id: number | null;
+  team_name: string;
+  games_played: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  goals_for: number;
+  goals_against: number;
+  goal_diff: number;
+  points: number;
+  points_per_game: number;
+  form?: Array<"W" | "L" | "D">;
+};
+
+export type StandingsMode = "official" | "calculated";
+
+export type PredictedFixture = {
+  game_id: number;
+  side: "home" | "away";
+  starts_on: string;
+  status: "completed" | "scheduled";
+  score: string | null;
+  result: "W" | "D" | "L" | null;
+  expected_points: number | null;
+};
+
+export type PredictedCell = {
+  opponent_id: number;
+  fixtures: PredictedFixture[];
+};
+
+export type PredictedRow = {
+  rank: number;
+  team_id: number;
+  team_name: string;
+  logo_url?: string | null;
+  games_played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goals_for: number;
+  goals_against: number;
+  goal_diff: number;
+  points: number;
+  remaining: number;
+  predicted_points: number;
+  projected_wins: number;
+  projected_draws: number;
+  projected_losses: number;
+  cells: PredictedCell[];
+};
+
+export type PredictedStandings = {
+  season: string;
+  gender: "boys" | "girls";
+  tier: string;
+  age_group: string;
+  conference: string;
+  points_rule: string;
+  record_rule: string;
+  rows: PredictedRow[];
+};
+
+export type CountRecord = {
+  gp: number;
+  w: number;
+  l: number;
+  d: number;
+  gf: number;
+  ga: number;
+  gd: number;
+  pts: number;
+  ppg: number;
+};
+
+export type SplitRecord = {
+  gp: number;
+  w: number;
+  l: number;
+  d: number;
+  ppg: number;
+};
+
+export type FormGame = {
+  game_id: number;
+  date: string;
+  opponent_name: string;
+  result: "W" | "L" | "D";
+  score: string;
+  venue_type: VenueType;
+};
+
+export type TeamTape = {
+  team_id: number;
+  name: string;
+  logo_url?: string | null;
+  age_group: string;
+  tier: string;
+  conference: string;
+  conference_rank: number | null;
+  official_ppg: number | null;
+  overall_record: CountRecord;
+  home_record: SplitRecord;
+  away_record: SplitRecord;
+  avg_gf: number;
+  avg_ga: number;
+  last_5_form: FormGame[];
+};
+
+export type DirectMatch = {
+  game_id: number;
+  date: string;
+  kickoff_time: string | null;
+  complex_name: string;
+  field_number: string | null;
+  city: string;
+  state: string;
+  status: GameStatus;
+  home_team_id: number;
+  away_team_id: number;
+  home_score: number | null;
+  away_score: number | null;
+  venue_type: VenueType;
+  team_a_result: "W" | "L" | "D" | null;
+  team_b_result: "W" | "L" | "D" | null;
+  winner: "team_a" | "team_b" | "draw" | null;
+};
+
+export type CommonGame = {
+  game_id: number;
+  date: string;
+  status: GameStatus;
+  venue_type: "H" | "A" | "N";
+  team_score: number | null;
+  opponent_score: number | null;
+  result: "W" | "L" | "D" | "Scheduled" | null;
+};
+
+export type OpponentMini = {
+  gp: number;
+  pts: number;
+  ppg: number;
+  gf: number;
+  ga: number;
+  gd: number;
+};
+
+export type CommonOpponent = {
+  id: number;
+  name: string;
+  conference_rank: number | null;
+  conference_ppg: number | null;
+  team_a_games: CommonGame[];
+  team_b_games: CommonGame[];
+  team_a_summary: OpponentMini;
+  team_b_summary: OpponentMini;
+  advantage: "team_a" | "team_b" | "even" | "incomplete";
+};
+
+export type Rollup = {
+  gp: number;
+  w: number;
+  l: number;
+  d: number;
+  gf: number;
+  ga: number;
+  gd: number;
+  ppg: number;
+};
+
+export type ScoutingAdvantage = "team_a" | "team_b" | "even";
+
+export type ScoutingInsight = {
+  category: string;
+  advantage: ScoutingAdvantage;
+  headline: string;
+  detail: string;
+};
+
+export type ScoutingReport = {
+  verdict_headline: string;
+  favored_team: ScoutingAdvantage;
+  edge_meter: number;
+  projected_tempo: "High-Scoring" | "Tight Defensive Battle" | "Balanced Matchup";
+  insights: ScoutingInsight[];
+};
+
+export type SurfaceVote = "GRASS" | "TURF" | "MIXED";
+
+export type TipCategory = "HOTEL" | "RESTAURANT" | "COFFEE_GAP" | "ACTIVITY" | "SIDELINE_TIP";
+
+export type LocationScores = {
+  field_quality: number | null;
+  referees: number | null;
+  parent_vibe: number | null;
+  parking_access: number | null;
+  amenities: number | null;
+  overall: number | null;
+  ratings_count: number;
+  dominant_surface: SurfaceVote | null;
+};
+
+export type LocationCard = LocationScores & {
+  venue_key: string;
+  venue_name: string;
+  city: string;
+  state: string;
+  listed_surface: SurfaceVote | null;
+  recommendations_count: number;
+  upcoming_games: number;
+  total_games: number;
+  drive_minutes: number | null;
+};
+
+export type MyRating = {
+  field_quality: number;
+  referees: number;
+  parent_vibe: number;
+  parking_access: number;
+  amenities: number;
+  surface_vote: SurfaceVote | null;
+  comment: string | null;
+  author_name: string | null;
+  updated_at: string;
+};
+
+export type LocationGame = {
+  id: number;
+  starts_at: string;
+  home_team: string;
+  away_team: string;
+  status: string;
+  home_score: number | null;
+  away_score: number | null;
+  field_name: string | null;
+};
+
+export type TipVote = "up" | "down";
+
+export type LocationTip = {
+  id: number;
+  venue_key: string;
+  category: TipCategory;
+  title: string;
+  rating: number;
+  review_text: string;
+  tags: string[];
+  author_name: string;
+  upvotes: number;
+  downvotes: number;
+  my_vote: TipVote | null;
+  created_at: string;
+  map_url: string;
+};
+
+export type LocationAggregate = {
+  field_quality: number | null;
+  referees: number | null;
+  parent_vibe: number | null;
+  parking_access: number | null;
+  amenities: number | null;
+  overall: number | null;
+  ratings_count: number;
+};
+
+export type ClubLocationTip = LocationTip & {
+  venue_name: string;
+};
+
+export type ClubLocations = {
+  club_id: number | string;
+  club_name: string;
+  logo_url: string | null;
+  fields: LocationCard[];
+  aggregate: LocationAggregate;
+  tips: ClubLocationTip[];
+};
+
+export type LocationDetail = LocationCard & {
+  my_rating: MyRating | null;
+  recommendations: LocationTip[];
+  upcoming: LocationGame[];
+  recent: LocationGame[];
+  links: {
+    directions: string;
+    hotels: string;
+    restaurants: string;
+  };
+};
+
+export type HeadToHeadReport = {
+  team_a_stats: TeamTape;
+  team_b_stats: TeamTape;
+  direct_matches: {
+    summary: {
+      team_a_wins: number;
+      team_b_wins: number;
+      draws: number;
+      team_a_goals: number;
+      team_b_goals: number;
+    };
+    games: DirectMatch[];
+  };
+  common_opponents: CommonOpponent[];
+  common_opponents_rollup: {
+    team_a_vs_common: Rollup;
+    team_b_vs_common: Rollup;
+  };
+  scouting_report: ScoutingReport;
+};
+
+export type CountRecordOut = {
+  wins: number;
+  losses: number;
+  draws: number;
+  goal_diff: number;
+};
+
+export type MobileGame = {
+  id: number;
+  starts_at: string;
+  opponent: Opponent;
+  side: "home" | "away";
+  venue_name: string;
+  city: string;
+  state: string;
+  field_name: string | null;
+  timezone: string;
+  status: GameStatus;
+  home_score: number | null;
+  away_score: number | null;
+  team_result: "W" | "L" | "D" | null;
+  latitude: number | null;
+  longitude: number | null;
+};
+
+export type MobileTeamCard = {
+  id: number;
+  name: string;
+  age_group: string;
+  gender: "boys" | "girls";
+  tier: string;
+  conference: string;
+  logo_url?: string | null;
+  club_id?: number | null;
+  rank: number | null;
+  ppg: number;
+  record: CountRecordOut;
+  conference_record: CountRecordOut;
+  next_game: MobileGame | null;
+  last_result: MobileGame | null;
+};
+
+export type MobileClub = {
+  id: number | string;
+  name: string;
+  logo_url?: string | null;
+  record: CountRecordOut;
+  conference_record: CountRecordOut;
+  squads: ClubSquad[];
+  past_10_days: WeekendScorecard[];
+  next_10_days: NextWeekend | null;
+};
+
+export type MobileDashboard = {
+  teams: MobileTeamCard[];
+  club: MobileClub | null;
+};
