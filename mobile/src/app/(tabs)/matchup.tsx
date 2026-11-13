@@ -1,16 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Modal, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Card, Chip, Crest, EdgeMeter, GoldButton, Hit, Loading, Notice, Segmented } from "@/components/ui";
+import { Card, Chip, Crest, EdgeMeter, GoldButton, Hit, Loading, Notice, ResultBadge, Segmented } from "@/components/ui";
 import { fetchDashboard, fetchHeadToHead, fetchTeams } from "@/lib/api";
+import type { LeagueGender } from "@/lib/leagues";
 import { shareText } from "@/lib/maps";
-import { ppg, signed, verdictSentence } from "@/lib/present";
+import { verdictSentence } from "@/lib/present";
 import { useFavorites } from "@/store/favorites";
 import { useSession } from "@/store/session";
-import { colors } from "@/theme";
-import type { LeagueGender } from "@/lib/leagues";
+import { colors, resultColor } from "@/theme";
+import type { CommonGame, CommonOpponent, CountRecord, DirectMatch, FormGame, SplitRecord, TeamTape } from "@/lib/types";
 
 export default function MatchupScreen() {
   const insets = useSafeAreaInsets();
@@ -65,7 +66,7 @@ export default function MatchupScreen() {
         {report.data && left && right ? (
           <View style={{ gap: 8 }}>
             <Text style={{ color: colors.white, fontSize: 26, fontWeight: "800" }}>{verdictSentence(report.data.scouting_report, left.name, right.name)}</Text>
-            <EdgeMeter value={report.data.scouting_report.edge_meter} />
+            <EdgeMeter value={report.data.scouting_report.edge_meter} favored={report.data.scouting_report.favored_team} />
             <Text style={{ alignSelf: "flex-start", backgroundColor: colors.gold, color: colors.navy, fontWeight: "800", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, overflow: "hidden" }}>
               {report.data.scouting_report.projected_tempo}
             </Text>
@@ -96,38 +97,12 @@ export default function MatchupScreen() {
                 <Text style={{ color: colors.secondary, marginTop: 4 }}>{insight.detail}</Text>
               </Card>
             ))}
-            {view === "stats" && left && right ? (
-              <Card>
-                <StatLine label={left.name} value={`${ppg(left.overall_record.ppg)} PPG · ${left.overall_record.w}-${left.overall_record.d}-${left.overall_record.l} W-D-L`} />
-                <StatLine label={right.name} value={`${ppg(right.overall_record.ppg)} PPG · ${right.overall_record.w}-${right.overall_record.d}-${right.overall_record.l} W-D-L`} />
-                <StatLine label="Goals for / against" value={`${ppg(left.avg_gf)}–${ppg(left.avg_ga)} vs ${ppg(right.avg_gf)}–${ppg(right.avg_ga)}`} />
-                <StatLine label="Rank" value={`${left.conference_rank ?? "—"} vs ${right.conference_rank ?? "—"}`} />
-              </Card>
+            {view === "stats" && left && right ? <StatsTable left={left} right={right} /> : null}
+            {view === "direct" && left ? (
+              <DirectMeetings games={report.data.direct_matches.games} summary={report.data.direct_matches.summary} leftId={left.team_id} leftName={left.name} rightName={right?.name ?? "Opponent"} />
             ) : null}
-            {view === "direct" ? (
-              <Card>
-                <Text style={{ color: colors.ink, fontWeight: "800" }}>
-                  {report.data.direct_matches.summary.team_a_wins}–{report.data.direct_matches.summary.draws}–{report.data.direct_matches.summary.team_b_wins} W-D-L for the team on the left
-                </Text>
-                {report.data.direct_matches.games.map((game) => (
-                  <Text key={game.game_id} style={{ color: colors.secondary, marginTop: 6 }}>
-                    {game.date} · {game.team_a_result ?? game.status} {game.home_score ?? "–"}–{game.away_score ?? "–"} · {game.complex_name}
-                  </Text>
-                ))}
-              </Card>
-            ) : null}
-            {view === "common" ? (
-              <View style={{ gap: 8 }}>
-                {report.data.common_opponents.map((opponent) => (
-                  <Card key={opponent.id}>
-                    <Text style={{ color: colors.ink, fontWeight: "800" }}>{opponent.name}</Text>
-                    <Text style={{ color: colors.secondary }}>
-                      {ppg(opponent.team_a_summary.ppg)} vs {ppg(opponent.team_b_summary.ppg)} PPG · GD {signed(opponent.team_a_summary.gd)} vs {signed(opponent.team_b_summary.gd)}
-                    </Text>
-                  </Card>
-                ))}
-                {report.data.common_opponents.length === 0 ? <Text style={{ color: colors.secondary }}>No common opponents yet.</Text> : null}
-              </View>
+            {view === "common" && left && right ? (
+              <CommonOpponents rows={report.data.common_opponents} leftName={left.name} rightName={right.name} />
             ) : null}
           </>
         ) : null}
@@ -155,11 +130,232 @@ function Slot({ name, logo, onPress }: { name: string; logo?: string | null; onP
   );
 }
 
-function StatLine({ label, value }: { label: string; value: string }) {
+type Side = "a" | "b" | null;
+
+function better(left: number | null | undefined, right: number | null | undefined, higher: boolean): Side {
+  if (left == null && right == null) return null;
+  if (left == null) return "b";
+  if (right == null) return "a";
+  if (left === right) return null;
+  return (higher ? left > right : left < right) ? "a" : "b";
+}
+
+function recordLead(left: CountRecord, right: CountRecord): Side {
+  if (left.pts !== right.pts) return left.pts > right.pts ? "a" : "b";
+  if (left.gd !== right.gd) return left.gd > right.gd ? "a" : "b";
+  if (left.ppg !== right.ppg) return left.ppg > right.ppg ? "a" : "b";
+  return null;
+}
+
+function splitLead(left: SplitRecord, right: SplitRecord): Side {
+  if (left.ppg !== right.ppg) return left.ppg > right.ppg ? "a" : "b";
+  if (left.w !== right.w) return left.w > right.w ? "a" : "b";
+  return null;
+}
+
+function formPoints(team: TeamTape): number {
+  return team.last_5_form.reduce((sum, game) => sum + (game.result === "W" ? 3 : game.result === "D" ? 1 : 0), 0);
+}
+
+function winLossDraw(row: { w: number; l: number; d: number }): string {
+  return `${row.w}-${row.l}-${row.d}`;
+}
+
+function meetingDate(iso: string): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  if (!year || !month || !day) return iso;
+  return new Date(year, month - 1, day).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function meetingPlace(game: DirectMatch): string {
+  const field = game.field_number ? `Field ${game.field_number}` : null;
+  const city = [game.city, game.state].filter(Boolean).join(", ");
+  return [game.complex_name, field, city].filter(Boolean).join(" · ");
+}
+
+function leftScore(game: DirectMatch, leftId: number): string | null {
+  if (game.home_score == null || game.away_score == null) return null;
+  const home = game.home_team_id === leftId;
+  const goalsFor = home ? game.home_score : game.away_score;
+  const goalsAgainst = home ? game.away_score : game.home_score;
+  return `${goalsFor}\u2013${goalsAgainst}`;
+}
+
+function sideResults(games: CommonGame[]): string {
+  const played = games
+    .filter((game): game is CommonGame & { result: "W" | "L" | "D" } => game.result === "W" || game.result === "L" || game.result === "D")
+    .sort((a, b) => b.date.localeCompare(a.date) || b.game_id - a.game_id);
+  if (played.length === 0) return "No result";
+  return played
+    .map((game) => {
+      const score = game.team_score != null && game.opponent_score != null ? ` ${game.team_score}\u2013${game.opponent_score}` : "";
+      const where = game.venue_type === "H" ? "Home" : game.venue_type === "A" ? "Away" : "Neutral";
+      return `${game.result}${score} ${where}`;
+    })
+    .join(", ");
+}
+
+function FormMarks({ games }: { games: FormGame[] }) {
+  if (games.length === 0) return <Text style={{ color: colors.secondary, fontSize: 13 }}>No results yet</Text>;
   return (
-    <View style={{ marginTop: 8 }}>
-      <Text style={{ color: colors.secondary }}>{label}</Text>
-      <Text style={{ color: colors.ink, fontWeight: "800", fontVariant: ["tabular-nums"] }}>{value}</Text>
+    <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 4 }}>
+      {games.map((game) => (
+        <View
+          key={game.game_id}
+          accessibilityLabel={`${game.result} ${game.score} versus ${game.opponent_name}`}
+          style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: resultColor(game.result), alignItems: "center", justifyContent: "center" }}
+        >
+          <Text style={{ color: colors.white, fontSize: 11, fontWeight: "800" }}>{game.result}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function StatsTable({ left, right }: { left: TeamTape; right: TeamTape }) {
+  const rows: { label: string; left: ReactNode; right: ReactNode; lead: Side }[] = [
+    {
+      label: "Conference rank",
+      left: left.conference_rank == null ? "—" : `#${left.conference_rank}`,
+      right: right.conference_rank == null ? "—" : `#${right.conference_rank}`,
+      lead: better(left.conference_rank, right.conference_rank, false),
+    },
+    {
+      label: "Points per game",
+      left: left.official_ppg == null ? "—" : left.official_ppg.toFixed(2),
+      right: right.official_ppg == null ? "—" : right.official_ppg.toFixed(2),
+      lead: better(left.official_ppg, right.official_ppg, true),
+    },
+    {
+      label: "Overall record",
+      left: winLossDraw(left.overall_record),
+      right: winLossDraw(right.overall_record),
+      lead: recordLead(left.overall_record, right.overall_record),
+    },
+    {
+      label: "Goals for",
+      left: `${left.overall_record.gf} · ${left.avg_gf.toFixed(2)} avg`,
+      right: `${right.overall_record.gf} · ${right.avg_gf.toFixed(2)} avg`,
+      lead: better(left.overall_record.gf, right.overall_record.gf, true),
+    },
+    {
+      label: "Goals against",
+      left: `${left.overall_record.ga} · ${left.avg_ga.toFixed(2)} avg`,
+      right: `${right.overall_record.ga} · ${right.avg_ga.toFixed(2)} avg`,
+      lead: better(left.overall_record.ga, right.overall_record.ga, false),
+    },
+    {
+      label: "Home",
+      left: `${winLossDraw(left.home_record)} · ${left.home_record.ppg.toFixed(2)} PPG`,
+      right: `${winLossDraw(right.home_record)} · ${right.home_record.ppg.toFixed(2)} PPG`,
+      lead: splitLead(left.home_record, right.home_record),
+    },
+    {
+      label: "Away",
+      left: `${winLossDraw(left.away_record)} · ${left.away_record.ppg.toFixed(2)} PPG`,
+      right: `${winLossDraw(right.away_record)} · ${right.away_record.ppg.toFixed(2)} PPG`,
+      lead: splitLead(left.away_record, right.away_record),
+    },
+    {
+      label: "Last five",
+      left: <FormMarks games={left.last_5_form} />,
+      right: <FormMarks games={right.last_5_form} />,
+      lead: better(formPoints(left), formPoints(right), true),
+    },
+  ];
+  return (
+    <Card>
+      <View accessibilityLabel="Head to head stats" style={{ gap: 2 }}>
+        <View style={{ flexDirection: "row", gap: 6, paddingBottom: 6 }}>
+          <View style={{ width: 96 }} />
+          <Text style={{ flex: 1, color: colors.navy, fontWeight: "800", textAlign: "right" }} numberOfLines={2}>{left.name}</Text>
+          <Text style={{ flex: 1, color: colors.navy, fontWeight: "800", textAlign: "right" }} numberOfLines={2}>{right.name}</Text>
+        </View>
+        {rows.map((row) => (
+          <View key={row.label} style={{ flexDirection: "row", alignItems: "center", gap: 6, borderTopWidth: 1, borderTopColor: colors.line, paddingVertical: 6 }}>
+            <Text style={{ width: 96, color: colors.secondary, fontSize: 12, fontWeight: "700" }}>{row.label}</Text>
+            <StatCell lead={row.lead === "a"}>{row.left}</StatCell>
+            <StatCell lead={row.lead === "b"}>{row.right}</StatCell>
+          </View>
+        ))}
+      </View>
+    </Card>
+  );
+}
+
+function StatCell({ lead, children }: { lead: boolean; children: ReactNode }) {
+  return (
+    <View style={{ flex: 1, alignItems: "flex-end", borderRadius: 8, backgroundColor: lead ? "#FFF6D8" : "transparent", paddingHorizontal: 4, paddingVertical: 2 }}>
+      {typeof children === "string" ? (
+        <Text style={{ color: lead ? colors.navy : colors.ink, fontWeight: lead ? "800" : "600", fontSize: 13, textAlign: "right", fontVariant: ["tabular-nums"] }}>{children}</Text>
+      ) : (
+        children
+      )}
+    </View>
+  );
+}
+
+function DirectMeetings({
+  games,
+  summary,
+  leftId,
+  leftName,
+  rightName,
+}: {
+  games: DirectMatch[];
+  summary: { team_a_wins: number; team_b_wins: number; draws: number };
+  leftId: number;
+  leftName: string;
+  rightName: string;
+}) {
+  const past = games
+    .filter((game) => game.status === "COMPLETED" && game.home_score != null && game.away_score != null)
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.kickoff_time ?? "").localeCompare(a.kickoff_time ?? "") || b.game_id - a.game_id);
+  if (past.length === 0) {
+    return (
+      <Card>
+        <Text style={{ color: colors.ink, fontWeight: "800" }}>These teams have not played.</Text>
+      </Card>
+    );
+  }
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={{ color: colors.secondary }}>
+        {leftName} {summary.team_a_wins} wins · {rightName} {summary.team_b_wins} wins · {summary.draws} draws
+      </Text>
+      {past.map((game) => (
+        <Card key={game.game_id}>
+          <Text style={{ color: colors.secondary }}>{meetingDate(game.date)}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 }}>
+            {game.team_a_result ? <ResultBadge result={game.team_a_result} score={leftScore(game, leftId)} /> : null}
+            <Text style={{ color: colors.ink, fontWeight: "700" }}>{game.venue_type}</Text>
+          </View>
+          <Text style={{ color: colors.secondary, marginTop: 4 }}>{meetingPlace(game)}</Text>
+        </Card>
+      ))}
+    </View>
+  );
+}
+
+function CommonOpponents({ rows, leftName, rightName }: { rows: CommonOpponent[]; leftName: string; rightName: string }) {
+  if (rows.length === 0) return <Text style={{ color: colors.secondary }}>No shared opponents yet.</Text>;
+  return (
+    <View style={{ gap: 8 }}>
+      {rows.map((opponent) => (
+        <Card key={opponent.id}>
+          <Text style={{ color: colors.ink, fontWeight: "800" }}>{opponent.name}</Text>
+          <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={{ color: colors.secondary, fontSize: 12 }} numberOfLines={1}>{leftName}</Text>
+              <Text style={{ color: colors.ink, fontWeight: "700" }}>{sideResults(opponent.team_a_games)}</Text>
+            </View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={{ color: colors.secondary, fontSize: 12 }} numberOfLines={1}>{rightName}</Text>
+              <Text style={{ color: colors.ink, fontWeight: "700" }}>{sideResults(opponent.team_b_games)}</Text>
+            </View>
+          </View>
+        </Card>
+      ))}
     </View>
   );
 }

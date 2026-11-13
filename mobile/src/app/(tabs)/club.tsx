@@ -27,6 +27,7 @@ export default function ClubScreen() {
   const setActive = useSession((state) => state.setActiveTeamId);
   const [override, setOverride] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const clubQuery = draft.trim();
   const clubKey = override ?? savedClub;
   const club = useQuery({
     queryKey: ["club", clubKey],
@@ -34,9 +35,9 @@ export default function ClubScreen() {
     enabled: !!clubKey,
   });
   const search = useQuery({
-    queryKey: ["clubs", draft],
-    queryFn: () => fetchClubs(draft),
-    enabled: draft.trim().length >= 2,
+    queryKey: ["clubs", "browse", clubQuery],
+    queryFn: () => fetchClubs(clubQuery),
+    enabled: clubQuery.length >= 2,
   });
 
   function openSquad(squad: ClubSquad) {
@@ -58,12 +59,29 @@ export default function ClubScreen() {
           placeholderTextColor={colors.secondary}
           style={{ minHeight: 44, borderRadius: 12, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 12, color: colors.ink }}
         />
-        {(search.data ?? []).slice(0, 6).map((item) => (
-          <Hit key={String(item.id)} label={item.name} onPress={() => { setOverride(String(item.id)); setDraft(""); }} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Crest uri={item.logo_url} name={item.name} size={28} />
-            <Text style={{ color: colors.ink, fontWeight: "700" }}>{item.name}</Text>
-          </Hit>
-        ))}
+        {clubQuery.length >= 2 ? (
+          <View style={{ gap: 4 }}>
+            {search.isPending ? <Text style={{ color: colors.secondary }}>Searching clubs…</Text> : null}
+            {search.isError ? <Text style={{ color: colors.loss, fontWeight: "700" }}>Club search failed.</Text> : null}
+            {!search.isPending && !search.isError && (search.data ?? []).length === 0 ? (
+              <Text style={{ color: colors.secondary }}>No clubs match.</Text>
+            ) : null}
+            {(search.data ?? []).slice(0, 6).map((item) => (
+              <Hit
+                key={String(item.id)}
+                label={item.name}
+                onPress={() => {
+                  setOverride(String(item.id));
+                  setDraft("");
+                }}
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
+                <Crest uri={item.logo_url} name={item.name} size={28} />
+                <Text style={{ color: colors.ink, fontWeight: "700" }}>{item.name}</Text>
+              </Hit>
+            ))}
+          </View>
+        ) : null}
       </View>
 
       {!clubKey ? <View style={{ padding: 20 }}><Notice title="No club yet" body="Pick a favorite club, or search for any club. Ratings and tips are not in this app." action="Edit favorites" onAction={() => router.push("/favorites")} /></View> : null}
@@ -93,11 +111,11 @@ function ClubBody({ detail, onSquad }: { detail: ClubDetail; onSquad: (squad: Cl
         return (
           <View key={group.title} style={{ gap: 8 }}>
             <Text style={{ color: colors.ink, fontWeight: "800" }}>{group.title}</Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
               {squads.map((squad) => (
-                <Hit key={squad.id} label={`Open ${squad.name} ${squad.age_group}`} onPress={() => onSquad(squad)} style={{ width: 72, alignItems: "center" }}>
-                  <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.navy, alignItems: "center", justifyContent: "center" }}>
-                    <Text style={{ color: colors.gold, fontWeight: "800", textAlign: "center", fontVariant: ["tabular-nums"] }}>{squadBadge(squad)}</Text>
+                <Hit key={squad.id} label={`Open ${squad.name} ${squad.age_group}`} onPress={() => onSquad(squad)} style={{ alignItems: "center" }}>
+                  <View style={{ backgroundColor: colors.navy, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3, minHeight: 24, justifyContent: "center" }}>
+                    <Text style={{ color: colors.gold, fontWeight: "800", fontSize: 12, fontVariant: ["tabular-nums"] }}>{squadBadge(squad)}</Text>
                   </View>
                 </Hit>
               ))}
