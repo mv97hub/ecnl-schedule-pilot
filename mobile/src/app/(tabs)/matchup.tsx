@@ -1,10 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { File, Paths } from "expo-file-system";
+import * as Sharing from "expo-sharing";
+import { useRef, useState, type ReactNode } from "react";
 import { Modal, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Card, Chip, Crest, EdgeMeter, GoldButton, Hit, Loading, Notice, ResultBadge, Segmented } from "@/components/ui";
-import { fetchDashboard, fetchHeadToHead, fetchTeams } from "@/lib/api";
+import { apiBaseUrl, fetchDashboard, fetchHeadToHead, fetchTeams } from "@/lib/api";
+import { matchupSearch } from "@/lib/formatShareText";
 import type { LeagueGender } from "@/lib/leagues";
 import { shareText } from "@/lib/maps";
 import { verdictSentence } from "@/lib/present";
@@ -12,6 +15,27 @@ import { useFavorites } from "@/store/favorites";
 import { useSession } from "@/store/session";
 import { colors, resultColor } from "@/theme";
 import type { CommonGame, CommonOpponent, CountRecord, DirectMatch, FormGame, SplitRecord, TeamTape } from "@/lib/types";
+
+/** The share PNG is served by the website. API bases end in `/backend`. */
+function websiteOrigin(): string {
+  return apiBaseUrl().replace(/\/backend$/, "");
+}
+
+function isPng(bytes: Uint8Array): boolean {
+  return bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+}
+
+async function presentMatchupImage(teamA: number, teamB: number, gender?: LeagueGender): Promise<void> {
+  const url = `${websiteOrigin()}/api/og/away-day?${matchupSearch(teamA, teamB, false, gender)}`;
+  const file = await File.downloadFileAsync(url, new File(Paths.cache, `away-day-${teamA}-${teamB}`), { idempotent: true });
+  if (!isPng(await file.bytes())) throw new Error("Matchup image was not a PNG");
+  if (!(await Sharing.isAvailableAsync())) throw new Error("Sharing is unavailable");
+  try {
+    await Sharing.shareAsync(file.uri, { mimeType: "image/png", UTI: "public.png", dialogTitle: "Share matchup" });
+  } catch {
+    // The sheet closed without a second text share.
+  }
+}
 
 export default function MatchupScreen() {
   const insets = useSafeAreaInsets();
@@ -22,6 +46,7 @@ export default function MatchupScreen() {
   const setMatchup = useSession((state) => state.setMatchup);
   const [slot, setSlot] = useState<"a" | "b" | null>(null);
   const [view, setView] = useState<"stats" | "direct" | "common">("stats");
+  const sharing = useRef(false);
   const dashboard = useQuery({
     queryKey: ["dashboard", favorites, clubId],
     queryFn: () => fetchDashboard(favorites, clubId),
@@ -40,9 +65,18 @@ export default function MatchupScreen() {
   const lockedGender: LeagueGender | undefined = slot === "b" ? cardA?.gender : undefined;
 
   async function share() {
-    if (!report.data || !left || !right) return;
+    if (!report.data || !left || !right || teamA == null || teamB == null || teamA === teamB || sharing.current) return;
+    sharing.current = true;
     const sentence = verdictSentence(report.data.scouting_report, left.name, right.name);
-    await shareText(`Soccer Away Day\n${left.name} vs ${right.name}\n${sentence}\n${report.data.scouting_report.projected_tempo}\nNot affiliated with ECNL.`);
+    const message = `Soccer Away Day\n${left.name} vs ${right.name}\n${sentence}\n${report.data.scouting_report.projected_tempo}\nNot affiliated with ECNL.`;
+    const gender = cardA?.gender ?? dashboard.data?.teams.find((team) => team.id === teamB)?.gender;
+    try {
+      await presentMatchupImage(teamA, teamB, gender);
+    } catch {
+      await shareText(message);
+    } finally {
+      sharing.current = false;
+    }
   }
 
   return (
