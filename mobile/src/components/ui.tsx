@@ -154,11 +154,14 @@ export function ProjectionBar({ points, expected }: { points: number; expected: 
   );
 }
 
-export function EdgeMeter({ value }: { value: number }) {
-  const clamped = Math.max(-100, Math.min(100, value));
-  const marker = ((clamped + 100) / 200) * 100;
+/** Positive magnitude sits on the team `favored` names. Left is team A. */
+export function EdgeMeter({ value, favored }: { value: number; favored: "team_a" | "team_b" | "even" }) {
+  const magnitude = Math.max(0, Math.min(100, Math.abs(value)));
+  const toward = favored === "team_a" ? -magnitude : favored === "team_b" ? magnitude : 0;
+  const marker = ((toward + 100) / 200) * 100;
+  const side = favored === "team_a" ? "left" : favored === "team_b" ? "right" : "center";
   return (
-    <View accessibilityLabel={`Edge meter ${clamped}`}>
+    <View accessibilityLabel={`Edge meter toward the ${side}`}>
       <View style={{ height: 14, borderRadius: 7, backgroundColor: "rgba(255,255,255,0.25)", overflow: "hidden" }}>
         <View style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 2, backgroundColor: colors.white }} />
         <View style={{ position: "absolute", left: `${marker}%`, marginLeft: -7, top: 0, width: 14, height: 14, borderRadius: 7, backgroundColor: colors.gold }} />

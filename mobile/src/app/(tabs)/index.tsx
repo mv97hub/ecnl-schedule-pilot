@@ -84,11 +84,13 @@ export default function HomeScreen() {
         ) : (
           <Text style={{ color: colors.white, fontSize: 22, fontWeight: "800" }}>Choose a club or a team</Text>
         )}
-        {club ? (
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {club.squads.map((squad) => (
-              <View key={squad.id} style={{ backgroundColor: colors.gold, borderRadius: 14, paddingHorizontal: 10, minHeight: 28, justifyContent: "center" }}>
-                <Text style={{ color: colors.navy, fontWeight: "800", fontVariant: ["tabular-nums"] }}>{squadBadge(squad)}</Text>
+        {club && teams.length > 0 ? (
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {teams.slice(0, 4).map((team) => (
+              <View key={team.id} style={{ backgroundColor: colors.gold, borderRadius: 14, paddingHorizontal: 10, minHeight: 28, justifyContent: "center" }}>
+                <Text style={{ color: colors.navy, fontWeight: "800", fontVariant: ["tabular-nums"] }}>
+                  {squadBadge({ gender: team.gender, age_group: team.age_group, conference_rank: team.rank })}
+                </Text>
               </View>
             ))}
           </View>
