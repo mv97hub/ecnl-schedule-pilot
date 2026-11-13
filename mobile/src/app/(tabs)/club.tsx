@@ -10,6 +10,7 @@ import { fetchClub, fetchClubs } from "@/lib/api";
 import { openMaps } from "@/lib/maps";
 import { ordinal, signed, wdl } from "@/lib/present";
 import { useFavorites } from "@/store/favorites";
+import { useSession } from "@/store/session";
 import { colors } from "@/theme";
 import type { ClubDetail, ClubSquad } from "@/lib/types";
 
@@ -17,6 +18,7 @@ export default function ClubScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const savedClub = useFavorites((state) => state.favoriteClubId);
+  const setActive = useSession((state) => state.setActiveTeamId);
   const [override, setOverride] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const clubQuery = draft.trim();
@@ -31,6 +33,11 @@ export default function ClubScreen() {
     queryFn: () => fetchClubs(clubQuery),
     enabled: clubQuery.length >= 2,
   });
+
+  function openSquad(squad: ClubSquad) {
+    setActive(squad.id);
+    router.push("/schedules");
+  }
 
   return (
     <ScrollView
@@ -74,12 +81,12 @@ export default function ClubScreen() {
       {!clubKey ? <View style={{ padding: 20 }}><Notice title="No club yet" body="Pick a favorite club, or search for any club. Ratings and tips are not in this app." action="Edit favorites" onAction={() => router.push("/favorites")} /></View> : null}
       {club.isPending && clubKey ? <Loading /> : null}
       {club.isError ? <View style={{ padding: 20 }}><Notice title="Club unavailable" body="That club was not found." action="Try again" onAction={() => void club.refetch()} /></View> : null}
-      {club.data ? <ClubBody key={String(club.data.id)} detail={club.data} /> : null}
+      {club.data ? <ClubBody key={String(club.data.id)} detail={club.data} onSquad={openSquad} /> : null}
     </ScrollView>
   );
 }
 
-function ClubBody({ detail }: { detail: ClubDetail }) {
+function ClubBody({ detail, onSquad }: { detail: ClubDetail; onSquad: (squad: ClubSquad) => void }) {
   const [open, setOpen] = useState({ teams: false, past: false, next: false, fields: false });
   function toggle(key: keyof typeof open) {
     setOpen((current) => ({ ...current, [key]: !current[key] }));
@@ -100,13 +107,18 @@ function ClubBody({ detail }: { detail: ClubDetail }) {
       <Fold title="Teams" open={open.teams} onPress={() => toggle("teams")}>
         {detail.squads.length === 0 ? <Text style={{ color: colors.secondary }}>No teams yet.</Text> : null}
         {detail.squads.map((squad) => (
-          <View key={squad.id} style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.line }}>
+          <Hit
+            key={squad.id}
+            label={`Open ${squad.name} ${squad.age_group}`}
+            onPress={() => onSquad(squad)}
+            style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.line }}
+          >
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.ink, fontWeight: "700" }}>{squad.name}</Text>
               <Text style={{ color: colors.secondary, marginTop: 2 }}>{squadLine(squad)}</Text>
             </View>
             <Text style={{ color: colors.navy, fontWeight: "800", fontVariant: ["tabular-nums"] }}>{squad.conference_rank == null ? "—" : ordinal(squad.conference_rank)}</Text>
-          </View>
+          </Hit>
         ))}
       </Fold>
 
