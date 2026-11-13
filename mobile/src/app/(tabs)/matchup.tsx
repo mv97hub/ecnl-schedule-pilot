@@ -90,13 +90,6 @@ export default function MatchupScreen() {
                 { value: "common", label: "Common" },
               ]}
             />
-            {report.data.scouting_report.insights.map((insight) => (
-              <Card key={insight.category}>
-                <Text style={{ color: colors.navy, fontWeight: "800" }}>{insight.category}</Text>
-                <Text style={{ color: colors.ink, fontSize: 18, fontWeight: "800", marginTop: 4 }}>{insight.headline}</Text>
-                <Text style={{ color: colors.secondary, marginTop: 4 }}>{insight.detail}</Text>
-              </Card>
-            ))}
             {view === "stats" && left && right ? <StatsTable left={left} right={right} /> : null}
             {view === "direct" && left ? (
               <DirectMeetings games={report.data.direct_matches.games} summary={report.data.direct_matches.summary} leftId={left.team_id} leftName={left.name} rightName={right?.name ?? "Opponent"} />
@@ -195,10 +188,10 @@ function sideResults(games: CommonGame[]): string {
     .join(", ");
 }
 
-function FormMarks({ games }: { games: FormGame[] }) {
-  if (games.length === 0) return <Text style={{ color: colors.secondary, fontSize: 13 }}>No results yet</Text>;
+function FormMarks({ games, align }: { games: FormGame[]; align: "left" | "right" }) {
+  if (games.length === 0) return <Text style={{ color: colors.secondary, fontSize: 13, textAlign: align }}>No results yet</Text>;
   return (
-    <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 4 }}>
+    <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: align === "left" ? "flex-start" : "flex-end", gap: 4 }}>
       {games.map((game) => (
         <View
           key={game.game_id}
@@ -258,24 +251,24 @@ function StatsTable({ left, right }: { left: TeamTape; right: TeamTape }) {
     },
     {
       label: "Last five",
-      left: <FormMarks games={left.last_5_form} />,
-      right: <FormMarks games={right.last_5_form} />,
+      left: <FormMarks games={left.last_5_form} align="left" />,
+      right: <FormMarks games={right.last_5_form} align="right" />,
       lead: better(formPoints(left), formPoints(right), true),
     },
   ];
   return (
     <Card>
-      <View accessibilityLabel="Head to head stats" style={{ gap: 2 }}>
-        <View style={{ flexDirection: "row", gap: 6, paddingBottom: 6 }}>
-          <View style={{ width: 96 }} />
-          <Text style={{ flex: 1, color: colors.navy, fontWeight: "800", textAlign: "right" }} numberOfLines={2}>{left.name}</Text>
-          <Text style={{ flex: 1, color: colors.navy, fontWeight: "800", textAlign: "right" }} numberOfLines={2}>{right.name}</Text>
+      <View accessibilityLabel={`${left.name} on the left, ${right.name} on the right`} style={{ gap: 2 }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, paddingBottom: 6 }}>
+          <Text style={{ flex: 1, color: colors.navy, fontWeight: "800", textAlign: "left" }} numberOfLines={3}>{left.name}</Text>
+          <View style={{ width: 92 }} />
+          <Text style={{ flex: 1, color: colors.navy, fontWeight: "800", textAlign: "right" }} numberOfLines={3}>{right.name}</Text>
         </View>
         {rows.map((row) => (
-          <View key={row.label} style={{ flexDirection: "row", alignItems: "center", gap: 6, borderTopWidth: 1, borderTopColor: colors.line, paddingVertical: 6 }}>
-            <Text style={{ width: 96, color: colors.secondary, fontSize: 12, fontWeight: "700" }}>{row.label}</Text>
-            <StatCell lead={row.lead === "a"}>{row.left}</StatCell>
-            <StatCell lead={row.lead === "b"}>{row.right}</StatCell>
+          <View key={row.label} style={{ flexDirection: "row", alignItems: "center", gap: 8, borderTopWidth: 1, borderTopColor: colors.line, paddingVertical: 6 }}>
+            <StatCell lead={row.lead === "a"} align="left">{row.left}</StatCell>
+            <Text style={{ width: 92, color: colors.secondary, fontSize: 11, fontWeight: "700", textAlign: "center" }}>{row.label}</Text>
+            <StatCell lead={row.lead === "b"} align="right">{row.right}</StatCell>
           </View>
         ))}
       </View>
@@ -283,11 +276,11 @@ function StatsTable({ left, right }: { left: TeamTape; right: TeamTape }) {
   );
 }
 
-function StatCell({ lead, children }: { lead: boolean; children: ReactNode }) {
+function StatCell({ lead, align, children }: { lead: boolean; align: "left" | "right"; children: ReactNode }) {
   return (
-    <View style={{ flex: 1, alignItems: "flex-end", borderRadius: 8, backgroundColor: lead ? "#FFF6D8" : "transparent", paddingHorizontal: 4, paddingVertical: 2 }}>
+    <View style={{ flex: 1, alignItems: align === "left" ? "flex-start" : "flex-end", borderRadius: 8, backgroundColor: lead ? "#FFF6D8" : "transparent", paddingHorizontal: 4, paddingVertical: 2 }}>
       {typeof children === "string" ? (
-        <Text style={{ color: lead ? colors.navy : colors.ink, fontWeight: lead ? "800" : "600", fontSize: 13, textAlign: "right", fontVariant: ["tabular-nums"] }}>{children}</Text>
+        <Text style={{ color: lead ? colors.navy : colors.ink, fontWeight: lead ? "800" : "600", fontSize: 13, textAlign: align, fontVariant: ["tabular-nums"] }}>{children}</Text>
       ) : (
         children
       )}
@@ -338,9 +331,10 @@ function DirectMeetings({
 }
 
 function CommonOpponents({ rows, leftName, rightName }: { rows: CommonOpponent[]; leftName: string; rightName: string }) {
-  if (rows.length === 0) return <Text style={{ color: colors.secondary }}>No shared opponents yet.</Text>;
   return (
     <View style={{ gap: 8 }}>
+      <Text accessibilityRole="header" style={{ color: colors.ink, fontSize: 20, fontWeight: "800" }}>Common Opponents</Text>
+      {rows.length === 0 ? <Text style={{ color: colors.secondary }}>No shared opponents yet.</Text> : null}
       {rows.map((opponent) => (
         <Card key={opponent.id}>
           <Text style={{ color: colors.ink, fontWeight: "800" }}>{opponent.name}</Text>
