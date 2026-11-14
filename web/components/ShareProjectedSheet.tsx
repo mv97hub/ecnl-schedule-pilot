@@ -110,7 +110,7 @@ export function ShareProjectedSheet({ report, disabled = false }: ShareProjected
         data-share-sheet
         onClick={() => void openPreview()}
         disabled={!report || disabled}
-        className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-emerald-700 bg-white px-3 py-1.5 text-sm font-medium text-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-gold bg-white px-3 py-1.5 text-sm font-medium text-navy disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Share2 className="size-4" aria-hidden="true" />
         Share
@@ -125,7 +125,7 @@ export function ShareProjectedSheet({ report, disabled = false }: ShareProjected
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
-              <h2 id={titleId} className="text-lg font-semibold text-stone-950">
+              <h2 id={titleId} className="text-lg font-semibold text-navy">
                 Share Standings Preview
               </h2>
               <button type="button" onClick={close} className="rounded-full px-3 py-1 text-sm font-medium text-stone-600">
@@ -133,16 +133,16 @@ export function ShareProjectedSheet({ report, disabled = false }: ShareProjected
               </button>
             </div>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-              <button type="button" data-share-download onClick={downloadGraphic} disabled={!preview} className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" data-share-download onClick={downloadGraphic} disabled={!preview} className="rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy disabled:cursor-not-allowed disabled:opacity-50">
                 Download Graphic (PNG)
               </button>
-              <button type="button" onClick={() => void shareFromPhone()} disabled={!preview} className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-800 disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" onClick={() => void shareFromPhone()} disabled={!preview} className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink disabled:cursor-not-allowed disabled:opacity-50">
                 Share from Phone
               </button>
             </div>
             {shareNote ? <p className="mt-2 text-sm text-stone-600">{shareNote}</p> : null}
             {building ? <p className="mt-4 text-sm text-stone-600">Building the sheet</p> : null}
-            {error ? <p className="mt-4 text-sm text-stone-700">{error}</p> : null}
+            {error ? <p className="mt-4 text-sm text-ink">{error}</p> : null}
             {preview ? (
               <div className="mt-4 overflow-hidden rounded-xl border border-stone-200">
                 {/* eslint-disable-next-line @next/next/no-img-element */}

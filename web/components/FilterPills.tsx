@@ -30,8 +30,8 @@ export function FilterPills({ value, onChange }: FilterPillsProps) {
             onClick={() => onChange(pill.id)}
             className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
               active
-                ? "border-emerald-700 bg-emerald-700 text-white shadow-sm"
-                : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:text-emerald-800"
+                ? "border-gold bg-gold text-navy shadow-sm"
+                : "border-slate-200 bg-white text-slate-700 hover:border-gold hover:text-navy"
             }`}
           >
             <Icon className="size-3" />

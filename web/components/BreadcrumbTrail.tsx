@@ -9,7 +9,7 @@ export function BreadcrumbTrail({ items }: { items: string[] }) {
         {trail.map((item, index) => (
           <li key={`${index}-${item}`} className="flex items-center gap-1.5">
             {index > 0 && <ChevronRight className="size-3.5 text-stone-400" aria-hidden="true" />}
-            <span className={index === trail.length - 1 ? "font-medium text-stone-900" : undefined}>{item}</span>
+            <span className={index === trail.length - 1 ? "font-medium text-navy" : undefined}>{item}</span>
           </li>
         ))}
       </ol>

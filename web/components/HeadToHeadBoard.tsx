@@ -82,7 +82,7 @@ function formPoints(team: TeamTape): number {
 }
 
 function leadClass(active: boolean): string {
-  return active ? "rounded-lg bg-emerald-50 px-2 py-1 font-semibold text-emerald-900" : "px-2 py-1 text-stone-800";
+  return active ? "rounded-lg bg-gold/20 px-2 py-1 font-semibold text-navy" : "px-2 py-1 text-ink";
 }
 
 function squad(pool: Team[], name: string | null): Team | undefined {
@@ -144,13 +144,13 @@ function SideSelect({
   const others = (prefer ? inConference.filter((team) => !preferred.some((item) => item.id === team.id)) : pool).sort(byName);
   const visibleIds = new Set([...preferred, ...others, ...pool].map((team) => team.id));
   const listed = side.teamId && !visibleIds.has(side.teamId) ? teams.filter((team) => team.id === side.teamId) : [];
-  const field = "h-9 min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2 text-sm text-stone-900";
+  const field = "h-9 min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2 text-sm text-navy";
   const row = "flex items-center gap-2 text-xs font-medium text-stone-600";
   const title = "w-[5.75rem] shrink-0";
 
   return (
     <fieldset className="min-w-0 space-y-1.5">
-      <legend className="mb-1 text-sm font-semibold text-stone-800">{legend}</legend>
+      <legend className="mb-1 text-sm font-semibold text-ink">{legend}</legend>
       <label htmlFor={`${prefix}-tier`} className={row}>
         <span className={title}>Tier</span>
         <select id={`${prefix}-tier`} value={side.tier} onChange={(event) => onChange(chooseTier(side, event.target.value === "ECNL-RL" ? "ECNL-RL" : "ECNL", teams))} className={field}>
@@ -251,8 +251,8 @@ function MeetingList({ games, summary, align }: { games: CommonGame[]; summary: 
     <div className={`min-w-0 text-sm ${align === "end" ? "md:text-right" : "text-left"}`}>
       <ul className="space-y-1">
         {games.map((game) => (
-          <li key={game.game_id} className="text-stone-700">
-            <span className="font-semibold text-stone-950">{game.venue_type}</span>
+          <li key={game.game_id} className="text-ink">
+            <span className="font-semibold text-navy">{game.venue_type}</span>
             {" · "}
             {game.result ?? game.status}
             {game.team_score != null && game.opponent_score != null ? ` · ${game.team_score}\u2013${game.opponent_score}` : ""}
@@ -273,10 +273,10 @@ function MeetingCard({ game, homeName, awayName }: { game: DirectMatch; homeName
   const score = game.home_score != null && game.away_score != null ? `${game.home_score}\u2013${game.away_score}` : game.status === "SCHEDULED" ? "Scheduled" : game.status === "POSTPONED" ? "Postponed" : game.status === "CANCELLED" ? "Cancelled" : game.status;
   return (
     <article className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-3 text-sm">
-      <p className="font-medium text-stone-950">
+      <p className="font-medium text-navy">
         {formatDate(game.date)} · {formatKick(game.kickoff_time)}
       </p>
-      <p className="mt-1 text-lg font-semibold tracking-tight text-stone-950">{score}</p>
+      <p className="mt-1 text-lg font-semibold tracking-tight text-navy">{score}</p>
       <p className="mt-1 text-stone-600">vs {awayName}</p>
       <p className="text-stone-500">{place}</p>
       <p className="sr-only">{homeName} home</p>
@@ -326,7 +326,7 @@ function edgeLabel(row: CommonOpponent, left: string, right: string): string {
 
 function RollupLine({ name, row, lead }: { name: string; row: Rollup; lead: boolean }) {
   return (
-    <p className={lead ? "rounded-lg bg-emerald-50 px-2 py-1 text-sm text-emerald-950" : "px-2 py-1 text-sm text-stone-700"}>
+    <p className={lead ? "rounded-lg bg-gold/20 px-2 py-1 text-sm text-navy" : "px-2 py-1 text-sm text-ink"}>
       <span className="font-semibold">{name}</span> {row.ppg.toFixed(2)} PPG · {record(row)} · GD {signed(row.gd)}
     </p>
   );
@@ -347,11 +347,11 @@ function ScoutingGauge({ meter, teamA, teamB, label }: { meter: number; teamA: s
       <svg viewBox="0 0 200 118" className="mx-auto h-20 w-full" role="img" aria-label={`${label}. Needle leans toward ${toward}.`}>
         <path d="M 22 100 A 78 78 0 0 1 178 100" fill="none" stroke="#e7e5e4" strokeWidth="12" strokeLinecap="round" />
         <path d="M 100 22 L 100 100" stroke="#d6d3d1" strokeWidth="2" />
-        <line x1="100" y1="100" x2="100" y2="36" stroke="#047857" strokeWidth="3" strokeLinecap="round" transform={`rotate(${angle} 100 100)`} />
+        <line x1="100" y1="100" x2="100" y2="36" stroke="#14284B" strokeWidth="3" strokeLinecap="round" transform={`rotate(${angle} 100 100)`} />
         <circle cx="100" cy="100" r="5" fill="#1c1917" />
       </svg>
-      <p className="text-center text-sm font-semibold tracking-tight text-stone-950">{label}</p>
-      <div className="mt-1 text-[10px] font-semibold leading-tight text-stone-950 lg:grid lg:grid-cols-2 lg:gap-x-2">
+      <p className="text-center text-sm font-semibold tracking-tight text-navy">{label}</p>
+      <div className="mt-1 text-[10px] font-semibold leading-tight text-navy lg:grid lg:grid-cols-2 lg:gap-x-2">
         <p>{teamA}</p>
         <p className="text-right">{teamB}</p>
       </div>
@@ -362,17 +362,17 @@ function ScoutingGauge({ meter, teamA, teamB, label }: { meter: number; teamA: s
 function ScoutingCard({ report, teamA, teamB }: { report: ScoutingReport; teamA: string; teamB: string }) {
   return (
     <section className="rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-sm" aria-label="Game Predictor">
-      <h2 className="text-lg font-semibold text-stone-950">Game Predictor</h2>
+      <h2 className="text-lg font-semibold text-navy">Game Predictor</h2>
       <div className="mt-2 grid grid-cols-[8.25rem_minmax(0,1fr)] items-start gap-3 lg:grid-cols-[16rem_minmax(0,1fr)] lg:items-center">
         <ScoutingGauge meter={report.edge_meter} teamA={teamA} teamB={teamB} label={report.verdict_headline} />
         <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
           {report.insights.map((card) => (
             <article key={card.category} className="min-w-0 rounded-xl border border-stone-200 bg-stone-50 px-2.5 py-1.5 lg:px-3 lg:py-2">
               <p className="text-[10px] font-medium uppercase tracking-wide text-stone-400">{card.category}</p>
-              <p className="mt-0.5 text-sm leading-snug text-stone-950">
+              <p className="mt-0.5 text-sm leading-snug text-navy">
                 <span
                   className={`font-semibold text-xs lg:text-sm ${
-                    card.advantage === "team_a" ? "text-emerald-800" : card.advantage === "team_b" ? "text-stone-950" : "text-stone-500"
+                    card.advantage === "team_a" ? "rounded bg-gold/25 px-1 text-navy" : card.advantage === "team_b" ? "text-ink" : "text-stone-500"
                   }`}
                 >
                   {advantageName(card.advantage, teamA, teamB)}
@@ -653,11 +653,11 @@ export function HeadToHeadBoard() {
   const rollupLead = commonRollupA && commonRollupB ? better(commonRollupA.ppg, commonRollupB.ppg, true) : null;
 
   return (
-    <div className="min-h-full bg-stone-100">
+    <div className="min-h-full bg-bone">
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">Head-to-Head</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-navy sm:text-3xl">Head-to-Head</h1>
             {!finished && <p className="mt-1 text-sm text-stone-500">Direct meetings and how each club did against the same opponents.</p>}
           </div>
           {report && !loading && teamA && teamB && report.team_a_stats.team_id === teamA && report.team_b_stats.team_id === teamB ? (
@@ -668,15 +668,15 @@ export function HeadToHeadBoard() {
         {finished && (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <nav aria-label="Current matchup" className="min-w-0">
-              <ol className="flex flex-nowrap items-center gap-x-1.5 text-xs text-stone-700 sm:text-sm">
-                <li className="font-medium whitespace-nowrap text-stone-950">
+              <ol className="flex flex-nowrap items-center gap-x-1.5 text-xs text-ink sm:text-sm">
+                <li className="font-medium whitespace-nowrap text-navy">
                   {crumbA.name}
                   {sharedMark ? "" : crumbA.mark ? ` · ${crumbA.mark}` : ""}
                 </li>
                 <li aria-hidden="true">
                   <ChevronRight className="size-3.5 text-stone-400" />
                 </li>
-                <li className="font-medium whitespace-nowrap text-stone-950">
+                <li className="font-medium whitespace-nowrap text-navy">
                   {crumbB.name}
                   {sharedMark ? ` · ${sharedMark}` : crumbB.mark ? ` · ${crumbB.mark}` : ""}
                 </li>
@@ -686,7 +686,7 @@ export function HeadToHeadBoard() {
               <button
                 type="button"
                 onClick={openFilters}
-                className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-white"
+                className="rounded-full bg-gold px-3 py-1.5 text-sm font-semibold text-navy"
               >
                 Reset
               </button>
@@ -700,7 +700,7 @@ export function HeadToHeadBoard() {
             role="tab"
             aria-selected={!conferenceOnly}
             onClick={() => setGameScope(false)}
-            className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${conferenceOnly ? "border-stone-200 bg-white text-stone-700" : "border-emerald-700 bg-emerald-700 text-white"}`}
+            className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${conferenceOnly ? "border-stone-200 bg-white text-ink" : "border-gold bg-gold text-navy"}`}
           >
             All Games
           </button>
@@ -709,7 +709,7 @@ export function HeadToHeadBoard() {
             role="tab"
             aria-selected={conferenceOnly}
             onClick={() => setGameScope(true)}
-            className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${conferenceOnly ? "border-emerald-700 bg-emerald-700 text-white" : "border-stone-200 bg-white text-stone-700"}`}
+            className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${conferenceOnly ? "border-gold bg-gold text-navy" : "border-stone-200 bg-white text-ink"}`}
           >
             Conference Games Only
           </button>
@@ -727,7 +727,7 @@ export function HeadToHeadBoard() {
             onChange={(next) => (editingMatchup ? setDraftA(next) : commit(setSideA, sideA, next, teamB))}
           />
           <div className="flex flex-col items-center gap-2 lg:pt-6">
-            <p className="rounded-full bg-stone-900 px-3 py-1 text-xs font-semibold tracking-[0.2em] text-white">VS</p>
+            <p className="rounded-full bg-navy px-3 py-1 text-xs font-semibold tracking-[0.2em] text-bone">VS</p>
             <button
               type="button"
               onClick={() => {
@@ -739,7 +739,7 @@ export function HeadToHeadBoard() {
                 setDraftB(draftA);
               }}
               disabled={!formA.teamId || !formB.teamId}
-              className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-800 disabled:text-stone-400"
+              className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink disabled:text-stone-400"
             >
               Swap Teams
             </button>
@@ -747,7 +747,7 @@ export function HeadToHeadBoard() {
               <button
                 type="button"
                 onClick={submitFilters}
-                className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-white"
+                className="rounded-full bg-gold px-3 py-1.5 text-sm font-semibold text-navy"
               >
                 Submit
               </button>
@@ -766,7 +766,7 @@ export function HeadToHeadBoard() {
         )}
 
         {teamA != null && teamA === teamB && <p className="mt-4 text-sm text-stone-600">Choose two different teams.</p>}
-        {error && <p className="mt-4 rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-800">{error}</p>}
+        {error && <p className="mt-4 rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-ink">{error}</p>}
         {loading && (
           <div className="mt-6 flex items-center justify-center gap-2 rounded-2xl border border-dashed border-stone-300 bg-white py-16 text-stone-500">
             <LoaderCircle className="size-4 animate-spin" />
@@ -781,17 +781,17 @@ export function HeadToHeadBoard() {
             <section className="rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Direct Match Up">
               <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2">
                 <ClubMark name={left.name} src={left.logo_url} align="start" />
-                <h2 className="text-center text-lg font-semibold text-stone-950">Direct Match Up</h2>
+                <h2 className="text-center text-lg font-semibold text-navy">Direct Match Up</h2>
                 <ClubMark name={right.name} src={right.logo_url} align="end" />
                 <div className="min-w-0">
-                  <p className="font-semibold text-stone-950">{left.name}</p>
+                  <p className="font-semibold text-navy">{left.name}</p>
                   <p className="text-xs text-stone-500">
                     {left.age_group} · {left.tier} · {left.conference}
                   </p>
                 </div>
                 <div />
                 <div className="min-w-0 text-right">
-                  <p className="font-semibold text-stone-950">{right.name}</p>
+                  <p className="font-semibold text-navy">{right.name}</p>
                   <p className="text-xs text-stone-500">
                     {right.age_group} · {right.tier} · {right.conference}
                   </p>
@@ -859,7 +859,7 @@ export function HeadToHeadBoard() {
             </section>
 
             <section className="rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Direct meetings">
-              <h2 className="text-lg font-semibold text-stone-950">Direct meetings</h2>
+              <h2 className="text-lg font-semibold text-navy">Direct meetings</h2>
               <p className="mt-1 text-sm text-stone-600">
                 {left.name} {report.direct_matches.summary.team_a_wins} wins · {right.name} {report.direct_matches.summary.team_b_wins} wins · {report.direct_matches.summary.draws} draws · Goals {report.direct_matches.summary.team_a_goals}–{report.direct_matches.summary.team_b_goals}
               </p>
@@ -891,22 +891,22 @@ export function HeadToHeadBoard() {
 
             <section className="rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Common opponents">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold text-stone-950">Common opponents</h2>
+                <h2 className="text-lg font-semibold text-navy">Common opponents</h2>
                 <div className="flex shrink-0 items-center gap-2 text-xs">
-                  <span className={showAllCommon ? "text-stone-400" : "font-medium text-stone-950"}>Played by both</span>
+                  <span className={showAllCommon ? "text-stone-400" : "font-medium text-navy"}>Played by both</span>
                   <button
                     type="button"
                     role="switch"
                     aria-checked={showAllCommon}
                     aria-label="All games"
                     onClick={() => setShowAllCommon((current) => !current)}
-                    className={`flex h-6 w-11 items-center rounded-full p-0.5 transition-colors ${showAllCommon ? "bg-emerald-700" : "bg-stone-300"}`}
+                    className={`flex h-6 w-11 items-center rounded-full p-0.5 transition-colors ${showAllCommon ? "bg-gold" : "bg-stone-300"}`}
                   >
                     <span
                       className={`size-5 rounded-full bg-white shadow-sm transition-transform ${showAllCommon ? "translate-x-5" : "translate-x-0"}`}
                     />
                   </button>
-                  <span className={showAllCommon ? "font-medium text-stone-950" : "text-stone-400"}>All games</span>
+                  <span className={showAllCommon ? "font-medium text-navy" : "text-stone-400"}>All games</span>
                 </div>
               </div>
               {commonRollupA && commonRollupB && (
@@ -928,7 +928,7 @@ export function HeadToHeadBoard() {
                     <li key={row.id} className="grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_11rem_minmax(0,1fr)] md:items-start">
                       <MeetingList games={row.team_a_games} summary={row.team_a_summary} align="end" />
                       <div className="text-sm md:text-center">
-                        <Link href={`/?team=${row.id}`} className="font-semibold text-stone-950 underline-offset-4 hover:underline">
+                        <Link href={`/?team=${row.id}`} className="font-semibold text-navy underline-offset-4 hover:underline">
                           {row.name}
                         </Link>
                         <p className="text-xs text-stone-500">
@@ -936,7 +936,7 @@ export function HeadToHeadBoard() {
                           {" · "}
                           {row.conference_ppg == null ? "PPG —" : `PPG ${row.conference_ppg.toFixed(2)}`}
                         </p>
-                        <p className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${row.advantage === "incomplete" || row.advantage === "even" ? "bg-stone-100 text-stone-600" : "bg-emerald-50 text-emerald-900"}`}>
+                        <p className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${row.advantage === "incomplete" || row.advantage === "even" ? "bg-stone-100 text-stone-600" : "bg-gold/20 text-navy"}`}>
                           {edgeLabel(row, left.name, right.name)}
                         </p>
                       </div>

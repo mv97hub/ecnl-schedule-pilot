@@ -10,7 +10,7 @@ export function ScoutLink({ teamId, opponentId }: { teamId: number; opponentId: 
   return (
     <Link
       href={`/head-to-head?teamA=${teamId}&teamB=${opponentId}`}
-      className="shrink-0 whitespace-nowrap text-xs font-medium text-emerald-800 underline-offset-4 hover:underline"
+      className="shrink-0 whitespace-nowrap text-xs font-medium text-navy underline-offset-4 hover:underline"
     >
       Matchup
     </Link>
@@ -18,8 +18,8 @@ export function ScoutLink({ teamId, opponentId }: { teamId: number; opponentId: 
 }
 
 const SCORE_STYLES = {
-  W: "text-emerald-800",
-  D: "text-stone-800",
+  W: "text-win",
+  D: "text-ink",
   L: "text-stone-500",
 } as const;
 
@@ -64,20 +64,20 @@ export function ScheduleCard({ game, teamName, teamId, teamLogo }: { game: Game;
       <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)] items-center gap-x-3 gap-y-1">
         <div className="min-w-0 self-end text-left">
           <p className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Home</p>
-          <p className={`truncate text-sm font-semibold ${game.side === "home" ? "text-stone-950" : "text-stone-700"}`}>{homeName}</p>
+          <p className={`truncate text-sm font-semibold ${game.side === "home" ? "text-navy" : "text-ink"}`}>{homeName}</p>
         </div>
         <div className="flex justify-center self-end">
           <ScoutLink teamId={teamId} opponentId={game.opponent.id} />
         </div>
         <div className="min-w-0 self-end text-right">
           <p className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Away</p>
-          <p className={`truncate text-sm font-semibold ${game.side === "away" ? "text-stone-950" : "text-stone-700"}`}>{awayName}</p>
+          <p className={`truncate text-sm font-semibold ${game.side === "away" ? "text-navy" : "text-ink"}`}>{awayName}</p>
         </div>
         <ClubMark name={homeName} src={homeLogo} />
         <div className="flex min-w-0 flex-col items-center justify-center text-center">
           <p
             className={`text-2xl font-semibold leading-none tracking-tight ${
-              completed && game.team_result ? SCORE_STYLES[game.team_result] : "text-stone-700"
+              completed && game.team_result ? SCORE_STYLES[game.team_result] : "text-ink"
             }`}
           >
             {scoreText}

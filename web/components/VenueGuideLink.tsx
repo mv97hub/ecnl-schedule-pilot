@@ -16,7 +16,7 @@ export function VenueGuideLink({
   return (
     <Link
       href={venueGuideHref(venueName, city, state)}
-      className={`shrink-0 whitespace-nowrap font-medium text-emerald-800 underline-offset-4 hover:underline ${className}`}
+      className={`shrink-0 whitespace-nowrap font-medium text-navy underline-offset-4 hover:underline ${className}`}
     >
       Venue Guide
     </Link>

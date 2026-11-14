@@ -29,7 +29,7 @@ const TIP_TAGS = [
   "Great Wi-Fi",
 ] as const;
 
-const fieldClass = "mt-1 h-10 w-full rounded-xl border border-stone-200 bg-white px-3 text-sm text-stone-900";
+const fieldClass = "mt-1 h-10 w-full rounded-xl border border-stone-200 bg-white px-3 text-sm text-navy";
 
 export function AddFamilyTip() {
   const router = useRouter();
@@ -130,12 +130,12 @@ export function AddFamilyTip() {
   }
 
   return (
-    <div className="min-h-full bg-stone-100">
+    <div className="min-h-full bg-bone">
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
-        <Link href={backHref} className="text-sm font-medium text-emerald-800 underline-offset-4 hover:underline">
+        <Link href={backHref} className="text-sm font-medium text-navy underline-offset-4 hover:underline">
           {clubName ? clubName : "Locations Guide"}
         </Link>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950">Add a family tip</h1>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-navy">Add a family tip</h1>
         <p className="mt-1 text-sm text-stone-500">Pick one of this club’s fields, then add the tip. It shows with the other tips for those fields.</p>
         {loading ? (
           <div className="mt-6 flex items-center gap-2 text-sm text-stone-500">
@@ -143,7 +143,7 @@ export function AddFamilyTip() {
             Loading fields
           </div>
         ) : error ? (
-          <p className="mt-6 text-sm text-stone-700">{error}</p>
+          <p className="mt-6 text-sm text-ink">{error}</p>
         ) : (
           <form
             className="mt-6 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm"
@@ -201,7 +201,7 @@ export function AddFamilyTip() {
                     aria-pressed={tipStars === score}
                     onClick={() => setTipStars(score)}
                     className={`h-8 w-8 rounded-full border text-sm font-semibold ${
-                      tipStars === score ? "border-emerald-700 bg-emerald-700 text-white" : "border-stone-200 bg-white text-stone-700"
+                      tipStars === score ? "border-gold bg-gold text-navy" : "border-stone-200 bg-white text-ink"
                     }`}
                   >
                     {score}
@@ -213,7 +213,7 @@ export function AddFamilyTip() {
               <legend className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Tags</legend>
               <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {TIP_TAGS.map((tag) => (
-                  <label key={tag} className="flex items-center gap-2 text-sm text-stone-700">
+                  <label key={tag} className="flex items-center gap-2 text-sm text-ink">
                     <input type="checkbox" checked={tags.includes(tag)} onChange={() => toggleTag(tag)} />
                     {tag}
                   </label>
@@ -237,11 +237,11 @@ export function AddFamilyTip() {
                 value={review}
                 onChange={(event) => setReview(event.target.value)}
                 rows={3}
-                className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900"
+                className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-navy"
               />
             </label>
-            {tipError ? <p className="mt-3 text-sm text-stone-700">{tipError}</p> : null}
-            <button type="submit" disabled={saving} className="mt-4 rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60">
+            {tipError ? <p className="mt-3 text-sm text-ink">{tipError}</p> : null}
+            <button type="submit" disabled={saving} className="mt-4 rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy disabled:opacity-60">
               {saving ? "Saving" : "Add tip"}
             </button>
           </form>

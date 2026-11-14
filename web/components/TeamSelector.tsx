@@ -48,11 +48,11 @@ export function TeamSelector({ teams, selectedId, onSelect, loading, placeholder
 
   return (
     <div ref={rootRef} className="flex w-full min-w-0 items-center gap-2">
-      <label htmlFor="team-search" className="w-[6.75rem] shrink-0 text-[11px] font-semibold uppercase leading-none tracking-wide text-emerald-200/80 sm:text-xs">
+      <label htmlFor="team-search" className="w-[6.75rem] shrink-0 text-[11px] font-semibold uppercase leading-none tracking-wide text-bone/80 sm:text-xs">
         Team
       </label>
       <div className="relative min-w-0 flex-1">
-        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-emerald-200/70" />
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-bone/70" />
         <input
           id="team-search"
           role="combobox"
@@ -71,9 +71,9 @@ export function TeamSelector({ teams, selectedId, onSelect, loading, placeholder
             setOpen(true);
           }}
           placeholder={loading ? "Loading teams…" : placeholder ?? "Search teams in this conference…"}
-          className="h-10 w-full min-w-0 rounded-xl border border-white/10 bg-white/10 pr-9 pl-9 text-sm text-white shadow-inner outline-none placeholder:text-emerald-100/50 focus:border-emerald-400/70 focus:bg-white/15 sm:h-12 sm:pr-11 sm:pl-10"
+          className="h-10 w-full min-w-0 rounded-xl border border-white/10 bg-white/10 pr-9 pl-9 text-sm text-white shadow-inner outline-none placeholder:text-bone/50 focus:border-gold focus:bg-white/15 sm:h-12 sm:pr-11 sm:pl-10"
         />
-        <ChevronDown className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-emerald-100/70" />
+        <ChevronDown className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-bone/70" />
 
       {open && (
         <ul
@@ -96,7 +96,7 @@ export function TeamSelector({ teams, selectedId, onSelect, loading, placeholder
                       setOpen(false);
                     }}
                     className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
-                      active ? "bg-emerald-50 text-emerald-950" : "text-slate-800 hover:bg-slate-50"
+                      active ? "bg-gold/20 text-navy" : "text-slate-800 hover:bg-slate-50"
                     }`}
                   >
                     <span>

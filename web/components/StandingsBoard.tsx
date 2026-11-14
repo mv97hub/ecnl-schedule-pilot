@@ -242,7 +242,7 @@ export function StandingsBoard() {
   }
 
   return (
-    <div className="min-h-full bg-stone-100">
+    <div className="min-h-full bg-bone">
       <main className="mx-auto max-w-6xl px-6 py-8">
         <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Conference standings</h1>
         <p className="mt-1 text-sm text-slate-500">Sorted by points per game, then goal difference and goals for.</p>
@@ -319,7 +319,7 @@ export function StandingsBoard() {
 
         <p className="mt-4 text-xs text-stone-500">A bar on the left marks the top {PLAYOFF_SPOTS} playoff spots.</p>
 
-        {error && <p className="mt-4 rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-800">{error}</p>}
+        {error && <p className="mt-4 rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-ink">{error}</p>}
 
         {!applied && !loading ? (
           <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-slate-500">
@@ -355,10 +355,10 @@ export function StandingsBoard() {
                     <tr
                       key={`${row.rank}-${row.team_name}`}
                       data-selected={selected ? "true" : undefined}
-                      className={`border-l-4 ${qualifying ? "border-l-emerald-700" : "border-l-transparent"} ${selected ? "bg-stone-100" : "bg-white"}`}
+                      className={`border-l-4 ${qualifying ? "border-l-gold" : "border-l-transparent"} ${selected ? "bg-gold-soft" : "bg-white"}`}
                     >
                       <td className="px-4 py-4 text-stone-500">{row.rank}</td>
-                      <td className="px-4 py-4 font-medium text-stone-950">
+                      <td className="px-4 py-4 font-medium text-navy">
                         {row.team_id == null ? (
                           row.team_name
                         ) : (
@@ -367,15 +367,15 @@ export function StandingsBoard() {
                           </Link>
                         )}
                       </td>
-                      <td className="px-4 py-4 text-stone-700">{row.games_played}</td>
-                      <td className="px-4 py-4 text-stone-700">
+                      <td className="px-4 py-4 text-ink">{row.games_played}</td>
+                      <td className="px-4 py-4 text-ink">
                         {row.wins}-{row.losses}-{row.draws}
                       </td>
-                      <td className="px-4 py-4 text-stone-700">{row.goals_for}</td>
-                      <td className="px-4 py-4 text-stone-700">{row.goals_against}</td>
-                      <td className="px-4 py-4 text-stone-700">{diff}</td>
-                      <td className="px-4 py-4 text-stone-700">{row.points}</td>
-                      <td className="px-4 py-4 font-semibold text-stone-950">{row.points_per_game.toFixed(2)}</td>
+                      <td className="px-4 py-4 text-ink">{row.goals_for}</td>
+                      <td className="px-4 py-4 text-ink">{row.goals_against}</td>
+                      <td className="px-4 py-4 text-ink">{diff}</td>
+                      <td className="px-4 py-4 text-ink">{row.points}</td>
+                      <td className="px-4 py-4 font-semibold text-navy">{row.points_per_game.toFixed(2)}</td>
                       <td className="px-4 py-4">
                         <div className="flex gap-1" aria-label={`Form for ${row.team_name}`}>
                           {(row.form ?? []).map((mark, index) => (
@@ -387,7 +387,7 @@ export function StandingsBoard() {
                         {view.team != null && row.team_id != null && row.team_id !== view.team ? (
                           <Link
                             href={`/head-to-head?teamA=${view.team}&teamB=${row.team_id}${gender === "girls" ? "&gender=girls" : ""}`}
-                            className="text-xs font-medium text-emerald-800 underline-offset-4 hover:underline"
+                            className="text-xs font-medium text-navy underline-offset-4 hover:underline"
                           >
                             Compare
                           </Link>

@@ -41,7 +41,7 @@ export function ViewSwitch({ value, onChange }: { value: ScheduleView; onChange:
             aria-selected={active}
             onClick={() => onChange(view.id)}
             className={`shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium ${
-              active ? "border-stone-900 bg-stone-900 text-white" : "border-stone-200 bg-white text-stone-700 hover:border-stone-400"
+              active ? "border-gold bg-gold text-navy" : "border-stone-200 bg-white text-ink hover:border-stone-400"
             }`}
           >
             {view.label}
@@ -84,7 +84,7 @@ function ListView({ games, teamId }: { games: Game[]; teamId: number }) {
                       <ClubMark name={game.opponent.name} src={game.opponent.logo_url} />
                       <span className="min-w-0">
                       <span className="flex min-w-0 items-baseline gap-2">
-                        <span className="truncate font-medium text-stone-900">{game.opponent.name}</span>
+                        <span className="truncate font-medium text-navy">{game.opponent.name}</span>
                         <ScoutLink teamId={teamId} opponentId={game.opponent.id} />
                       </span>
                       <span className="flex min-w-0 items-center gap-1.5">
@@ -103,11 +103,11 @@ function ListView({ games, teamId }: { games: Game[]; teamId: number }) {
                     </span>
                     <span className="text-right text-sm">
                       {scoreline ? (
-                        <span className={game.team_result === "W" ? "font-semibold text-emerald-800" : game.team_result === "D" ? "font-medium text-stone-800" : "text-stone-500"}>{scoreline}</span>
+                        <span className={game.team_result === "W" ? "font-semibold text-win" : game.team_result === "D" ? "font-medium text-stone-800" : "text-stone-500"}>{scoreline}</span>
                       ) : postponed ? (
                         <span className="text-stone-500">{game.status === "POSTPONED" ? "Postponed" : "Cancelled"}</span>
                       ) : (
-                        <span className="text-stone-700">{stamp?.clock}</span>
+                        <span className="text-ink">{stamp?.clock}</span>
                       )}
                       <span className="mt-0.5 block text-xs text-stone-400">{game.side === "home" ? "Home" : "Away"}</span>
                     </span>
@@ -162,11 +162,11 @@ export function CalendarView({ games, teamName }: { games: Game[]; teamName: str
   return (
     <div>
       <div className="mb-3 flex items-center justify-between">
-        <button type="button" onClick={() => shift(-1)} className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm text-stone-700">
+        <button type="button" onClick={() => shift(-1)} className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm text-ink">
           Previous
         </button>
-        <h3 className="text-sm font-semibold text-stone-900">{label}</h3>
-        <button type="button" onClick={() => shift(1)} className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm text-stone-700">
+        <h3 className="text-sm font-semibold text-navy">{label}</h3>
+        <button type="button" onClick={() => shift(1)} className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm text-ink">
           Next
         </button>
       </div>
@@ -195,11 +195,11 @@ export function CalendarView({ games, teamName }: { games: Game[]; teamName: str
                       const homeName = game.side === "home" ? teamName : game.opponent.name;
                       const awayName = game.side === "home" ? game.opponent.name : teamName;
                       return (
-                        <div key={game.id} className="rounded-md bg-stone-50 px-1 py-1 text-[10px] leading-tight text-stone-800">
+                        <div key={game.id} className="rounded-md bg-stone-50 px-1 py-1 text-[10px] leading-tight text-ink">
                           <p className="truncate font-semibold" title={homeName}>{homeName}</p>
                           <p className="truncate font-semibold" title={awayName}>{awayName}</p>
                           {completed ? (
-                            <p className={`font-semibold ${game.team_result === "W" ? "text-emerald-800" : game.team_result === "D" ? "text-stone-800" : "text-stone-500"}`}>
+                            <p className={`font-semibold ${game.team_result === "W" ? "text-win" : game.team_result === "D" ? "text-stone-800" : "text-stone-500"}`}>
                               {game.home_score}–{game.away_score}
                             </p>
                           ) : (

@@ -14,7 +14,7 @@ type HeaderSelectProps = {
 export function HeaderSelect({ id, label, value, options, onChange, disabled }: HeaderSelectProps) {
   return (
     <div className="flex w-full min-w-0 items-center gap-2">
-      <label htmlFor={id} className="w-[6.75rem] shrink-0 text-[11px] font-semibold uppercase leading-none tracking-wide text-emerald-200/80 sm:text-xs">
+      <label htmlFor={id} className="w-[6.75rem] shrink-0 text-[11px] font-semibold uppercase leading-none tracking-wide text-bone/80 sm:text-xs">
         {label}
       </label>
       <div className="relative min-w-0 flex-1">
@@ -23,7 +23,7 @@ export function HeaderSelect({ id, label, value, options, onChange, disabled }: 
           value={value}
           disabled={disabled || options.length === 0}
           onChange={(event) => onChange(event.target.value)}
-          className="h-10 w-full min-w-0 appearance-none truncate rounded-xl border border-white/10 bg-white/10 pr-9 pl-3 text-sm text-white shadow-inner outline-none focus:border-emerald-400/70 focus:bg-white/15 disabled:text-emerald-100/50 sm:h-12 sm:pr-11 sm:pl-4"
+          className="h-10 w-full min-w-0 appearance-none truncate rounded-xl border border-white/10 bg-white/10 pr-9 pl-3 text-sm text-white shadow-inner outline-none focus:border-gold focus:bg-white/15 disabled:text-bone/50 sm:h-12 sm:pr-11 sm:pl-4"
         >
           {options.length === 0 ? (
             <option value="">None</option>
@@ -35,7 +35,7 @@ export function HeaderSelect({ id, label, value, options, onChange, disabled }: 
             ))
           )}
         </select>
-        <ChevronDown className="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 text-emerald-100/70" />
+        <ChevronDown className="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 text-bone/70" />
       </div>
     </div>
   );

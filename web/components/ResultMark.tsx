@@ -1,6 +1,6 @@
 const STYLES = {
-  W: "bg-emerald-700 text-white",
-  D: "bg-stone-200 text-stone-800",
+  W: "bg-win text-white",
+  D: "bg-stone-200 text-ink",
   L: "bg-white text-stone-600 ring-1 ring-stone-300",
   postponed: "bg-white text-stone-500 ring-1 ring-dashed ring-stone-300",
   scheduled: "bg-white ring-1 ring-stone-300",

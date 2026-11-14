@@ -63,7 +63,7 @@ export function TeamHero({
             <ClubMark name={team.name} src={logoUrl} />
           )}
           <div className="min-w-0">
-            <h2 className="text-xl font-semibold tracking-tight text-stone-950">
+            <h2 className="text-xl font-semibold tracking-tight text-navy">
               {clubId != null ? (
                 <Link href={`/clubs/${clubId}`} className="underline-offset-4 hover:underline">
                   {team.name}
@@ -81,7 +81,7 @@ export function TeamHero({
         <dl className="flex flex-wrap items-end gap-x-5 gap-y-1">
           <div>
             <dt className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Record</dt>
-            <dd className="text-lg font-semibold leading-tight text-stone-950">
+            <dd className="text-lg font-semibold leading-tight text-navy">
               {summary.overall_record}
               <span className="ml-1 text-[10px] font-medium text-stone-400">W-L-D</span>
             </dd>
@@ -89,19 +89,19 @@ export function TeamHero({
           </div>
           <div>
             <dt className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Goal difference</dt>
-            <dd className="text-lg font-semibold leading-tight text-stone-950">{goalDifference(summary.goals_for, summary.goals_against)}</dd>
+            <dd className="text-lg font-semibold leading-tight text-navy">{goalDifference(summary.goals_for, summary.goals_against)}</dd>
           </div>
           <div>
             <dt className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Points per game</dt>
-            <dd className="text-lg font-semibold leading-tight text-stone-950">{summary.ppg.toFixed(2)}</dd>
+            <dd className="text-lg font-semibold leading-tight text-navy">{summary.ppg.toFixed(2)}</dd>
           </div>
           <div>
             <dt className="text-[10px] font-medium uppercase tracking-wide text-stone-400">{summary.conference} rank</dt>
-            <dd className="text-lg font-semibold leading-tight text-stone-950">
+            <dd className="text-lg font-semibold leading-tight text-navy">
               <Link href={standingsHref} className="underline-offset-4 hover:underline">
                 {rank}
               </Link>
-              <Link href={projectedHref} className="ml-2 text-xs font-medium text-emerald-800 underline-offset-4 hover:underline">
+              <Link href={projectedHref} className="ml-2 text-xs font-medium text-navy underline-offset-4 hover:underline">
                 Projected
               </Link>
             </dd>
@@ -121,7 +121,7 @@ export function TeamHero({
             </div>
           )}
         </div>
-        <p className="text-sm text-stone-700">
+        <p className="text-sm text-ink">
           <span className="mr-1 text-[10px] font-medium uppercase tracking-wide text-stone-400">Next</span>
           {upcoming && upcomingStamp ? (
             <>

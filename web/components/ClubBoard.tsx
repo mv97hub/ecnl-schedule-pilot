@@ -89,7 +89,7 @@ function RankBox({ title, squads }: { title: string; squads: ClubSquad[] }) {
   if (squads.length === 0) return null;
   return (
     <section data-rank-box={title} aria-label={title} className="rounded-2xl border border-stone-200 bg-white px-3 py-3 shadow-sm">
-      <h3 className="text-sm font-semibold text-stone-950">{title}</h3>
+      <h3 className="text-sm font-semibold text-navy">{title}</h3>
       <div className="mt-2 grid grid-cols-6 gap-1">
         {squads.map((squad) => {
           const rank = squad.conference_rank == null ? "—" : ordinal(squad.conference_rank);
@@ -98,11 +98,11 @@ function RankBox({ title, squads }: { title: string; squads: ClubSquad[] }) {
               <Link
                 href={`/?team=${squad.id}`}
                 data-team-id={squad.id}
-                className="block text-[11px] font-semibold leading-tight text-emerald-900 underline-offset-2 hover:underline sm:text-xs"
+                className="block text-[11px] font-semibold leading-tight text-navy underline-offset-2 hover:underline sm:text-xs"
               >
                 {squad.age_group}
               </Link>
-              <p data-rank={rank} className="text-[11px] leading-tight text-stone-700 sm:text-xs">
+              <p data-rank={rank} className="text-[11px] leading-tight text-ink sm:text-xs">
                 {rank}
               </p>
             </div>
@@ -147,15 +147,15 @@ function WeekendCard({ card }: { card: WeekendScorecard }) {
       <div className="flex items-start gap-3">
         <ClubMark name={card.opponent_name} src={card.opponent_logo_url} />
         <div className="min-w-0 flex-1">
-          <h3 className="text-base font-semibold leading-snug text-stone-950">{card.opponent_name}</h3>
+          <h3 className="text-base font-semibold leading-snug text-navy">{card.opponent_name}</h3>
           <p className="text-sm text-stone-500">{card.label}</p>
-          <p className="mt-1 text-sm font-semibold text-stone-950">{tally(card.wins, card.losses, card.draws)}</p>
+          <p className="mt-1 text-sm font-semibold text-navy">{tally(card.wins, card.losses, card.draws)}</p>
         </div>
       </div>
       <ul className="mt-3">
         {card.squads.map((row) => (
-          <li key={row.game_id} data-score-line data-played-on={row.played_on} className="border-t border-stone-100 py-2.5 text-sm text-stone-800">
-            <Link href={`/?team=${row.team_id}`} data-team-id={row.team_id} className="font-medium text-emerald-900 underline-offset-4 hover:underline">
+          <li key={row.game_id} data-score-line data-played-on={row.played_on} className="border-t border-stone-100 py-2.5 text-sm text-ink">
+            <Link href={`/?team=${row.team_id}`} data-team-id={row.team_id} className="font-medium text-navy underline-offset-4 hover:underline">
               {row.age_group}
             </Link>{" "}
             {resultRest(row)}
@@ -183,12 +183,12 @@ function UpcomingBox({ club }: { club: ClubDetail }) {
                 <div className="flex items-start gap-3">
                   <ClubMark name={opponent.opponent_name} src={opponent.opponent_logo_url} />
                   <div className="min-w-0">
-                    <h3 className="text-base font-semibold leading-snug text-stone-950">{opponent.opponent_name}</h3>
-                    <p className="mt-1 text-sm text-stone-700">
+                    <h3 className="text-base font-semibold leading-snug text-navy">{opponent.opponent_name}</h3>
+                    <p className="mt-1 text-sm text-ink">
                       {opponent.squads.map((squad, index) => (
                         <span key={squad.team_id} data-game-date={squad.game_date}>
                           {index > 0 ? ", " : ""}
-                          <Link href={`/?team=${squad.team_id}`} data-team-id={squad.team_id} className="font-medium text-emerald-900 underline-offset-4 hover:underline">
+                          <Link href={`/?team=${squad.team_id}`} data-team-id={squad.team_id} className="font-medium text-navy underline-offset-4 hover:underline">
                             {squadPhrase(squad)}
                           </Link>
                           <span className="text-stone-500"> · {formatDay(squad.game_date)}</span>
@@ -238,9 +238,9 @@ export function ClubSearch() {
   }, [query]);
 
   return (
-    <div className="min-h-full bg-stone-100">
+    <div className="min-h-full bg-bone">
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-        <h1 className="text-3xl font-semibold tracking-tight text-stone-950">Clubs</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-navy">Clubs</h1>
         <p className="mt-1 text-sm text-stone-500">Search by club name. A club page shows boys and girls together.</p>
         <div className="relative mt-6 max-w-xl">
           <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-stone-400" />
@@ -250,10 +250,10 @@ export function ClubSearch() {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search clubs"
             aria-label="Search clubs"
-            className="h-12 w-full rounded-xl border border-stone-200 bg-white pr-4 pl-10 text-sm text-stone-950 shadow-sm outline-none placeholder:text-stone-400 focus:border-emerald-700"
+            className="h-12 w-full rounded-xl border border-stone-200 bg-white pr-4 pl-10 text-sm text-navy shadow-sm outline-none placeholder:text-stone-400 focus:border-gold"
           />
         </div>
-        {error && <p className="mt-4 text-sm text-stone-700">{error}. Confirm the API is running on port 8000.</p>}
+        {error && <p className="mt-4 text-sm text-ink">{error}. Confirm the API is running on port 8000.</p>}
         {loading && clubs.length === 0 ? (
           <div className="mt-6 flex items-center gap-2 text-sm text-stone-500">
             <LoaderCircle className="size-4 animate-spin" />
@@ -265,10 +265,10 @@ export function ClubSearch() {
           <ul className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {clubs.map((club) => (
               <li key={club.id}>
-                <Link href={`/clubs/${club.id}`} className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm hover:border-emerald-700">
+                <Link href={`/clubs/${club.id}`} className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm hover:border-gold">
                   <ClubMark name={club.name} src={club.logo_url} />
                   <span className="min-w-0">
-                    <span className="block font-semibold text-stone-950">{club.name}</span>
+                    <span className="block font-semibold text-navy">{club.name}</span>
                     <span className="block text-sm text-stone-500">{countWord(club.team_count, "team", "teams")}</span>
                   </span>
                 </Link>
@@ -322,9 +322,9 @@ export function ClubBoard({ clubId }: { clubId: string }) {
   }, [key, valid]);
 
   return (
-    <div className="min-h-full bg-stone-100">
+    <div className="min-h-full bg-bone">
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-        <Link href="/clubs" className="text-sm font-medium text-emerald-800 underline-offset-4 hover:underline">
+        <Link href="/clubs" className="text-sm font-medium text-navy underline-offset-4 hover:underline">
           All clubs
         </Link>
         {loading && !club ? (
@@ -333,7 +333,7 @@ export function ClubBoard({ clubId }: { clubId: string }) {
             Loading club
           </div>
         ) : error || !club ? (
-          <p className="mt-6 text-sm text-stone-700">{error ?? "Club not found"}</p>
+          <p className="mt-6 text-sm text-ink">{error ?? "Club not found"}</p>
         ) : (
           <>
             <section className="mt-4 rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Club summary">
@@ -341,7 +341,7 @@ export function ClubBoard({ clubId }: { clubId: string }) {
                 <div className="flex min-w-0 items-center gap-3">
                   <ClubMark name={club.name} src={club.logo_url} />
                   <div className="min-w-0">
-                    <h1 className="text-xl font-semibold tracking-tight text-stone-950 sm:text-2xl">{club.name}</h1>
+                    <h1 className="text-xl font-semibold tracking-tight text-navy sm:text-2xl">{club.name}</h1>
                     <p data-club-summary className="mt-0.5 text-sm text-stone-500">
                       {club.summary}
                     </p>
@@ -350,7 +350,7 @@ export function ClubBoard({ clubId }: { clubId: string }) {
                 <dl className="flex flex-wrap items-end gap-x-5 gap-y-1">
                   <div>
                     <dt className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Record</dt>
-                    <dd data-overall-record className="text-lg font-semibold leading-tight text-stone-950">
+                    <dd data-overall-record className="text-lg font-semibold leading-tight text-navy">
                       {recordText(club.record)}
                       <span className="ml-1 text-[10px] font-medium text-stone-400">W-L-D</span>
                     </dd>
@@ -360,7 +360,7 @@ export function ClubBoard({ clubId }: { clubId: string }) {
                   </div>
                   <div>
                     <dt className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Goal difference</dt>
-                    <dd className="text-lg font-semibold leading-tight text-stone-950">{goalDifference(club.record.goal_diff, 0)}</dd>
+                    <dd className="text-lg font-semibold leading-tight text-navy">{goalDifference(club.record.goal_diff, 0)}</dd>
                   </div>
                 </dl>
               </div>
@@ -389,7 +389,7 @@ export function ClubBoard({ clubId }: { clubId: string }) {
                 <Link
                   href={`/locations?club=${encodeURIComponent(String(club.id))}`}
                   data-venue-guide={club.id}
-                  className="text-sm font-medium text-emerald-800 underline-offset-4 hover:underline"
+                  className="text-sm font-medium text-navy underline-offset-4 hover:underline"
                 >
                   Venue Guide
                 </Link>
@@ -410,10 +410,10 @@ export function ClubBoard({ clubId }: { clubId: string }) {
                           data-field-link
                           data-location={`${venue.venue_name}|${venue.city}|${venue.state}`}
                           aria-label={`Open ${venue.venue_name}, ${place} in Google Maps`}
-                          className="flex items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-white p-4 text-sm shadow-sm hover:border-emerald-700"
+                          className="flex items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-white p-4 text-sm shadow-sm hover:border-gold"
                         >
                           <span className="min-w-0">
-                            <span className="block font-semibold text-stone-950">{venue.venue_name}</span>
+                            <span className="block font-semibold text-navy">{venue.venue_name}</span>
                             <span className="mt-0.5 block text-stone-500">{place}</span>
                           </span>
                           <ExternalLink className="size-4 shrink-0 text-stone-400" />
