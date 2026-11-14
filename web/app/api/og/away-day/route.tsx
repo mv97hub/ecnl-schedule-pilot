@@ -54,7 +54,7 @@ function shell(children: ReactNode) {
 function brand() {
   return (
     <div style={{ display: "flex", justifyContent: "flex-end" }}>
-      <div style={{ display: "flex", fontSize: 28, fontWeight: 800, borderBottom: "4px solid #F2B705", paddingBottom: 2 }}>Soccer Away Day</div>
+      <div style={{ display: "flex", fontSize: 28, fontWeight: 800, borderBottom: "4px solid #F2B705", paddingBottom: 2 }}>Premier Gameday HQ</div>
     </div>
   );
 }

@@ -23,10 +23,10 @@ The header switches Boys and Girls. The choice is stored in `sessionStorage` und
 | Field | `/locations/{venue_key}` | One complex: scorecard, rating form, family tips, then upcoming and recent games. |
 | Add a family tip | `/locations/tip` | A dropdown of the club's fields (`?club=`), then the tip form. |
 | Profile | `/profile` | A home address saved in `sessionStorage` for this browser tab. It is not written to the database. |
-| Privacy | `/privacy` | Privacy policy for the Soccer Away Day app. Favorites stay on the device. The app has no account and does not send personal data to the server. |
-| Support | `/support` | How to use Soccer Away Day without an account. A contact email will be added before App Store submission. |
+| Privacy | `/privacy` | Privacy policy for the Premier Gameday HQ app. Favorites stay on the device. The app has no account and does not send personal data to the server. Contact premiergamedayhq@gmail.com. |
+| Support | `/support` | How to use Premier Gameday HQ without an account. Email premiergamedayhq@gmail.com, or send a report from the page. |
 | Share image | `/api/og/h2h` | A 1200×630 image for a head-to-head link. It calls the API `/head-to-head` route. |
-| Issue reports | `/admin` | Private inbox for reports sent from the app. Preferences has Report an Issue. No account. The phone waits 60 seconds after a successful send, and a failed send keeps the draft. The page is not linked from the header, the footer, or any public page, and it sends `noindex`. Sign-in compares the password to `ADMIN_PASSWORD` on the API. |
+| Issue reports | `/admin` | Private inbox for reports sent from the app and from `/support`. Preferences has Report an Issue. The support form posts `category`, `description`, and an optional `email`, with `screen` `web-support` and `app_version` `web`. No account. The phone waits 60 seconds after a successful send, and a failed send keeps the draft. The same five-reports-per-IP-per-hour limit applies. The page is not linked from the header, the footer, or any public page, and it sends `noindex`. Sign-in compares the password to `ADMIN_PASSWORD` on the API. |
 
 The browser calls `NEXT_PUBLIC_API_URL`, or `http://127.0.0.1:8000` when that variable is unset. The Open Graph route uses the same variable, or `http://localhost:8000`.
 

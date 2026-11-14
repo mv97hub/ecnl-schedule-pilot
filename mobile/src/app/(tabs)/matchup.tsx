@@ -79,7 +79,7 @@ export default function MatchupScreen() {
     if (!report.data || !left || !right || teamA == null || teamB == null || teamA === teamB || sharing.current) return;
     sharing.current = true;
     const sentence = verdictSentence(report.data.scouting_report, left.name, right.name);
-    const message = `Soccer Away Day\n${left.name} vs ${right.name}\n${sentence}\n${report.data.scouting_report.projected_tempo}\nNot affiliated with ECNL.`;
+    const message = `Premier Gameday HQ\n${left.name} vs ${right.name}\n${sentence}\n${report.data.scouting_report.projected_tempo}\nNot affiliated with ECNL.`;
     const gender = cardA?.gender ?? dashboard.data?.teams.find((team) => team.id === teamB)?.gender;
     try {
       await presentMatchupImage(teamA, teamB, gender);

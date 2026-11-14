@@ -1,4 +1,4 @@
-# Soccer Away Day
+# Premier Gameday HQ
 
 A schedule companion for ECNL families. It is not affiliated with, endorsed by, or sponsored by ECNL.
 
@@ -8,7 +8,7 @@ The app lives in this folder so the Render web build under `web/` stays unchange
 
 Requests go to `EXPO_PUBLIC_API_URL` when that variable is set at build time. Otherwise they use `extra.apiUrl` in `app.json`, then the fallback in `src/lib/api.ts`:
 
-`https://ecnl-schedule-pilot-node1.onrender.com/backend`
+`https://www.premiergamedayhq.com/backend`
 
 `/backend` is a proxy on the website. It forwards to the FastAPI service (`NEXT_PUBLIC_API_URL`).
 
@@ -21,4 +21,4 @@ npm run typecheck
 npm run web
 ```
 
-This environment is Linux and cannot run the iOS Simulator. `eas.json` is configured for a later build. Do not run `eas submit` until the Apple Developer account and a support email are ready. There is no Play Store submission.
+This environment is Linux and cannot run the iOS Simulator. `eas.json` is configured for a later build. Do not run `eas submit` until the Apple Developer account is ready. Support email: premiergamedayhq@gmail.com. There is no Play Store submission.

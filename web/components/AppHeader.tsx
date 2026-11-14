@@ -35,8 +35,8 @@ function AppHeaderBar({ path, query }: { path: string; query: string }) {
   return (
     <header className="sticky top-0 z-30 border-b border-white/10 bg-navy text-bone">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-6 py-3">
-        <Link href="/" className="text-sm font-semibold tracking-tight">
-          ECNL
+        <Link href="/" className="shrink-0 whitespace-nowrap text-sm font-semibold tracking-tight">
+          Premier Gameday HQ
         </Link>
         <div className="flex shrink-0 items-center gap-0.5 rounded-lg bg-black/20 p-1 ring-2 ring-gold" role="group" aria-label="Boys or girls">
           {(["boys", "girls"] as const).map((value) => (

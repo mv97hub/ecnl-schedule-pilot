@@ -14,7 +14,7 @@ import type {
 } from "@/lib/types";
 
 /** Website proxy. The Next.js route forwards to the FastAPI service. */
-const FALLBACK_API = "https://ecnl-schedule-pilot-node1.onrender.com/backend";
+const FALLBACK_API = "https://www.premiergamedayhq.com/backend";
 
 export class ApiError extends Error {
   status: number;

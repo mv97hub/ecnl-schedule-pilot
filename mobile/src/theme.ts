@@ -12,7 +12,7 @@ export const colors = {
 } as const;
 
 export const APP_DESCRIPTION =
-  "Soccer Away Day is a schedule companion for ECNL families. It is not affiliated with, endorsed by, or sponsored by ECNL.";
+  "Premier Gameday HQ is a schedule companion for ECNL families. It is not affiliated with, endorsed by, or sponsored by ECNL.";
 
 export function resultColor(result: "W" | "D" | "L" | "win" | "draw" | "loss"): string {
   if (result === "W" || result === "win") return colors.win;

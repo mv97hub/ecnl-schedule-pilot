@@ -15,7 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ECNL Schedule",
+  metadataBase: new URL("https://www.premiergamedayhq.com"),
+  title: "Premier Gameday HQ",
   description: "Conference schedules for ECNL teams",
 };
 

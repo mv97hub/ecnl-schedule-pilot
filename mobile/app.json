@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Soccer Away Day",
+    "name": "Premier Gameday HQ",
     "slug": "soccer-away-day",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -46,8 +46,8 @@
       "typedRoutes": true
     },
     "extra": {
-      "apiUrl": "https://ecnl-schedule-pilot-node1.onrender.com/backend",
-      "description": "Soccer Away Day is a schedule companion for ECNL families. It is not affiliated with, endorsed by, or sponsored by ECNL."
+      "apiUrl": "https://www.premiergamedayhq.com/backend",
+      "description": "Premier Gameday HQ is a schedule companion for ECNL families. It is not affiliated with, endorsed by, or sponsored by ECNL."
     }
   }
 }

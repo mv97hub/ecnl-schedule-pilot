@@ -60,7 +60,7 @@ export default function HomeScreen() {
     >
       <View style={{ backgroundColor: colors.navy, paddingTop: insets.top + 16, paddingHorizontal: 20, paddingBottom: 22, gap: 14 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={{ color: colors.gold, fontWeight: "800", letterSpacing: 0.6 }}>SOCCER AWAY DAY</Text>
+          <Text style={{ color: colors.gold, fontWeight: "800", letterSpacing: 0.6 }}>PREMIER GAMEDAY HQ</Text>
           <PreferencesButton />
         </View>
         {club ? (
