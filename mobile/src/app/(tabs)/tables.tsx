@@ -1,33 +1,42 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Modal, RefreshControl, ScrollView, Text, View } from "react-native";
+import { Modal, RefreshControl, ScrollView, Text, View, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Chip, Crest, GoldButton, Hit, Loading, Notice, ProjectionBar, ResultBadge, Segmented } from "@/components/ui";
+import { Chip, Crest, GoldButton, Hit, Loading, Notice, ProjectionBar, ResultBadge, SavedDataNote, Segmented } from "@/components/ui";
 import { fetchPredicted, fetchStandings, fetchTeams, requestErrorText } from "@/lib/api";
 import { AGE_GROUPS, CONFERENCES, TIERS, ageGroupsFor, type LeagueGender } from "@/lib/leagues";
 import { shareText } from "@/lib/maps";
 import { ordinal, ppg, shortConference, signed } from "@/lib/present";
 import { useFavorites } from "@/store/favorites";
+import { useSession, type Division } from "@/store/session";
 import { colors } from "@/theme";
-import type { PredictedRow, StandingRow } from "@/lib/types";
-
-type Division = {
-  conference: string;
-  tier: string;
-  age_group: string;
-  gender: LeagueGender;
-};
+import type { PredictedRow, StandingRow, Team } from "@/lib/types";
 
 function divisionKey(division: Division): string {
   return `${division.gender}|${division.tier}|${division.conference}|${division.age_group}`;
 }
 
+function divisionOf(team: Team): Division | null {
+  const conference = shortConference(team.conference);
+  if (!conference) return null;
+  return {
+    conference,
+    tier: team.tier ?? "ECNL",
+    age_group: team.age_group,
+    gender: team.gender === "girls" ? "girls" : "boys",
+  };
+}
+
 export default function TablesScreen() {
   const insets = useSafeAreaInsets();
   const favorites = useFavorites((state) => state.favoriteTeamIds);
+  const activeTeamId = useSession((state) => state.activeTeamId);
+  const activeDivision = useSession((state) => state.activeDivision);
+  const setActiveTeamId = useSession((state) => state.setActiveTeamId);
+  const setActiveDivision = useSession((state) => state.setActiveDivision);
+  const teamId = activeTeamId ?? favorites[0] ?? null;
   const [mode, setMode] = useState<"current" | "projected">("current");
-  const [division, setDivision] = useState<Division | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
   const [changing, setChanging] = useState(false);
   const teams = useQuery({
@@ -35,24 +44,32 @@ export default function TablesScreen() {
     queryFn: () => fetchTeams({ ids: favorites }),
     enabled: favorites.length > 0,
   });
+  const selected = useQuery({
+    queryKey: ["teams", "one", teamId],
+    queryFn: () => fetchTeams({ ids: teamId == null ? [] : [teamId] }).then((rows) => rows[0] ?? null),
+    enabled: teamId != null,
+  });
 
   const divisions: Division[] = [];
   const seen = new Set<string>();
   for (const team of teams.data ?? []) {
-    const next: Division = {
-      conference: shortConference(team.conference),
-      tier: team.tier ?? "ECNL",
-      age_group: team.age_group,
-      gender: team.gender === "girls" ? "girls" : "boys",
-    };
+    const next = divisionOf(team);
+    if (!next) continue;
     const key = divisionKey(next);
-    if (!seen.has(key) && next.conference) {
+    if (!seen.has(key)) {
       seen.add(key);
       divisions.push(next);
     }
   }
 
-  const chosen = division ?? divisions[0] ?? null;
+  const teamDivision = selected.data ? divisionOf(selected.data) : null;
+  const extraDivision = teamDivision && !seen.has(divisionKey(teamDivision)) ? teamDivision : null;
+  // While the active team is still loading, wait for its division instead of flashing the first favorite's table.
+  const waitingForTeam = teamId != null && selected.isLoading;
+  const chosen = activeDivision ?? teamDivision ?? (waitingForTeam ? null : (divisions[0] ?? null));
+  const chosenKey = chosen ? divisionKey(chosen) : null;
+  const resolving = chosen == null && (waitingForTeam || teams.isLoading);
+  const divisionsFailed = teams.isError && !teams.data;
 
   const current = useQuery({
     queryKey: ["standings", chosen],
@@ -65,6 +82,12 @@ export default function TablesScreen() {
     enabled: mode === "projected" && chosen != null,
   });
   const active = mode === "current" ? current : projected;
+
+  function pickTeam(id: number) {
+    setActiveTeamId(id);
+    // The tapped row belongs to the division on screen. Keeping it avoids a reload while the team is looked up.
+    if (chosen) setActiveDivision(chosen);
+  }
 
   async function shareProjected() {
     const rows = projected.data?.rows ?? [];
@@ -91,6 +114,7 @@ export default function TablesScreen() {
         <Text style={{ color: "rgba(255,255,255,0.75)" }}>{chosen ? `${chosen.tier} · ${chosen.gender === "girls" ? "Girls" : "Boys"}` : ""}</Text>
       </View>
       <View style={{ padding: 16, gap: 14 }}>
+        <SavedDataNote query={active} />
         <Segmented
           value={mode}
           onChange={setMode}
@@ -101,19 +125,38 @@ export default function TablesScreen() {
         />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
           {divisions.map((item) => (
-            <Chip key={divisionKey(item)} label={`${item.age_group} ${item.conference}`} selected={chosen != null && divisionKey(item) === divisionKey(chosen)} onPress={() => setDivision(item)} />
+            <Chip key={divisionKey(item)} label={`${item.age_group} ${item.conference}`} selected={divisionKey(item) === chosenKey} onPress={() => setActiveDivision(item)} />
           ))}
+          {extraDivision ? (
+            <Chip
+              label={`${extraDivision.age_group} ${extraDivision.conference}`}
+              selected={divisionKey(extraDivision) === chosenKey}
+              onPress={() => setActiveDivision(extraDivision)}
+            />
+          ) : null}
           <Chip label="Change division" onPress={() => setChanging(true)} />
         </ScrollView>
-        {teams.isError ? (
+        {divisionsFailed ? (
           <Notice title="Could not load divisions" body={requestErrorText(teams.error)} action="Try again" onAction={() => void teams.refetch()} />
         ) : null}
-        {chosen == null && !teams.isError ? <Notice title="No division yet" body="Add a favorite team, or choose a division." action="Change division" onAction={() => setChanging(true)} /> : null}
+        {resolving ? <Loading /> : null}
+        {chosen == null && !resolving && !divisionsFailed ? <Notice title="No division yet" body="Add a favorite team, or choose a division." action="Change division" onAction={() => setChanging(true)} /> : null}
         {active.isPending && chosen ? <Loading /> : null}
-        {active.isError ? <Notice title="Table unavailable" body={requestErrorText(active.error)} action="Try again" onAction={() => void active.refetch()} /> : null}
+        {active.isError && !active.data ? <Notice title="Table unavailable" body={requestErrorText(active.error)} action="Try again" onAction={() => void active.refetch()} /> : null}
 
         {mode === "current"
-          ? (current.data ?? []).map((row) => <CurrentRow key={`${row.rank}-${row.team_name}`} row={row} favorite={row.team_id != null && favorites.includes(row.team_id)} />)
+          ? (current.data ?? []).map((row) => {
+              const id = row.team_id;
+              return (
+                <CurrentRow
+                  key={`${row.rank}-${row.team_name}`}
+                  row={row}
+                  favorite={id != null && favorites.includes(id)}
+                  active={id != null && id === teamId}
+                  onPress={id == null ? undefined : () => pickTeam(id)}
+                />
+              );
+            })
           : null}
 
         {mode === "projected" && projected.data ? (
@@ -128,7 +171,11 @@ export default function TablesScreen() {
                 row={row}
                 open={openId === row.team_id}
                 favorite={favorites.includes(row.team_id)}
-                onPress={() => setOpenId(openId === row.team_id ? null : row.team_id)}
+                active={row.team_id === teamId}
+                onPress={() => {
+                  setOpenId(openId === row.team_id ? null : row.team_id);
+                  pickTeam(row.team_id);
+                }}
               />
             ))}
             <GoldButton label="Share" onPress={() => void shareProjected()} />
@@ -137,17 +184,29 @@ export default function TablesScreen() {
       </View>
       <DivisionSheet
         visible={changing}
-        loadError={teams.isError ? requestErrorText(teams.error) : null}
+        loadError={divisionsFailed ? requestErrorText(teams.error) : null}
         onClose={() => setChanging(false)}
-        onPick={(next) => { setDivision(next); setChanging(false); }}
+        onPick={(next) => { setActiveDivision(next); setChanging(false); }}
       />
     </ScrollView>
   );
 }
 
-function CurrentRow({ row, favorite }: { row: StandingRow; favorite: boolean }) {
-  return (
-    <View style={{ backgroundColor: favorite ? "#FFF6D8" : colors.white, borderRadius: 14, borderWidth: 1, borderColor: colors.line, padding: 12, gap: 6 }}>
+/** Favorites keep the gold tint. The active team gets a navy outline; the padding shrinks so the row does not shift. */
+function rowCard(favorite: boolean, active: boolean): ViewStyle {
+  return {
+    backgroundColor: favorite ? "#FFF6D8" : colors.white,
+    borderRadius: 14,
+    borderWidth: active ? 2 : 1,
+    borderColor: active ? colors.navy : colors.line,
+    padding: active ? 11 : 12,
+  };
+}
+
+function CurrentRow({ row, favorite, active, onPress }: { row: StandingRow; favorite: boolean; active: boolean; onPress?: () => void }) {
+  const style = [rowCard(favorite, active), { gap: 6 }];
+  const body = (
+    <>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <Text style={{ width: 28, fontWeight: "800", color: colors.navy, fontVariant: ["tabular-nums"] }}>{row.rank}</Text>
         <Crest name={row.team_name} size={28} />
@@ -162,14 +221,20 @@ function CurrentRow({ row, favorite }: { row: StandingRow; favorite: boolean }) 
           <ResultBadge key={`${mark}-${index}`} result={mark} />
         ))}
       </View>
-    </View>
+    </>
+  );
+  if (!onPress) return <View style={style}>{body}</View>;
+  return (
+    <Hit label={`Select ${row.team_name}`} onPress={onPress} style={style}>
+      {body}
+    </Hit>
   );
 }
 
-function ProjectedRow({ row, open, favorite, onPress }: { row: PredictedRow; open: boolean; favorite: boolean; onPress: () => void }) {
+function ProjectedRow({ row, open, favorite, active, onPress }: { row: PredictedRow; open: boolean; favorite: boolean; active: boolean; onPress: () => void }) {
   const remaining = row.cells.flatMap((cell) => cell.fixtures.filter((fixture) => fixture.status === "scheduled"));
   return (
-    <View style={{ backgroundColor: favorite ? "#FFF6D8" : colors.white, borderRadius: 14, borderWidth: 1, borderColor: colors.line, padding: 12, gap: 8 }}>
+    <View style={[rowCard(favorite, active), { gap: 8 }]}>
       <Hit label={`${row.team_name}, projected ${ordinal(row.rank)}`} onPress={onPress}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Text style={{ color: colors.navy, fontSize: 28, fontWeight: "800", fontVariant: ["tabular-nums"] }}>{ppg(row.predicted_points)}</Text>
