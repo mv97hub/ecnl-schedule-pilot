@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Modal, RefreshControl, ScrollView, Text, View, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Chip, Crest, GoldButton, Hit, Loading, Notice, ProjectionBar, ResultBadge, SavedDataNote, Segmented } from "@/components/ui";
+import { Chip, Crest, GoldButton, Hit, Loading, Notice, PreferencesButton, ProjectionBar, ResultBadge, SavedDataNote, Segmented } from "@/components/ui";
 import { fetchPredicted, fetchStandings, fetchTeams, requestErrorText } from "@/lib/api";
 import { AGE_GROUPS, CONFERENCES, TIERS, ageGroupsFor, type LeagueGender } from "@/lib/leagues";
 import { shareText } from "@/lib/maps";
@@ -109,7 +109,10 @@ export default function TablesScreen() {
       refreshControl={<RefreshControl refreshing={active.isRefetching} tintColor={colors.navy} onRefresh={() => void active.refetch()} />}
     >
       <View style={{ backgroundColor: colors.navy, paddingTop: insets.top + 16, paddingHorizontal: 20, paddingBottom: 18, gap: 6 }}>
-        <Text style={{ color: colors.gold, fontWeight: "800" }}>TABLES</Text>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Text style={{ color: colors.gold, fontWeight: "800" }}>TABLES</Text>
+          <PreferencesButton />
+        </View>
         <Text style={{ color: colors.white, fontSize: 26, fontWeight: "800" }}>{chosen ? `${chosen.conference} · ${chosen.age_group}` : "Pick a division"}</Text>
         <Text style={{ color: "rgba(255,255,255,0.75)" }}>{chosen ? `${chosen.tier} · ${chosen.gender === "girls" ? "Girls" : "Boys"}` : ""}</Text>
       </View>

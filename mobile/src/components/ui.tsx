@@ -1,9 +1,21 @@
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { useRouter } from "expo-router";
 import { useState, type ReactNode } from "react";
 import { ActivityIndicator, Image, Linking, Pressable, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 
 import { websiteOrigin } from "@/lib/api";
 import { timeAgo } from "@/lib/present";
 import { colors, resultColor } from "@/theme";
+
+/** Person icon that opens the Preferences modal. White on navy headers; pass navy on a light bar. */
+export function PreferencesButton({ color = colors.white }: { color?: string }) {
+  const router = useRouter();
+  return (
+    <Hit label="Preferences" onPress={() => router.push("/favorites")} style={{ minWidth: 44, alignItems: "center" }}>
+      <FontAwesome name="user" size={22} color={color} />
+    </Hit>
+  );
+}
 
 export function Crest({ uri, name, size = 40 }: { uri?: string | null; name: string; size?: number }) {
   const [failed, setFailed] = useState(false);

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Modal, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Chip, Crest, GoldButton, Hit, Loading, Notice, OutlineButton, ResultBadge, SavedDataNote, Segmented } from "@/components/ui";
+import { Chip, Crest, GoldButton, Hit, Loading, Notice, OutlineButton, PreferencesButton, ResultBadge, SavedDataNote, Segmented } from "@/components/ui";
 import { fetchSchedule, fetchTeams } from "@/lib/api";
 import { formatKickoff } from "@/lib/format";
 import { CONFERENCES, TIERS, ageGroupsFor, type LeagueGender } from "@/lib/leagues";
@@ -106,6 +106,7 @@ export default function SchedulesScreen() {
                 {team ? `${team.age_group} · ${team.tier ?? "ECNL"} · ${summary?.conference ?? shortConference(team.conference)}` : "Pick a team"}
               </Text>
             </View>
+            <PreferencesButton />
           </View>
           {summary ? (
             <Text style={{ color: colors.white, fontSize: 18, fontWeight: "800", fontVariant: ["tabular-nums"] }}>
