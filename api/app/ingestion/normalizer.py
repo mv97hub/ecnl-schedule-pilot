@@ -23,6 +23,7 @@ _FIELD_SPLIT = re.compile(
 _ECNL_SUFFIX = re.compile(r"\s+ECNL(?:\s+B\d{4}(?:/\d{2,4})?)?\s*$", re.IGNORECASE)
 _BIRTH_YEAR = re.compile(r"\s+B\d{4}(?:/\d{2,4})?\s*$", re.IGNORECASE)
 _TRAILING_AGE = re.compile(r"\s+U\d{2}(?:/\d{2})?\s*$", re.IGNORECASE)
+_TRAILING_DASH = re.compile(r"\s+-\s*$")
 _SHOWCASE = re.compile(r"\b(?:showcase|tournament|classic|festival)\b", re.IGNORECASE)
 _CITY_STATE = re.compile(r"^(?P<body>.*?),\s*(?P<city>[^,]+),\s*(?P<state>[A-Za-z]{2})\s*$")
 _FIELD_TOKEN = re.compile(
@@ -57,13 +58,28 @@ def normalize_field_number(raw: str) -> str:
 
 
 def standardize_team_name(raw: str) -> str:
-    """Collapse whitespace and drop a trailing ECNL age or birth-year token."""
+    """Collapse whitespace and drop a trailing ECNL age, birth year, or published dash.
+
+    ECNL publishes some clubs with a trailing " -". That dash is not a different squad.
+    Stripping it here makes team matching and the match key treat both spellings as one.
+    """
 
     text = " ".join((raw or "").replace("\xa0", " ").split())
     text = _ECNL_SUFFIX.sub("", text)
     text = _BIRTH_YEAR.sub("", text)
     text = _TRAILING_AGE.sub("", text)
+    text = _TRAILING_DASH.sub("", text)
     return " ".join(text.split()).strip()
+
+
+def has_published_trailing_dash(raw: str) -> bool:
+    """True when the stored name still ends in the published " -" after age suffixes."""
+
+    text = " ".join((raw or "").replace("\xa0", " ").split())
+    text = _ECNL_SUFFIX.sub("", text)
+    text = _BIRTH_YEAR.sub("", text)
+    text = _TRAILING_AGE.sub("", text)
+    return " ".join(text.split()).endswith(" -")
 
 
 def looks_like_showcase(*parts: str) -> bool:
