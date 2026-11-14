@@ -296,18 +296,18 @@ export function Dashboard() {
   }
 
   return (
-    <div className="min-h-full bg-stone-100">
-      <header className="bg-[#0f241c] text-white">
+    <div className="min-h-full bg-bone">
+      <header className="bg-navy text-bone">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:gap-8 sm:px-6 sm:py-8">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300/80">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gold">
               Elite Clubs National League
             </p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight">ECNL {genderWord} Schedule</h1>
-            <p className="mt-1 text-sm text-emerald-100/75">
+            <p className="mt-1 text-sm text-bone/75">
               {tier} {genderWord} · 2026–27
             </p>
-            {dataAsOf && <p className="mt-1 text-sm text-emerald-100/75">{dataAsOf}</p>}
+            {dataAsOf && <p className="mt-1 text-sm text-bone/75">{dataAsOf}</p>}
           </div>
           <div className="grid min-w-0 gap-2 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
             <HeaderSelect
@@ -355,7 +355,7 @@ export function Dashboard() {
         {visible && games.length > 0 && <SeasonTimeline games={games} />}
 
         {error && (
-          <div className="mt-4 rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-800">
+          <div className="mt-4 rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-ink">
             {error}. Confirm Postgres and the FastAPI server are running on port 8000.
           </div>
         )}

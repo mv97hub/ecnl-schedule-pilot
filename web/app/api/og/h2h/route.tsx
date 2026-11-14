@@ -41,8 +41,8 @@ function shell(children: ReactNode) {
 function fallbackCard(mark: string) {
   return graphic(
     shell(
-      <div style={{ display: "flex", flexDirection: "column", flexGrow: 1, justifyContent: "center", border: "2px solid #34d399", borderRadius: 28, padding: "48px" }}>
-        <div style={{ display: "flex", fontSize: 22, letterSpacing: 3, color: "#6ee7b7" }}>{mark}</div>
+      <div style={{ display: "flex", flexDirection: "column", flexGrow: 1, justifyContent: "center", border: "2px solid #F2B705", borderRadius: 28, padding: "48px" }}>
+        <div style={{ display: "flex", fontSize: 22, letterSpacing: 3, color: "#F2B705" }}>{mark}</div>
         <div style={{ display: "flex", marginTop: 16, fontSize: 64, fontWeight: 700 }}>Head-to-Head</div>
         <div style={{ display: "flex", marginTop: 18, fontSize: 28, color: "#cbd5e1" }}>Choose two teams to preview a matchup.</div>
       </div>,
@@ -98,11 +98,11 @@ function predictorGauge(meter: number, caption: string, club: string | null) {
       <svg width="190" height="114" viewBox="0 0 200 118">
         <path d="M 22 100 A 78 78 0 0 1 178 100" fill="none" stroke="#334155" strokeWidth="12" strokeLinecap="round" />
         <path d="M 100 26 L 100 44" stroke="#94a3b8" strokeWidth="3" strokeLinecap="round" />
-        <line x1="100" y1="100" x2={tipX} y2={tipY} stroke="#34d399" strokeWidth="4" strokeLinecap="round" />
+        <line x1="100" y1="100" x2={tipX} y2={tipY} stroke="#F2B705" strokeWidth="4" strokeLinecap="round" />
         <circle cx="100" cy="100" r="5" fill="#f8fafc" />
       </svg>
       <div style={{ display: "flex", marginTop: 6, fontSize: 20, fontWeight: 700 }}>{caption}</div>
-      <div style={{ display: "flex", marginTop: 2, fontSize: 14, color: "#6ee7b7", textAlign: "center" }}>{club ?? "Center"}</div>
+      <div style={{ display: "flex", marginTop: 2, fontSize: 14, color: "#F2B705", textAlign: "center" }}>{club ?? "Center"}</div>
     </div>
   );
 }
@@ -122,13 +122,13 @@ function matchupCard(data: HeadToHeadReport, mark: string) {
       <div style={{ display: "flex", flexDirection: "column", width: 1144 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: 1144 }}>
           <div style={{ display: "flex", flexDirection: "column" }}>
-            <div style={{ display: "flex", fontSize: 14, letterSpacing: 2, color: "#6ee7b7" }}>{mark}</div>
+            <div style={{ display: "flex", fontSize: 14, letterSpacing: 2, color: "#F2B705" }}>{mark}</div>
             <div style={{ display: "flex", marginTop: 4, fontSize: 16, color: "#94a3b8" }}>{leagueBadge(data)}</div>
           </div>
           <div style={{ display: "flex", fontSize: 16, color: "#e2e8f0" }}>{upcoming ? upcomingLabel(upcoming) : ""}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: 1144, marginTop: 10 }}>
-          {teamBox(left, "#34d399")}
+          {teamBox(left, "#F2B705")}
           {predictorGauge(meter, data.scouting_report.verdict_headline, favored)}
           {teamBox(right, "#38bdf8")}
         </div>

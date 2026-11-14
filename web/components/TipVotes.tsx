@@ -54,7 +54,7 @@ function VoteButton({
       disabled={pending}
       onClick={() => onVote(choice)}
       className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium disabled:opacity-60 ${
-        pressed ? "border-emerald-700 bg-emerald-50 text-emerald-900" : "border-stone-300 bg-white text-stone-800"
+        pressed ? "border-gold bg-gold/20 text-navy" : "border-stone-300 bg-white text-ink"
       }`}
     >
       <Icon className="size-3.5" />

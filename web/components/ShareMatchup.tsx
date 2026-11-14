@@ -98,7 +98,7 @@ export function ShareMatchup({ report, teamA, teamB, conferenceOnly }: ShareMatc
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-emerald-700 bg-white px-3 py-1.5 text-sm font-medium text-emerald-800">
+      <button type="button" onClick={() => setOpen(true)} className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-gold bg-white px-3 py-1.5 text-sm font-medium text-navy">
         <Share2 className="size-4" aria-hidden="true" />
         Share
       </button>
@@ -112,7 +112,7 @@ export function ShareMatchup({ report, teamA, teamB, conferenceOnly }: ShareMatc
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
-              <h2 id={titleId} className="text-lg font-semibold text-stone-950">
+              <h2 id={titleId} className="text-lg font-semibold text-navy">
                 Share Matchup Preview
               </h2>
               <button type="button" onClick={() => setOpen(false)} className="rounded-full px-3 py-1 text-sm font-medium text-stone-600">
@@ -122,21 +122,21 @@ export function ShareMatchup({ report, teamA, teamB, conferenceOnly }: ShareMatc
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={imageSrc} alt={`Matchup preview for ${report.team_a_stats.name} versus ${report.team_b_stats.name}`} width={1200} height={630} className="mt-4 w-full rounded-xl border border-stone-200" />
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-              <button type="button" onClick={() => void downloadGraphic()} className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white">
+              <button type="button" onClick={() => void downloadGraphic()} className="rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy">
                 Download Graphic (PNG)
               </button>
-              <button type="button" onClick={() => void shareFromPhone()} className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-800">
+              <button type="button" onClick={() => void shareFromPhone()} className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink">
                 Share from Phone
               </button>
             </div>
             {shareNote ? <p className="mt-2 text-sm text-stone-600">{shareNote}</p> : null}
-            <h3 className="mt-5 text-sm font-semibold text-stone-950">WhatsApp / GroupMe</h3>
-            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs leading-5 text-stone-800">{summary()}</pre>
+            <h3 className="mt-5 text-sm font-semibold text-navy">WhatsApp / GroupMe</h3>
+            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs leading-5 text-ink">{summary()}</pre>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-              <button type="button" onClick={() => void copySummary()} className="rounded-full bg-stone-900 px-3 py-1.5 text-sm font-medium text-white">
+              <button type="button" onClick={() => void copySummary()} className="rounded-full bg-navy px-3 py-1.5 text-sm font-medium text-bone">
                 {summaryCopied ? "Copied!" : "Copy Summary for WhatsApp / GroupMe"}
               </button>
-              <button type="button" onClick={() => void copyLink()} className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-800">
+              <button type="button" onClick={() => void copyLink()} className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink">
                 {linkCopied ? "Copied!" : "Copy Direct Link Only"}
               </button>
             </div>

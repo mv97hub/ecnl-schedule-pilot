@@ -69,7 +69,7 @@ function ScoreRow({ scores }: { scores: LocationAggregate | LocationCard }) {
       {CRITERIA.map((item) => (
         <span key={item.key} className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap">
           <span>{item.label}</span>
-          <span className="font-medium text-stone-800">{scoreText(scores[item.key])}</span>
+          <span className="font-medium text-ink">{scoreText(scores[item.key])}</span>
           <Star className={`size-3 ${scores[item.key] == null ? "text-stone-300" : "fill-amber-400 text-amber-500"}`} />
         </span>
       ))}
@@ -102,12 +102,12 @@ function FieldCard({ card, home }: { card: LocationCard; home: HomeAddress | nul
       href={`/locations/${encodeURIComponent(card.venue_key)}`}
       data-field-card={card.venue_key}
       aria-label={`Rate ${card.venue_name} and add tips`}
-      className="block rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-sm hover:border-emerald-700"
+      className="block rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-sm hover:border-gold"
     >
       <div className="flex items-center gap-2">
-        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-stone-950">{card.venue_name}</h2>
+        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-navy">{card.venue_name}</h2>
         {meta ? <p className="hidden truncate text-xs text-stone-500 sm:block">{meta}</p> : null}
-        <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-emerald-700 px-2 py-0.5 text-[11px] font-medium text-white">
+        <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-gold px-2 py-0.5 text-[11px] font-medium text-navy">
           Rate
           <ChevronRight className="size-3.5" />
         </span>
@@ -214,7 +214,7 @@ function ClubFilter({
         aria-expanded={open}
         aria-haspopup="listbox"
         onClick={() => setOpen((current) => !current)}
-        className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white px-2.5 text-sm text-stone-950 shadow-sm"
+        className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white px-2.5 text-sm text-navy shadow-sm"
       >
         <span className="flex min-w-0 items-center gap-2">
           {selectedId ? <ClubMark name={label} src={selectedLogo} size="sm" /> : null}
@@ -233,13 +233,13 @@ function ClubFilter({
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Type to filter clubs"
               aria-label="Filter clubs"
-              className="h-8 w-full bg-transparent pr-2 pl-8 text-sm text-stone-950 outline-none placeholder:text-stone-400"
+              className="h-8 w-full bg-transparent pr-2 pl-8 text-sm text-navy outline-none placeholder:text-stone-400"
             />
           </div>
           <p ref={hintRef} hidden data-club-filter-hint className="border-b border-stone-100 px-3 py-1.5 text-xs text-stone-500">
             Type to filter more clubs
           </p>
-          {error ? <p className="px-3 py-2 text-xs text-stone-700">{error}. Confirm the API is running on port 8000.</p> : null}
+          {error ? <p className="px-3 py-2 text-xs text-ink">{error}. Confirm the API is running on port 8000.</p> : null}
           {loading && clubs.length === 0 ? (
             <p className="flex items-center gap-2 px-3 py-2 text-xs text-stone-500">
               <LoaderCircle className="size-3.5 animate-spin" />
@@ -263,7 +263,7 @@ function ClubFilter({
                         setQuery("");
                       }}
                       className={`flex w-full items-center justify-between gap-3 px-2.5 py-1.5 text-left text-sm hover:bg-stone-50 ${
-                        active ? "bg-stone-50 font-medium text-stone-950" : "text-stone-800"
+                        active ? "bg-stone-50 font-medium text-navy" : "text-ink"
                       }`}
                     >
                       <span className="flex min-w-0 items-center gap-2">
@@ -286,18 +286,18 @@ function ClubFilter({
 function Aggregate({ scores }: { scores: LocationAggregate }) {
   return (
     <section data-aggregate className="mt-4 text-center" aria-label="Club Ratings">
-      <h2 className="text-base font-semibold text-stone-950">Club Ratings</h2>
+      <h2 className="text-base font-semibold text-navy">Club Ratings</h2>
       <p className="mt-1 text-sm text-stone-500">{overallLine(scores.overall, scores.ratings_count)}</p>
       <div className="mt-3 flex flex-wrap items-start justify-center gap-x-8 gap-y-4">
         {CRITERIA.map((item) => {
           const value = scores[item.key];
           return (
             <div key={item.key} className="flex min-w-24 flex-col items-center" data-club-score={item.key}>
-              <span className="inline-flex items-center gap-1.5 text-3xl font-semibold tracking-tight text-stone-950">
+              <span className="inline-flex items-center gap-1.5 text-3xl font-semibold tracking-tight text-navy">
                 {scoreText(value)}
                 <Star className={`size-5 ${value == null ? "text-stone-300" : "fill-amber-400 text-amber-500"}`} />
               </span>
-              <span className="mt-1 text-sm font-medium text-stone-700">{item.label}</span>
+              <span className="mt-1 text-sm font-medium text-ink">{item.label}</span>
             </div>
           );
         })}
@@ -333,11 +333,11 @@ function Tips({ tips, clubId }: { tips: ClubLocationTip[]; clubId: string }) {
   return (
     <section data-family-tips className="mt-8" aria-label="Family tips">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-stone-950">Family tips</h2>
+        <h2 className="text-lg font-semibold text-navy">Family tips</h2>
         <Link
           href={`/locations/tip?club=${encodeURIComponent(clubId)}`}
           data-add-family-tip
-          className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white"
+          className="rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy"
         >
           Add a family tip
         </Link>
@@ -352,7 +352,7 @@ function Tips({ tips, clubId }: { tips: ClubLocationTip[]; clubId: string }) {
               aria-pressed={active}
               onClick={() => setFilter(item.id)}
               className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
-                active ? "border-stone-900 bg-stone-900 text-white" : "border-stone-200 bg-white text-stone-700 hover:border-stone-400"
+                active ? "border-gold bg-gold text-navy" : "border-stone-200 bg-white text-ink hover:border-stone-400"
               }`}
             >
               {item.label}
@@ -361,7 +361,7 @@ function Tips({ tips, clubId }: { tips: ClubLocationTip[]; clubId: string }) {
         })}
       </div>
       <p className="mt-3 text-sm text-stone-500">Tips from all of these fields, since the fields are near each other. Add a rating or a tip on the field page.</p>
-      {voteError ? <p className="mt-3 text-sm text-stone-700">{voteError}</p> : null}
+      {voteError ? <p className="mt-3 text-sm text-ink">{voteError}</p> : null}
       {visible.length === 0 ? (
         <p className="mt-4 text-sm text-stone-500">
           {filter === "all" ? "No family tips for these fields yet." : `No ${filterLabel.toLowerCase()} tips for these fields yet.`}
@@ -372,14 +372,14 @@ function Tips({ tips, clubId }: { tips: ClubLocationTip[]; clubId: string }) {
             <li key={tip.id} className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <h3 className="text-base font-semibold text-stone-950">{tip.title}</h3>
+                  <h3 className="text-base font-semibold text-navy">{tip.title}</h3>
                   <div className="mt-1">
                     <StarRow value={tip.rating} />
                   </div>
                 </div>
                 <Link
                   href={`/locations/${encodeURIComponent(tip.venue_key)}`}
-                  className="text-sm font-medium text-emerald-800 underline-offset-4 hover:underline"
+                  className="text-sm font-medium text-navy underline-offset-4 hover:underline"
                 >
                   {tip.venue_name}
                 </Link>
@@ -394,7 +394,7 @@ function Tips({ tips, clubId }: { tips: ClubLocationTip[]; clubId: string }) {
                   ))}
                 </ul>
               ) : null}
-              <p className="mt-2 text-sm text-stone-800">{tip.review_text}</p>
+              <p className="mt-2 text-sm text-ink">{tip.review_text}</p>
               <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-stone-500">
                 <span>{tip.author_name}</span>
                 <span data-tip-added={tip.created_at}>{easternStamp(tip.created_at)?.dateLabel}</span>
@@ -463,9 +463,9 @@ export function LocationsDirectory() {
   const selectedLogo = directory?.logo_url ?? (picked && String(picked.id) === selectedId ? picked.logo_url ?? null : null);
 
   return (
-    <div className="min-h-full bg-stone-100">
+    <div className="min-h-full bg-bone">
       <main data-location-directory className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-        <h1 className="text-3xl font-semibold tracking-tight text-stone-950">Locations Guide</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-navy">Locations Guide</h1>
         <p className="mt-1 max-w-2xl text-sm text-stone-500">
           Choose a club to see its fields. Scores and family tips are combined across those fields. Ratings are entered on each field.
         </p>
@@ -479,7 +479,7 @@ export function LocationsDirectory() {
               Loading fields
             </div>
           ) : directoryError || !directory ? (
-            <p className="mt-4 text-sm text-stone-700">{directoryError ?? "Club not found"}</p>
+            <p className="mt-4 text-sm text-ink">{directoryError ?? "Club not found"}</p>
           ) : directory.fields.length === 0 ? (
             <p className="mt-4 text-sm text-stone-500">No home fields stored.</p>
           ) : (

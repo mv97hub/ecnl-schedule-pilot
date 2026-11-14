@@ -14,7 +14,7 @@ type Draft = {
 
 const EMPTY: Draft = { street: "", unit: "", city: "", state: "", postalCode: "" };
 
-const field = "mt-1 h-10 w-full rounded-xl border border-stone-200 bg-white px-3 text-sm text-stone-900";
+const field = "mt-1 h-10 w-full rounded-xl border border-stone-200 bg-white px-3 text-sm text-navy";
 
 function draftFrom(address: HomeAddress): Draft {
   return {
@@ -73,26 +73,26 @@ export function ProfileForm() {
   }
 
   return (
-    <div className="min-h-full bg-stone-100">
+    <div className="min-h-full bg-bone">
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-        <h1 className="text-3xl font-semibold tracking-tight text-stone-950">Profile</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-navy">Profile</h1>
         <p className="mt-1 text-sm text-stone-500">A home address for this visit. It stays in this browser session only.</p>
         {ready && !editing && saved ? (
           <section className="mt-6 max-w-xl rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Saved home address">
-            <h2 className="text-lg font-semibold text-stone-950">Home address</h2>
-            <p className="mt-2 text-sm text-stone-800">{saved.formatted}</p>
+            <h2 className="text-lg font-semibold text-navy">Home address</h2>
+            <p className="mt-2 text-sm text-ink">{saved.formatted}</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white"
+                className="rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy"
               >
                 Change
               </button>
               <button
                 type="button"
                 onClick={clear}
-                className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-800"
+                className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink"
               >
                 Clear
               </button>
@@ -112,7 +112,7 @@ export function ProfileForm() {
               Street address
               <input id="street" value={draft.street} onChange={(event) => update("street", event.target.value)} autoComplete="street-address" className={field} />
             </label>
-            {errors.street ? <p className="text-sm text-stone-700">{errors.street}</p> : null}
+            {errors.street ? <p className="text-sm text-ink">{errors.street}</p> : null}
             <label htmlFor="unit" className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
               Apartment or unit
               <input id="unit" value={draft.unit} onChange={(event) => update("unit", event.target.value)} autoComplete="address-line2" className={field} />
@@ -121,7 +121,7 @@ export function ProfileForm() {
               City
               <input id="city" value={draft.city} onChange={(event) => update("city", event.target.value)} autoComplete="address-level2" className={field} />
             </label>
-            {errors.city ? <p className="text-sm text-stone-700">{errors.city}</p> : null}
+            {errors.city ? <p className="text-sm text-ink">{errors.city}</p> : null}
             <label htmlFor="state" className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
               State
               <select id="state" value={draft.state} onChange={(event) => update("state", event.target.value)} autoComplete="address-level1" className={field}>
@@ -133,7 +133,7 @@ export function ProfileForm() {
                 ))}
               </select>
             </label>
-            {errors.state ? <p className="text-sm text-stone-700">{errors.state}</p> : null}
+            {errors.state ? <p className="text-sm text-ink">{errors.state}</p> : null}
             <label htmlFor="postal-code" className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
               Postal code
               <input
@@ -145,8 +145,8 @@ export function ProfileForm() {
                 className={field}
               />
             </label>
-            {errors.postalCode ? <p className="text-sm text-stone-700">{errors.postalCode}</p> : null}
-            <button type="submit" className="rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white">
+            {errors.postalCode ? <p className="text-sm text-ink">{errors.postalCode}</p> : null}
+            <button type="submit" className="rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy">
               Use this address
             </button>
           </form>

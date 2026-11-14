@@ -26,7 +26,7 @@ type ProjectedFilters = {
 };
 
 const RESULT_CLASS = {
-  W: "bg-emerald-100 text-emerald-900",
+  W: "bg-win/15 text-win",
   L: "bg-red-100 text-red-800",
   D: "bg-stone-200 text-stone-600",
 } as const;
@@ -361,7 +361,7 @@ export function ProjectedBoard() {
   }
 
   return (
-    <div className="min-h-full bg-stone-100">
+    <div className="min-h-full bg-bone">
       <main className="mx-auto max-w-6xl px-3 py-6 sm:px-6 sm:py-8 xl:max-w-[90rem]">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -429,7 +429,7 @@ export function ProjectedBoard() {
 
         <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs text-stone-600" aria-label="Result colors">
           <li className="flex items-center gap-1.5">
-            <span className="rounded bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-900">2-0 W</span>
+            <span className="rounded bg-win/15 px-1.5 py-0.5 font-semibold text-win">2-0 W</span>
             Win
           </li>
           <li className="flex items-center gap-1.5">
@@ -448,7 +448,7 @@ export function ProjectedBoard() {
         <p className="mt-3 text-sm text-stone-600">{report?.points_rule ?? POINTS_LINE}</p>
         {report?.record_rule && <p className="mt-1 text-xs text-stone-500">{report.record_rule}</p>}
 
-        {error && <p className="mt-4 rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-800">{error}</p>}
+        {error && <p className="mt-4 rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-ink">{error}</p>}
 
         {!applied && !loading ? (
           <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-slate-500">No table for this tier yet.</div>
@@ -502,7 +502,7 @@ export function ProjectedBoard() {
               </table>
             </div>
 
-            <h2 className="mb-2 mt-6 text-sm font-semibold text-stone-800 md:hidden">Opponent results</h2>
+            <h2 className="mb-2 mt-6 text-sm font-semibold text-ink md:hidden">Opponent results</h2>
             <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm md:mt-4">
               <table className="w-max min-w-full border-separate border-spacing-0 text-left text-xs tabular-nums">
                 <caption className="sr-only">Projected standings and results against each opponent</caption>
@@ -547,12 +547,12 @@ export function ProjectedBoard() {
 
 function MobileStatRow({ row, filters, heat }: { row: PredictedRow; filters: ProjectedFilters; heat: string }) {
   const selected = filters.team != null && row.team_id === filters.team;
-  const tone = selected ? "bg-stone-100" : "bg-white";
-  const number = `px-0.5 py-2 text-center text-stone-700 ${tone}`;
+  const tone = selected ? "bg-gold-soft" : "bg-white";
+  const number = `px-0.5 py-2 text-center text-ink ${tone}`;
   return (
     <tr data-selected={selected ? "true" : undefined}>
       <td className={`px-0.5 py-2 text-center text-stone-500 ${tone}`}>{row.rank}</td>
-      <td className={`px-1 py-2 font-medium text-stone-950 ${tone}`}>
+      <td className={`px-1 py-2 font-medium text-navy ${tone}`}>
         <div className="flex min-w-0 items-center gap-1">
           <Crest name={row.team_name} src={row.logo_url} compact />
           <span className="min-w-0 truncate">
@@ -566,7 +566,7 @@ function MobileStatRow({ row, filters, heat }: { row: PredictedRow; filters: Pro
       <td className={number}>{row.goals_for}</td>
       <td className={number}>{row.goals_against}</td>
       <td className={number}>{row.points}</td>
-      <td className="px-0.5 py-2 text-center font-semibold text-stone-950" style={{ backgroundColor: heat }}>
+      <td className="px-0.5 py-2 text-center font-semibold text-navy" style={{ backgroundColor: heat }}>
         {formatPts(row.predicted_points)}
       </td>
     </tr>
@@ -585,13 +585,13 @@ function MatrixRow({
   heat: string;
 }) {
   const selected = filters.team != null && row.team_id === filters.team;
-  const sticky = selected ? "bg-stone-100" : "bg-white";
+  const sticky = selected ? "bg-gold-soft" : "bg-white";
   const diff = row.goal_diff > 0 ? `+${row.goal_diff}` : String(row.goal_diff);
   const cells = new Map(row.cells.map((cell) => [cell.opponent_id, cell]));
   return (
     <tr data-selected={selected ? "true" : undefined}>
       <td className={`sticky left-0 z-10 hidden px-2 py-2 text-stone-500 md:table-cell ${sticky}`}>{row.rank}</td>
-      <td className={`sticky left-0 z-10 min-w-36 px-2 py-2 font-medium text-stone-950 shadow-[4px_0_6px_-4px_rgba(28,25,23,0.45)] md:left-10 md:min-w-44 ${sticky}`}>
+      <td className={`sticky left-0 z-10 min-w-36 px-2 py-2 font-medium text-navy shadow-[4px_0_6px_-4px_rgba(28,25,23,0.45)] md:left-10 md:min-w-44 ${sticky}`}>
         <div className="flex items-center gap-1.5">
           <span className="w-4 shrink-0 text-stone-500 md:hidden">{row.rank}</span>
           <Crest name={row.team_name} src={row.logo_url} />
@@ -606,14 +606,14 @@ function MatrixRow({
       <Stat className="hidden md:table-cell" value={row.goals_against} />
       <Stat className="hidden md:table-cell" value={diff} />
       <Stat className="hidden md:table-cell" value={row.points} />
-      <td className="hidden px-2 py-2 font-semibold text-stone-950 md:table-cell" style={{ backgroundColor: heat }}>
+      <td className="hidden px-2 py-2 font-semibold text-navy md:table-cell" style={{ backgroundColor: heat }}>
         {formatPts(row.predicted_points)}
       </td>
       {rows.map((opponent) => {
         const cell: PredictedCell = cells.get(opponent.team_id) ?? { opponent_id: opponent.team_id, fixtures: [] };
         const same = opponent.team_id === row.team_id;
         return (
-          <td key={opponent.team_id} className={`w-14 min-w-14 border-l border-stone-100 px-1 py-1 align-middle ${selected ? "bg-stone-100" : "bg-white"}`}>
+          <td key={opponent.team_id} className={`w-14 min-w-14 border-l border-stone-100 px-1 py-1 align-middle ${selected ? "bg-gold-soft" : "bg-white"}`}>
             {same ? <span className="block text-center text-stone-300">—</span> : <MatrixLines fixtures={cell.fixtures} />}
           </td>
         );
@@ -623,5 +623,5 @@ function MatrixRow({
 }
 
 function Stat({ value, className }: { value: string | number; className?: string }) {
-  return <td className={`px-2 py-2 text-stone-700 ${className ?? ""}`}>{value}</td>;
+  return <td className={`px-2 py-2 text-ink ${className ?? ""}`}>{value}</td>;
 }

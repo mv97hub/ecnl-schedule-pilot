@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
-import { AppHeader } from "@/components/AppHeader";
 import { GenderProvider } from "@/components/GenderProvider";
 import "./globals.css";
 
@@ -27,10 +26,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans">
-        <GenderProvider>
-          <AppHeader />
-          {children}
-        </GenderProvider>
+        <GenderProvider>{children}</GenderProvider>
       </body>
     </html>
   );

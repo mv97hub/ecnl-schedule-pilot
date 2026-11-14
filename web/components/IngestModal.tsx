@@ -110,7 +110,7 @@ export function IngestModal({ onClose }: { onClose: () => void }) {
                 setError(null);
               }}
               className={`rounded-full px-3 py-1.5 text-sm font-medium ${
-                tab === item.id ? "bg-emerald-700 text-white" : "bg-slate-100 text-slate-700"
+                tab === item.id ? "bg-gold text-navy" : "bg-slate-100 text-slate-700"
               }`}
             >
               {item.label}
@@ -178,13 +178,13 @@ export function IngestModal({ onClose }: { onClose: () => void }) {
         </label>
 
         {error && <p className="mt-3 text-sm text-rose-700">{error}</p>}
-        {message && <p className="mt-3 text-sm text-emerald-800">{message}</p>}
+        {message && <p className="mt-3 text-sm text-navy">{message}</p>}
 
         <div className="mt-4 flex justify-end">
           <button
             type="submit"
             disabled={saving}
-            className="rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            className="rounded-full bg-gold px-4 py-2 text-sm font-semibold text-navy disabled:opacity-60"
           >
             {saving ? "Importing…" : "Import"}
           </button>

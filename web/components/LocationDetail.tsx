@@ -65,7 +65,7 @@ const SURFACE_LABEL: Record<string, string> = {
   MIXED: "Mixed",
 };
 
-const field = "mt-1 h-10 w-full rounded-xl border border-stone-200 bg-white px-3 text-sm text-stone-900";
+const field = "mt-1 h-10 w-full rounded-xl border border-stone-200 bg-white px-3 text-sm text-navy";
 
 function readVenueKey(raw: string | string[] | undefined): string {
   const value = Array.isArray(raw) ? raw[0] : raw;
@@ -103,12 +103,12 @@ function Meter({ label, value }: { label: string; value: number | null }) {
   const width = value == null ? 0 : Math.max(0, Math.min(100, (value / 5) * 100));
   return (
     <div>
-      <div className="flex items-center justify-between gap-3 text-sm text-stone-700">
+      <div className="flex items-center justify-between gap-3 text-sm text-ink">
         <span>{label}</span>
-        <span className="font-medium text-stone-950">{value == null ? "—" : value.toFixed(1)}</span>
+        <span className="font-medium text-navy">{value == null ? "—" : value.toFixed(1)}</span>
       </div>
       <div className="mt-1 h-2 rounded-full bg-stone-100">
-        <div className="h-2 rounded-full bg-emerald-700" style={{ width: `${width}%` }} />
+        <div className="h-2 rounded-full bg-gold" style={{ width: `${width}%` }} />
       </div>
     </div>
   );
@@ -127,7 +127,7 @@ function ScorePicker({ label, value, onChange }: { label: string; value: number;
             aria-pressed={value === score}
             onClick={() => onChange(score)}
             className={`h-8 w-8 rounded-full border text-sm font-semibold ${
-              value === score ? "border-emerald-700 bg-emerald-700 text-white" : "border-stone-200 bg-white text-stone-700"
+              value === score ? "border-gold bg-gold text-navy" : "border-stone-200 bg-white text-ink"
             }`}
           >
             {score}
@@ -160,7 +160,7 @@ function GameList({ title, games }: { title: string; games: LocationGame[] }) {
             const scored = game.status === "COMPLETED" && game.home_score != null && game.away_score != null;
             return (
               <li key={game.id} className="border-b border-stone-100 px-4 py-3 last:border-b-0">
-                <p className="text-sm font-medium text-stone-950">
+                <p className="text-sm font-medium text-navy">
                   {game.home_team} vs {game.away_team}
                 </p>
                 <p className="text-xs text-stone-500">
@@ -349,9 +349,9 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
   }
 
   return (
-    <div className="min-h-full bg-stone-100">
+    <div className="min-h-full bg-bone">
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-        <Link href="/locations" className="text-sm font-medium text-emerald-800 underline-offset-4 hover:underline">
+        <Link href="/locations" className="text-sm font-medium text-navy underline-offset-4 hover:underline">
           Locations Guide
         </Link>
         {loading && !detail ? (
@@ -360,12 +360,12 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
             Loading complex
           </div>
         ) : null}
-        {error ? <p className="mt-4 text-sm text-stone-700">{error}. Confirm the API is running on port 8000.</p> : null}
+        {error ? <p className="mt-4 text-sm text-ink">{error}. Confirm the API is running on port 8000.</p> : null}
         {detail ? (
           <>
             <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h1 className="text-3xl font-semibold tracking-tight text-stone-950">{detail.venue_name}</h1>
+                <h1 className="text-3xl font-semibold tracking-tight text-navy">{detail.venue_name}</h1>
                 <p className="mt-1 text-sm text-stone-500">
                   {detail.city}, {detail.state}
                   <span className="text-stone-400"> · </span>
@@ -374,20 +374,20 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                   {detail.ratings_count} {detail.ratings_count === 1 ? "rating" : "ratings"}
                 </p>
                 {home && detail.drive_minutes != null ? (
-                  <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-stone-800">
-                    <Car className="size-4 text-emerald-800" />
+                  <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-ink">
+                    <Car className="size-4 text-navy" />
                     About {formatDrive(detail.drive_minutes)} from home
                   </p>
                 ) : null}
               </div>
               <div className="flex flex-wrap gap-2">
-                <a href={detail.links.directions} target="_blank" rel="noopener noreferrer" className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-800">
+                <a href={detail.links.directions} target="_blank" rel="noopener noreferrer" className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink">
                   Directions
                 </a>
-                <a href={detail.links.hotels} target="_blank" rel="noopener noreferrer" className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-800">
+                <a href={detail.links.hotels} target="_blank" rel="noopener noreferrer" className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink">
                   Hotels
                 </a>
-                <a href={detail.links.restaurants} target="_blank" rel="noopener noreferrer" className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-800">
+                <a href={detail.links.restaurants} target="_blank" rel="noopener noreferrer" className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink">
                   Restaurants
                 </a>
               </div>
@@ -395,7 +395,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
 
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
               <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm" aria-label="Scorecard">
-                <h2 className="text-lg font-semibold text-stone-950">Scorecard</h2>
+                <h2 className="text-lg font-semibold text-navy">Scorecard</h2>
                 <p className="mt-1 flex items-center gap-1 truncate text-sm text-stone-500" data-tip-summary>
                   <span className="truncate">
                     {detail.overall == null ? "No family ratings yet" : `${detail.overall.toFixed(1)} overall`}
@@ -405,7 +405,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                       : `${detail.recommendations.length} ${detail.recommendations.length === 1 ? "tip" : "tips"}`}
                   </span>
                   {detail.recommendations.length > 0 ? (
-                    <span className="inline-flex shrink-0 items-center gap-0.5 font-medium text-stone-700">
+                    <span className="inline-flex shrink-0 items-center gap-0.5 font-medium text-ink">
                       {(detail.recommendations.reduce((sum, tip) => sum + tip.rating, 0) / detail.recommendations.length).toFixed(1)}
                       <Star className="size-3.5 fill-amber-400 text-amber-500" />
                     </span>
@@ -424,7 +424,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                   void saveRating();
                 }}
               >
-                <h2 className="text-lg font-semibold text-stone-950">Rate this complex</h2>
+                <h2 className="text-lg font-semibold text-navy">Rate this complex</h2>
                 <p className="mt-1 text-sm text-stone-500">One rating for this browser. Saving again updates it.</p>
                 <div className="mt-4 space-y-3">
                   {CRITERIA.map((item) => (
@@ -451,7 +451,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                       value={comment}
                       onChange={(event) => setComment(event.target.value)}
                       rows={3}
-                      className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900"
+                      className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-navy"
                     />
                   </label>
                   <label htmlFor="rating-name" className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
@@ -459,16 +459,16 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                     <input id="rating-name" value={authorName} onChange={(event) => updateName(event.target.value)} placeholder="Optional" className={field} />
                   </label>
                 </div>
-                {ratingError ? <p className="mt-3 text-sm text-stone-700">{ratingError}</p> : null}
-                {ratingMessage ? <p className="mt-3 text-sm text-emerald-800">{ratingMessage}</p> : null}
-                <button type="submit" disabled={savingRating} className="mt-4 rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60">
+                {ratingError ? <p className="mt-3 text-sm text-ink">{ratingError}</p> : null}
+                {ratingMessage ? <p className="mt-3 text-sm text-navy">{ratingMessage}</p> : null}
+                <button type="submit" disabled={savingRating} className="mt-4 rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy disabled:opacity-60">
                   {savingRating ? "Saving" : "Save rating"}
                 </button>
               </form>
             </div>
 
             <section className="mt-6">
-              <h2 className="text-lg font-semibold text-stone-950">Family tips</h2>
+              <h2 className="text-lg font-semibold text-navy">Family tips</h2>
               <div className="mt-3 flex flex-wrap gap-1" role="tablist" aria-label="Tip categories">
                 {TABS.map((item) => {
                   const active = item.id === tab;
@@ -480,7 +480,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                       aria-selected={active}
                       onClick={() => setTab(item.id)}
                       className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
-                        active ? "border-stone-900 bg-stone-900 text-white" : "border-stone-200 bg-white text-stone-700 hover:border-stone-400"
+                        active ? "border-gold bg-gold text-navy" : "border-stone-200 bg-white text-ink hover:border-stone-400"
                       }`}
                     >
                       {item.label}
@@ -496,12 +496,12 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                     <li key={tip.id} className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <h3 className="text-base font-semibold text-stone-950">{tip.title}</h3>
+                          <h3 className="text-base font-semibold text-navy">{tip.title}</h3>
                           <div className="mt-1">
                             <StarRow value={tip.rating} />
                           </div>
                         </div>
-                        <a href={tip.map_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-emerald-800 underline-offset-4 hover:underline">
+                        <a href={tip.map_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-navy underline-offset-4 hover:underline">
                           Map
                           <ExternalLink className="size-3.5" />
                         </a>
@@ -515,7 +515,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                           ))}
                         </ul>
                       ) : null}
-                      <p className="mt-2 text-sm text-stone-800">{tip.review_text}</p>
+                      <p className="mt-2 text-sm text-ink">{tip.review_text}</p>
                       <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-stone-500">
                         <span>{tip.author_name}</span>
                         <span data-tip-added={tip.created_at}>{formatPosted(tip.created_at)}</span>
@@ -533,7 +533,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                   void saveTip();
                 }}
               >
-                <h3 className="text-lg font-semibold text-stone-950">Add a tip</h3>
+                <h3 className="text-lg font-semibold text-navy">Add a tip</h3>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <label htmlFor="tip-category" className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
                     Category
@@ -557,7 +557,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                   <legend className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Tags</legend>
                   <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {TIP_TAGS.map((tag) => (
-                      <label key={tag} className="flex items-center gap-2 text-sm text-stone-700">
+                      <label key={tag} className="flex items-center gap-2 text-sm text-ink">
                         <input type="checkbox" checked={tags.includes(tag)} onChange={() => toggleTag(tag)} />
                         {tag}
                       </label>
@@ -575,11 +575,11 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                     value={review}
                     onChange={(event) => setReview(event.target.value)}
                     rows={3}
-                    className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900"
+                    className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-navy"
                   />
                 </label>
-                {tipError ? <p className="mt-3 text-sm text-stone-700">{tipError}</p> : null}
-                <button type="submit" disabled={savingTip} className="mt-4 rounded-full bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60">
+                {tipError ? <p className="mt-3 text-sm text-ink">{tipError}</p> : null}
+                <button type="submit" disabled={savingTip} className="mt-4 rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy disabled:opacity-60">
                   {savingTip ? "Saving" : "Add tip"}
                 </button>
               </form>

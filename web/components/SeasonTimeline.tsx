@@ -40,14 +40,14 @@ export function SeasonTimeline({ games }: { games: Game[] }) {
                   <span className="absolute inset-x-1 top-1/2 h-px bg-stone-300" aria-hidden="true" />
                   {diff != null && diff !== 0 && (
                     <span
-                      className={`absolute left-1/2 w-2/5 max-w-3 -translate-x-1/2 rounded-sm ${diff > 0 ? "bg-emerald-700" : "bg-stone-400"}`}
+                      className={`absolute left-1/2 w-2/5 max-w-3 -translate-x-1/2 rounded-sm ${diff > 0 ? "bg-win" : "bg-stone-400"}`}
                       style={diff > 0 ? { height: magnitude, bottom: "50%" } : { height: magnitude, top: "50%" }}
                     />
                   )}
                   {diff === 0 && <span className="absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-stone-700 ring-2 ring-white" />}
                   {diff != null && diff !== 0 && (
                     <span
-                      className={`absolute left-1/2 -translate-x-1/2 text-[10px] font-semibold ${diff > 0 ? "text-emerald-800" : "text-stone-500"}`}
+                      className={`absolute left-1/2 -translate-x-1/2 text-[10px] font-semibold ${diff > 0 ? "text-win" : "text-stone-500"}`}
                       style={diff > 0 ? { bottom: `calc(50% + ${magnitude + 2}px)` } : { top: `calc(50% + ${magnitude + 2}px)` }}
                     >
                       {diff > 0 ? `+${diff}` : diff}
