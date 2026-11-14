@@ -33,14 +33,15 @@ async function presentMatchupImage(teamA: number, teamB: number, gender?: League
   }
 }
 
-function useSideClub(teamId: number | null): number | null {
+function useSideClub(teamId: number | null): string | null {
   const team = useQuery({
     queryKey: ["teams", "one", teamId],
     queryFn: () => fetchTeams({ ids: teamId == null ? [] : [teamId] }).then((rows) => rows[0] ?? null),
     enabled: teamId != null,
   });
+  if (team.data?.club_key) return team.data.club_key;
   const clubId = team.data?.club_id;
-  return clubId == null ? null : clubId;
+  return clubId == null ? null : String(clubId);
 }
 
 export default function MatchupScreen() {
@@ -89,8 +90,8 @@ export default function MatchupScreen() {
     }
   }
 
-  function openClub(id: number) {
-    setViewedClubId(String(id));
+  function openClub(clubKey: string) {
+    setViewedClubId(clubKey);
     router.push("/club");
   }
 

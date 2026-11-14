@@ -37,7 +37,7 @@ export default function ClubScreen() {
     enabled: teamId != null,
   });
   const teamClubId = activeTeam.data?.club_id;
-  const teamClubKey = teamClubId == null ? null : String(teamClubId);
+  const teamClubKey = activeTeam.data?.club_key || (teamClubId == null ? null : String(teamClubId));
   const resolvingTeamClub = viewedClubId == null && teamClubKey == null && teamId != null && activeTeam.isPending;
   const clubKey = viewedClubId ?? teamClubKey ?? (resolvingTeamClub ? null : savedClub);
   const club = useQuery({

@@ -10,6 +10,8 @@ export type Team = {
   tier?: string;
   gender?: "boys" | "girls";
   club_id?: number | null;
+  /** Public `/clubs/{club_key}` id. Split clubs are `{id}-{name-slug}`, not the numeric `club_id`. */
+  club_key?: string | null;
   logo_url?: string | null;
 };
 

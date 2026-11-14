@@ -573,6 +573,29 @@ def _names_by_club(session: Session, club_ids: set[int]) -> dict[int, set[str]]:
     return found
 
 
+def public_club_keys(session: Session, teams: list[ScheduleTeam]) -> dict[int, str]:
+    """Public `/clubs/{club_key}` id for each squad that has a club.
+
+    One team name keeps the numeric id. Two or more names use `{id}-{slug}`,
+    the same key search returns. The bare id of a split club is not a page.
+    """
+
+    club_ids = {int(team.club_id) for team in teams if team.id is not None and team.club_id is not None}
+    names = _names_by_club(session, club_ids)
+    keys: dict[int, str] = {}
+    for team in teams:
+        if team.id is None or team.club_id is None:
+            continue
+        club_id = int(team.club_id)
+        grouped = names.get(club_id, set())
+        team_name = team.name or ""
+        if len(grouped) >= 2 and name_key(team_name) in grouped:
+            keys[int(team.id)] = f"{club_id}-{name_slug(team_name)}"
+        else:
+            keys[int(team.id)] = str(club_id)
+    return keys
+
+
 def _expand_clubs(session: Session, clubs: list[Club]) -> list[ClubListItemOut]:
     """One list row per team name. A single name keeps the club's own name and numeric id."""
 
