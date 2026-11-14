@@ -5,8 +5,8 @@ import { useRef, useState, type ReactNode } from "react";
 import { Modal, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Card, Chip, Crest, EdgeMeter, GoldButton, Hit, Loading, Notice, ResultBadge, Segmented } from "@/components/ui";
-import { apiBaseUrl, fetchDashboard, fetchHeadToHead, fetchTeams } from "@/lib/api";
+import { Card, Chip, Crest, EdgeMeter, GoldButton, Hit, Loading, Notice, ResultBadge, SavedDataNote, Segmented } from "@/components/ui";
+import { fetchDashboard, fetchHeadToHead, fetchTeams, websiteOrigin } from "@/lib/api";
 import { matchupSearch } from "@/lib/formatShareText";
 import type { LeagueGender } from "@/lib/leagues";
 import { shareText } from "@/lib/maps";
@@ -15,11 +15,6 @@ import { useFavorites } from "@/store/favorites";
 import { useSession } from "@/store/session";
 import { colors, resultColor } from "@/theme";
 import type { CommonGame, CommonOpponent, CountRecord, DirectMatch, FormGame, SplitRecord, TeamTape } from "@/lib/types";
-
-/** The share PNG is served by the website. API bases end in `/backend`. */
-function websiteOrigin(): string {
-  return apiBaseUrl().replace(/\/backend$/, "");
-}
 
 function isPng(bytes: Uint8Array): boolean {
   return bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
@@ -110,9 +105,10 @@ export default function MatchupScreen() {
         )}
       </View>
       <View style={{ padding: 16, gap: 12 }}>
+        <SavedDataNote query={report} />
         {teamA == null || teamB == null || teamA === teamB ? <Notice title="Choose two teams" body="The matchup opens on your default team and its next opponent." /> : null}
         {report.isPending && teamA != null && teamB != null && teamA !== teamB ? <Loading /> : null}
-        {report.isError ? <Notice title="Matchup unavailable" body="Those teams need to share a gender." action="Try again" onAction={() => void report.refetch()} /> : null}
+        {report.isError && !report.data ? <Notice title="Matchup unavailable" body="Those teams need to share a gender." action="Try again" onAction={() => void report.refetch()} /> : null}
         {report.data ? (
           <>
             <Segmented

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { FlatList, RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Card, Crest, GoldButton, Hit, Loading, Notice, OutlineButton, ResultBadge } from "@/components/ui";
+import { Card, Crest, GoldButton, Hit, Loading, Notice, OutlineButton, ResultBadge, SavedDataNote } from "@/components/ui";
 import { fetchDashboard } from "@/lib/api";
 import { formatKickoff } from "@/lib/format";
 import { openMaps } from "@/lib/maps";
@@ -29,6 +29,7 @@ export default function HomeScreen() {
 
   const club = dashboard.data?.club ?? null;
   const teams = dashboard.data?.teams ?? [];
+  const noFavorites = teamIds.length === 0 && !clubId;
   const lead = teams[0];
   const cardWidth = Math.min(width - 72, 420);
   const last = (club?.past_10_days ?? []).reduce(
@@ -98,12 +99,13 @@ export default function HomeScreen() {
       </View>
 
       <View style={{ padding: 20, gap: 16 }}>
-        {dashboard.isPending ? <Loading /> : null}
-        {dashboard.isError ? (
+        {noFavorites ? null : <SavedDataNote query={dashboard} />}
+        {dashboard.isPending && !noFavorites ? <Loading /> : null}
+        {dashboard.isError && !dashboard.data && !noFavorites ? (
           <Notice title="Schedule unavailable" body="Pull to refresh. The home screen reads GET /mobile/dashboard." action="Try again" onAction={() => void dashboard.refetch()} />
         ) : null}
-        {!dashboard.isPending && teams.length === 0 && !club ? (
-          <Notice title="No favorites yet" body="Add up to 4 teams and 1 club. They stay on this phone." action="Choose favorites" onAction={() => router.push("/favorites")} />
+        {noFavorites || (dashboard.data && teams.length === 0 && !club) ? (
+          <Notice title="Pick your club and teams" body="Add up to 4 teams and 1 club. They stay on this phone." action="Choose favorites" onAction={() => router.push("/favorites")} />
         ) : null}
 
         {teams.length > 0 ? (

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Modal, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Chip, Crest, GoldButton, Hit, Loading, Notice, OutlineButton, ResultBadge, Segmented } from "@/components/ui";
+import { Chip, Crest, GoldButton, Hit, Loading, Notice, OutlineButton, ResultBadge, SavedDataNote, Segmented } from "@/components/ui";
 import { fetchSchedule, fetchTeams } from "@/lib/api";
 import { formatKickoff } from "@/lib/format";
 import { CONFERENCES, TIERS, ageGroupsFor, type LeagueGender } from "@/lib/leagues";
@@ -114,6 +114,7 @@ export default function SchedulesScreen() {
           ) : null}
         </View>
 
+        <SavedDataNote query={schedule} style={{ paddingHorizontal: 16, paddingTop: 12 }} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, padding: 16 }}>
           {chips.map((item) => (
             <Chip key={item.id} label={`${item.age_group} ${item.name}`} selected={item.id === teamId} onPress={() => { setActive(item.id); setShowAll(false); }} />
@@ -137,7 +138,7 @@ export default function SchedulesScreen() {
           />
           {teamId == null ? <Notice title="No team yet" body="Add a favorite, or browse the league." action="Browse" onAction={() => setBrowsing(true)} /> : null}
           {schedule.isPending && teamId != null ? <Loading /> : null}
-          {schedule.isError ? <Notice title="Could not load the schedule" body="Pull to refresh." action="Try again" onAction={() => void schedule.refetch()} /> : null}
+          {schedule.isError && !schedule.data ? <Notice title="Could not load the schedule" body="Pull to refresh." action="Try again" onAction={() => void schedule.refetch()} /> : null}
 
           {next ? (
             <View style={{ backgroundColor: colors.white, borderRadius: 16, borderWidth: 1, borderColor: colors.line, padding: 16, gap: 4 }}>

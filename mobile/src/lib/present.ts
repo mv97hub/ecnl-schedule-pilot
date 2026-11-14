@@ -68,6 +68,17 @@ export function countdown(iso: string, now = Date.now()): string {
   return `${mins}m`;
 }
 
+/** "2 hours ago" for the saved-data line. */
+export function timeAgo(then: number, now = Date.now()): string {
+  const minutes = Math.floor(Math.max(now - then, 0) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return minutes === 1 ? "1 minute ago" : `${minutes} minutes ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? "1 day ago" : `${days} days ago`;
+}
+
 export function teamScoreline(game: {
   side: "home" | "away";
   home_score: number | null;

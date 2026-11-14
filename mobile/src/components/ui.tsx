@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from "react";
-import { ActivityIndicator, Image, Pressable, Text, View, type StyleProp, type ViewStyle } from "react-native";
+import { ActivityIndicator, Image, Linking, Pressable, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 
+import { websiteOrigin } from "@/lib/api";
+import { timeAgo } from "@/lib/present";
 import { colors, resultColor } from "@/theme";
 
 export function Crest({ uri, name, size = 40 }: { uri?: string | null; name: string; size?: number }) {
@@ -140,6 +142,32 @@ export function Notice({ title, body, action, onAction }: { title: string; body:
       ) : null}
     </Card>
   );
+}
+
+function openSitePage(path: string): void {
+  Linking.openURL(`${websiteOrigin()}${path}`).catch(() => undefined);
+}
+
+export function LegalLinks() {
+  return (
+    <View style={{ flexDirection: "row", gap: 24 }}>
+      <Hit label="Privacy" onPress={() => openSitePage("/privacy")}>
+        <Text style={{ color: colors.navy, fontSize: 14, fontWeight: "700" }}>Privacy</Text>
+      </Hit>
+      <Hit label="Support" onPress={() => openSitePage("/support")}>
+        <Text style={{ color: colors.navy, fontSize: 14, fontWeight: "700" }}>Support</Text>
+      </Hit>
+    </View>
+  );
+}
+
+type SavedDataSource = { data: unknown; isError: boolean; isPaused: boolean; dataUpdatedAt: number };
+
+/** One line for a screen that is showing its cached copy: the last refresh failed, or the request is paused offline. */
+export function SavedDataNote({ query, style }: { query: SavedDataSource; style?: StyleProp<TextStyle> }) {
+  if (query.data == null || !(query.isError || query.isPaused)) return null;
+  const updated = query.dataUpdatedAt > 0 ? ` · updated ${timeAgo(query.dataUpdatedAt)}` : "";
+  return <Text style={[{ color: colors.secondary, fontSize: 13 }, style]}>Showing saved data{updated}</Text>;
 }
 
 export function ProjectionBar({ points, expected }: { points: number; expected: number }) {

@@ -35,6 +35,11 @@ export function apiBaseUrl(): string {
   return FALLBACK_API;
 }
 
+/** The website serves the share PNG and the legal pages. API bases end in `/backend`. */
+export function websiteOrigin(): string {
+  return apiBaseUrl().replace(/\/backend$/, "");
+}
+
 /**
  * v1 sends no profile key and no device identifier.
  * Favorites stay on the device. Do not add X-Profile-Key here.

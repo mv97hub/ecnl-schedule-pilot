@@ -5,7 +5,7 @@ import { useState, type ReactNode } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Card, Crest, Hit, Loading, Notice, ResultBadge } from "@/components/ui";
+import { Card, Crest, Hit, Loading, Notice, ResultBadge, SavedDataNote } from "@/components/ui";
 import { fetchClub, fetchClubs } from "@/lib/api";
 import { openMaps } from "@/lib/maps";
 import { ordinal, signed, wdl } from "@/lib/present";
@@ -78,9 +78,10 @@ export default function ClubScreen() {
         ) : null}
       </View>
 
+      <SavedDataNote query={club} style={{ paddingHorizontal: 20, paddingTop: 12 }} />
       {!clubKey ? <View style={{ padding: 20 }}><Notice title="No club yet" body="Pick a favorite club, or search for any club. Ratings and tips are not in this app." action="Edit favorites" onAction={() => router.push("/favorites")} /></View> : null}
       {club.isPending && clubKey ? <Loading /> : null}
-      {club.isError ? <View style={{ padding: 20 }}><Notice title="Club unavailable" body="That club was not found." action="Try again" onAction={() => void club.refetch()} /></View> : null}
+      {club.isError && !club.data ? <View style={{ padding: 20 }}><Notice title="Club unavailable" body="That club was not found." action="Try again" onAction={() => void club.refetch()} /></View> : null}
       {club.data ? <ClubBody key={String(club.data.id)} detail={club.data} onSquad={openSquad} /> : null}
     </ScrollView>
   );
