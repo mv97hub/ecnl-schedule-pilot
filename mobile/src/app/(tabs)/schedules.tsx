@@ -86,6 +86,7 @@ export default function SchedulesScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bone }}>
       <ScrollView
+        contentInsetAdjustmentBehavior="never"
         refreshControl={
           <RefreshControl
             refreshing={schedule.isRefetching}
