@@ -22,7 +22,7 @@ export default function Onboarding() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bone }}>
       <ScrollView contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 40 }}>
-        <Text style={{ color: colors.navy, fontSize: 34, fontWeight: "800" }}>Soccer Away Day</Text>
+        <Text style={{ color: colors.navy, fontSize: 34, fontWeight: "800" }}>Premier Gameday HQ</Text>
         <View>
           <Text style={{ color: colors.secondary, fontSize: 16, lineHeight: 22 }}>{APP_DESCRIPTION}</Text>
           {step === "club" ? <LegalLinks /> : null}

@@ -93,7 +93,7 @@ export default function TablesScreen() {
     const rows = projected.data?.rows ?? [];
     if (!chosen || rows.length === 0) return;
     const lines = [
-      "Soccer Away Day",
+      "Premier Gameday HQ",
       `Projected ${chosen.tier} ${chosen.gender} ${chosen.age_group} ${chosen.conference}`,
       ...rows.map((row) => `${row.rank}. ${row.team_name} — ${ppg(row.predicted_points)} projected, ${row.points} now`),
       "Expected points are max(0, 3 − opponent PPG) for each remaining game.",
