@@ -82,6 +82,20 @@ def has_published_trailing_dash(raw: str) -> bool:
     return " ".join(text.split()).endswith(" -")
 
 
+def stored_team_name(raw: str) -> str:
+    """Spelling written on the team row.
+
+    A published trailing " -" is replaced by the standardized name. A dash in
+    the middle of a name stays, and a name without that trailing dash is
+    returned unchanged so it does not become a second club.
+    """
+
+    if not has_published_trailing_dash(raw):
+        return raw
+    cleaned = standardize_team_name(raw)
+    return cleaned or str(raw).strip()
+
+
 def looks_like_showcase(*parts: str) -> bool:
     return any(_SHOWCASE.search(part or "") for part in parts)
 

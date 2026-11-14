@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from sqlmodel import SQLModel
 
 from app.database import engine, ensure_result_columns
-from app.ingestion.normalizer import counts_as_conference
+from app.ingestion.normalizer import counts_as_conference, stored_team_name
 from app.models import Base, ScheduleGame as Game, ScheduleTeam as Team
 from app.standings import replace_ecnl_standings
 
@@ -82,7 +82,7 @@ def seed() -> dict[str, int]:
     with Session(engine) as session:
         teams = {
             row["source_id"]: Team(
-                name=row["name"],
+                name=stored_team_name(row["name"]),
                 age_group=row["age_group"],
                 tier=row.get("tier") or "ECNL",
                 conference=row["conference"],

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from sqlmodel import SQLModel
 
 from app.database import engine, ensure_capture_columns, ensure_result_columns, ensure_source_columns
-from app.ingestion.normalizer import counts_as_conference, has_published_trailing_dash, standardize_team_name
+from app.ingestion.normalizer import counts_as_conference, has_published_trailing_dash, standardize_team_name, stored_team_name
 from app.models import Base, Club, DataRefresh, ScheduleGame, ScheduleTeam
 from app.standings import replace_ecnl_standings
 from app.team_repair import (
@@ -23,6 +23,7 @@ from app.team_repair import (
     club_id_for_team_name,
     club_ids_by_normalized_name,
     merge_trailing_dash_teams,
+    rewrite_trailing_dash_names,
 )
 
 _STATUSES = {"SCHEDULED", "COMPLETED", "POSTPONED", "CANCELLED"}
@@ -217,11 +218,16 @@ def _find_team(
 
 
 def _published_name(stored: str, incoming: str) -> str:
-    """Keep a stored trailing dash when the feed only differs by that dash."""
+    """Pick the spelling for this pass.
+
+    A stored trailing dash stays until duplicate squads merge. The refresh
+    then rewrites that row to the standardized name. Any other incoming name
+    is stored with the trailing dash removed. A dash in the middle stays.
+    """
 
     if has_published_trailing_dash(stored) and standardize_team_name(stored) == standardize_team_name(incoming):
         return stored
-    return incoming
+    return stored_team_name(incoming)
 
 
 def _assign_team(team: ScheduleTeam, row: dict, clubs_by_name: dict[str, list[int]] | None = None) -> bool:
@@ -504,12 +510,30 @@ def _side_team(
     return None
 
 
+def _payload_source_ids(payload: dict) -> set[int]:
+    found: set[int] = set()
+    for row in payload.get("teams") or []:
+        if row.get("source_id") is None:
+            continue
+        found.add(int(row["source_id"]))
+    return found
+
+
+def _rewrite_refreshed_names(session: Session, source_ids: set[int]) -> None:
+    for item in rewrite_trailing_dash_names(session, source_ids):
+        print(
+            f"Trailing-dash name team={item.team_id} {item.old_name} -> {item.new_name}",
+            flush=True,
+        )
+
+
 def upsert_published(payload: dict, *, refresh_standings: bool = True, full_pass: bool = False) -> RefreshCounts:
     """Insert or update published teams, games, and scores. Does not drop tables."""
 
     ensure_refresh_tables()
     teams_written = games_written = scores_written = 0
     examined = skipped_old = 0
+    refreshed_ids = _payload_source_ids(payload)
     print("Teams started", flush=True)
     with Session(engine) as session:
         stored_teams = list(session.scalars(select(ScheduleTeam)).all())
@@ -615,6 +639,7 @@ def upsert_published(payload: dict, *, refresh_standings: bool = True, full_pass
                     f"Trailing-dash merge kept={item.kept_id} {item.kept_name} dropped={item.dropped_id} {item.dropped_name} games_removed={item.games_removed}",
                     flush=True,
                 )
+            _rewrite_refreshed_names(session, refreshed_ids)
             for item in attach_missing_club_ids(session):
                 print(
                     f"Club link team={item.team_id} {item.team_name} club={item.club_id}",
@@ -624,4 +649,8 @@ def upsert_published(payload: dict, *, refresh_standings: bool = True, full_pass
                 print(f"Standings started {tier}", flush=True)
                 replace_ecnl_standings(session, tier)
                 print(f"Standings finished {tier}", flush=True)
+    else:
+        with Session(engine) as session:
+            _rewrite_refreshed_names(session, refreshed_ids)
+            session.commit()
     return RefreshCounts(teams=teams_written, games=games_written, scores=scores_written)
