@@ -42,7 +42,7 @@ export default function RootLayout() {
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="onboarding" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="favorites" options={{ presentation: "modal", title: "Favorites" }} />
+          <Stack.Screen name="favorites" options={{ presentation: "modal", title: "Preferences" }} />
         </Stack>
       </PersistQueryClientProvider>
     </GestureHandlerRootView>

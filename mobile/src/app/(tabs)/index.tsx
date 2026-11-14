@@ -4,7 +4,7 @@ import { useState } from "react";
 import { FlatList, RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Card, Crest, GoldButton, Hit, Loading, Notice, OutlineButton, ResultBadge, SavedDataNote } from "@/components/ui";
+import { Card, Crest, GoldButton, Hit, Loading, Notice, OutlineButton, PreferencesButton, ResultBadge, SavedDataNote } from "@/components/ui";
 import { fetchDashboard } from "@/lib/api";
 import { formatKickoff } from "@/lib/format";
 import { openMaps } from "@/lib/maps";
@@ -60,9 +60,7 @@ export default function HomeScreen() {
       <View style={{ backgroundColor: colors.navy, paddingTop: insets.top + 16, paddingHorizontal: 20, paddingBottom: 22, gap: 14 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Text style={{ color: colors.gold, fontWeight: "800", letterSpacing: 0.6 }}>SOCCER AWAY DAY</Text>
-          <Hit label="Edit favorites" onPress={() => router.push("/favorites")}>
-            <Text style={{ color: colors.white, fontWeight: "700" }}>Edit</Text>
-          </Hit>
+          <PreferencesButton />
         </View>
         {club ? (
           <View style={{ flexDirection: "row", gap: 14, alignItems: "center" }}>

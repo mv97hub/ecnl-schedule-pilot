@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { File, Paths } from "expo-file-system";
+import { useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import { useRef, useState, type ReactNode } from "react";
 import { Modal, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Card, Chip, Crest, EdgeMeter, GoldButton, Hit, Loading, Notice, ResultBadge, SavedDataNote, Segmented } from "@/components/ui";
+import { Card, Chip, Crest, EdgeMeter, GoldButton, Hit, Loading, Notice, PreferencesButton, ResultBadge, SavedDataNote, Segmented } from "@/components/ui";
 import { fetchDashboard, fetchHeadToHead, fetchTeams, websiteOrigin } from "@/lib/api";
 import { matchupSearch } from "@/lib/formatShareText";
 import type { LeagueGender } from "@/lib/leagues";
@@ -32,13 +33,25 @@ async function presentMatchupImage(teamA: number, teamB: number, gender?: League
   }
 }
 
+function useSideClub(teamId: number | null): number | null {
+  const team = useQuery({
+    queryKey: ["teams", "one", teamId],
+    queryFn: () => fetchTeams({ ids: teamId == null ? [] : [teamId] }).then((rows) => rows[0] ?? null),
+    enabled: teamId != null,
+  });
+  const clubId = team.data?.club_id;
+  return clubId == null ? null : clubId;
+}
+
 export default function MatchupScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const favorites = useFavorites((state) => state.favoriteTeamIds);
   const clubId = useFavorites((state) => state.favoriteClubId);
   const matchupA = useSession((state) => state.matchupA);
   const matchupB = useSession((state) => state.matchupB);
   const setMatchup = useSession((state) => state.setMatchup);
+  const setViewedClubId = useSession((state) => state.setViewedClubId);
   const [slot, setSlot] = useState<"a" | "b" | null>(null);
   const [view, setView] = useState<"stats" | "direct" | "common">("stats");
   const sharing = useRef(false);
@@ -49,6 +62,8 @@ export default function MatchupScreen() {
   const teamA = matchupA ?? favorites[0] ?? null;
   const suggestedB = dashboard.data?.teams.find((team) => team.id === teamA)?.next_game?.opponent.id ?? null;
   const teamB = matchupB ?? suggestedB;
+  const clubA = useSideClub(teamA);
+  const clubB = useSideClub(teamB);
   const report = useQuery({
     queryKey: ["h2h", teamA, teamB],
     queryFn: () => fetchHeadToHead(teamA!, teamB!),
@@ -74,6 +89,11 @@ export default function MatchupScreen() {
     }
   }
 
+  function openClub(id: number) {
+    setViewedClubId(String(id));
+    router.push("/club");
+  }
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bone }}
@@ -81,16 +101,19 @@ export default function MatchupScreen() {
       refreshControl={<RefreshControl refreshing={report.isRefetching} tintColor={colors.white} onRefresh={() => void report.refetch()} />}
     >
       <View style={{ backgroundColor: colors.navy, paddingTop: insets.top + 16, paddingHorizontal: 20, paddingBottom: 20, gap: 14 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Text style={{ color: colors.gold, fontWeight: "800" }}>MATCHUP</Text>
-          <Hit label="Share matchup" onPress={() => void share()}>
-            <Text style={{ color: colors.white, fontWeight: "700" }}>Share</Text>
-          </Hit>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <PreferencesButton />
+            <Hit label="Share matchup" onPress={() => void share()}>
+              <Text style={{ color: colors.white, fontWeight: "700" }}>Share</Text>
+            </Hit>
+          </View>
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Slot name={left?.name ?? "Your team"} logo={left?.logo_url} onPress={() => setSlot("a")} />
-          <Text style={{ color: colors.white, fontWeight: "800" }}>vs</Text>
-          <Slot name={right?.name ?? "Opponent"} logo={right?.logo_url} onPress={() => setSlot("b")} />
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+          <Slot name={left?.name ?? "Your team"} logo={left?.logo_url} onPress={() => setSlot("a")} onClub={clubA == null ? undefined : () => openClub(clubA)} />
+          <Text style={{ color: colors.white, fontWeight: "800", marginTop: 22 }}>vs</Text>
+          <Slot name={right?.name ?? "Opponent"} logo={right?.logo_url} onPress={() => setSlot("b")} onClub={clubB == null ? undefined : () => openClub(clubB)} />
         </View>
         {report.data && left && right ? (
           <View style={{ gap: 8 }}>
@@ -144,12 +167,19 @@ export default function MatchupScreen() {
   );
 }
 
-function Slot({ name, logo, onPress }: { name: string; logo?: string | null; onPress: () => void }) {
+function Slot({ name, logo, onPress, onClub }: { name: string; logo?: string | null; onPress: () => void; onClub?: () => void }) {
   return (
-    <Hit label={`Change ${name}`} onPress={onPress} style={{ flex: 1, alignItems: "center", gap: 6 }}>
-      <Crest uri={logo} name={name} size={56} />
-      <Text style={{ color: colors.white, fontWeight: "800", textAlign: "center" }} numberOfLines={2}>{name}</Text>
-    </Hit>
+    <View style={{ flex: 1, alignItems: "center" }}>
+      <Hit label={`Change ${name}`} onPress={onPress} style={{ alignSelf: "stretch", alignItems: "center", gap: 6 }}>
+        <Crest uri={logo} name={name} size={56} />
+        <Text style={{ color: colors.white, fontWeight: "800", textAlign: "center" }} numberOfLines={2}>{name}</Text>
+      </Hit>
+      {onClub ? (
+        <Hit label={`Open ${name} club`} onPress={onClub} style={{ alignSelf: "stretch", alignItems: "center" }}>
+          <Text style={{ color: colors.gold, fontWeight: "800" }}>Club</Text>
+        </Hit>
+      ) : null}
+    </View>
   );
 }
 

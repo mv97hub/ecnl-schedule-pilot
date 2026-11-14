@@ -5,8 +5,8 @@ import { useState, type ReactNode } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Card, Crest, Hit, Loading, Notice, ResultBadge, SavedDataNote } from "@/components/ui";
-import { fetchClub, fetchClubs } from "@/lib/api";
+import { Card, Crest, Hit, Loading, Notice, PreferencesButton, ResultBadge, SavedDataNote } from "@/components/ui";
+import { fetchClub, fetchClubs, fetchTeams } from "@/lib/api";
 import { openMaps } from "@/lib/maps";
 import { ordinal, signed, wdl } from "@/lib/present";
 import { useFavorites } from "@/store/favorites";
@@ -14,15 +14,32 @@ import { useSession } from "@/store/session";
 import { colors } from "@/theme";
 import type { ClubDetail, ClubSquad } from "@/lib/types";
 
+function sameClub(left: string | number | null | undefined, right: string | number | null | undefined): boolean {
+  if (left == null || right == null || left === "" || right === "") return false;
+  return String(left) === String(right);
+}
+
 export default function ClubScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const savedClub = useFavorites((state) => state.favoriteClubId);
+  const favoriteTeamIds = useFavorites((state) => state.favoriteTeamIds);
+  const activeTeamId = useSession((state) => state.activeTeamId);
+  const viewedClubId = useSession((state) => state.viewedClubId);
+  const setViewedClubId = useSession((state) => state.setViewedClubId);
   const setActive = useSession((state) => state.setActiveTeamId);
-  const [override, setOverride] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const clubQuery = draft.trim();
-  const clubKey = override ?? savedClub;
+  const teamId = activeTeamId ?? favoriteTeamIds[0] ?? null;
+  const activeTeam = useQuery({
+    queryKey: ["teams", "one", teamId],
+    queryFn: () => fetchTeams({ ids: teamId == null ? [] : [teamId] }).then((rows) => rows[0] ?? null),
+    enabled: teamId != null,
+  });
+  const teamClubId = activeTeam.data?.club_id;
+  const teamClubKey = teamClubId == null ? null : String(teamClubId);
+  const resolvingTeamClub = viewedClubId == null && teamClubKey == null && teamId != null && activeTeam.isPending;
+  const clubKey = viewedClubId ?? teamClubKey ?? (resolvingTeamClub ? null : savedClub);
   const club = useQuery({
     queryKey: ["club", clubKey],
     queryFn: () => fetchClub(clubKey!),
@@ -46,13 +63,16 @@ export default function ClubScreen() {
       refreshControl={<RefreshControl refreshing={club.isRefetching} tintColor={colors.navy} onRefresh={() => void club.refetch()} />}
     >
       <View style={{ paddingTop: insets.top + 12, paddingHorizontal: 20, gap: 8 }}>
-        <TextInput
-          value={draft}
-          onChangeText={setDraft}
-          placeholder="Search any club"
-          placeholderTextColor={colors.secondary}
-          style={{ minHeight: 44, borderRadius: 12, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 12, color: colors.ink }}
-        />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <TextInput
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Search any club"
+            placeholderTextColor={colors.secondary}
+            style={{ flex: 1, minHeight: 44, borderRadius: 12, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 12, color: colors.ink }}
+          />
+          <PreferencesButton color={colors.navy} />
+        </View>
         {clubQuery.length >= 2 ? (
           <View style={{ gap: 4 }}>
             {search.isPending ? <Text style={{ color: colors.secondary }}>Searching clubs…</Text> : null}
@@ -65,7 +85,7 @@ export default function ClubScreen() {
                 key={String(item.id)}
                 label={item.name}
                 onPress={() => {
-                  setOverride(String(item.id));
+                  setViewedClubId(String(item.id));
                   setDraft("");
                 }}
                 style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
@@ -79,15 +99,22 @@ export default function ClubScreen() {
       </View>
 
       <SavedDataNote query={club} style={{ paddingHorizontal: 20, paddingTop: 12 }} />
-      {!clubKey ? <View style={{ padding: 20 }}><Notice title="No club yet" body="Pick a favorite club, or search for any club. Ratings and tips are not in this app." action="Edit favorites" onAction={() => router.push("/favorites")} /></View> : null}
-      {club.isPending && clubKey ? <Loading /> : null}
+      {!clubKey && !resolvingTeamClub ? <View style={{ padding: 20 }}><Notice title="No club yet" body="Pick a favorite club, or search for any club. Ratings and tips are not in this app." action="Edit favorites" onAction={() => router.push("/favorites")} /></View> : null}
+      {resolvingTeamClub || (club.isPending && clubKey) ? <Loading /> : null}
       {club.isError && !club.data ? <View style={{ padding: 20 }}><Notice title="Club unavailable" body="That club was not found." action="Try again" onAction={() => void club.refetch()} /></View> : null}
-      {club.data ? <ClubBody key={String(club.data.id)} detail={club.data} onSquad={openSquad} /> : null}
+      {club.data ? (
+        <ClubBody
+          key={String(club.data.id)}
+          detail={club.data}
+          onSquad={openSquad}
+          onYourClub={savedClub && !sameClub(club.data.id, savedClub) ? () => setViewedClubId(savedClub) : undefined}
+        />
+      ) : null}
     </ScrollView>
   );
 }
 
-function ClubBody({ detail, onSquad }: { detail: ClubDetail; onSquad: (squad: ClubSquad) => void }) {
+function ClubBody({ detail, onSquad, onYourClub }: { detail: ClubDetail; onSquad: (squad: ClubSquad) => void; onYourClub?: () => void }) {
   const [open, setOpen] = useState({ teams: false, past: false, next: false, fields: false });
   function toggle(key: keyof typeof open) {
     setOpen((current) => ({ ...current, [key]: !current[key] }));
@@ -97,6 +124,11 @@ function ClubBody({ detail, onSquad }: { detail: ClubDetail; onSquad: (squad: Cl
       <View style={{ alignItems: "center", gap: 8 }}>
         <Crest uri={detail.logo_url} name={detail.name} size={84} />
         <Text style={{ color: colors.navy, fontSize: 28, fontWeight: "800", textAlign: "center" }}>{detail.name}</Text>
+        {onYourClub ? (
+          <Hit label="Your club" onPress={onYourClub}>
+            <Text style={{ color: colors.navy, fontWeight: "800", fontSize: 16 }}>Your club</Text>
+          </Hit>
+        ) : null}
         <Text style={{ color: colors.secondary, textAlign: "center" }}>{detail.summary}</Text>
       </View>
       <View style={{ flexDirection: "row", gap: 8 }}>
