@@ -1,8 +1,14 @@
-"""Merge teams that are the same squad stored with and without a trailing dash.
+"""Repairs that run at the end of a schedule refresh.
 
-The published name, such as ``Florida Kraze Krush -``, is the one that stays.
-Games move onto that team. Rows that then share a match key are removed, and
-the extra team is deleted. Standings are rebuilt by the caller.
+``merge_trailing_dash_teams`` folds a plain-name twin into the squad whose
+stored name already has the published dash. The published name, such as
+``Florida Kraze Krush -``, is the one that stays. Games move onto that team.
+Rows that then share a match key are removed, and the extra team is deleted.
+Standings are rebuilt by the caller.
+
+``attach_missing_club_ids`` fills ``club_id`` when it is null and the team's
+normalized name matches exactly one club. The displayed team name stays, and
+the crest stays on the club.
 """
 
 from __future__ import annotations
@@ -16,6 +22,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.ingestion.normalizer import build_match_key, has_published_trailing_dash, standardize_team_name
 from app.models import (
+    Club,
     CoachingStaff,
     ConferenceStanding,
     GameWeather,
@@ -36,6 +43,13 @@ _TEAM_LINKS = (ConferenceStanding, TeamEvent, CoachingStaff, Player, TeamRating,
 
 
 @dataclass(frozen=True)
+class LinkedClub:
+    team_id: int
+    team_name: str
+    club_id: int
+
+
+@dataclass(frozen=True)
 class MergedTeam:
     kept_id: int
     kept_name: str
@@ -46,6 +60,56 @@ class MergedTeam:
     tier: str
     gender: str
     games_removed: int
+
+
+def normalized_club_name(name: str) -> str:
+    """Same key used to treat a trailing published dash as one squad name."""
+
+    return standardize_team_name(name).casefold()
+
+
+def club_ids_by_normalized_name(clubs: list[Club]) -> dict[str, list[int]]:
+    grouped: dict[str, list[int]] = {}
+    for club in clubs:
+        key = normalized_club_name(club.name)
+        if not key or club.id is None:
+            continue
+        grouped.setdefault(key, []).append(int(club.id))
+    return grouped
+
+
+def club_id_for_team_name(name: str, clubs_by_name: dict[str, list[int]]) -> int | None:
+    """Return the club id when exactly one club shares this normalized name."""
+
+    matches = clubs_by_name.get(normalized_club_name(name), [])
+    if len(matches) != 1:
+        return None
+    return matches[0]
+
+
+def attach_missing_club_ids(session: Session) -> list[LinkedClub]:
+    """Set club_id on teams that have none when one club matches the normalized name.
+
+    A trailing published dash matches the club without that dash, so
+    ``Florida Kraze Krush -`` attaches to ``Florida Kraze Krush``. Two clubs
+    with the same normalized name are left alone. The team name is not
+    changed, and the logo URL stays on the club. Nothing is committed.
+    """
+
+    clubs_by_name = club_ids_by_normalized_name(list(session.scalars(select(Club)).all()))
+    linked: list[LinkedClub] = []
+    teams = session.scalars(select(ScheduleTeam).where(ScheduleTeam.club_id.is_(None))).all()
+    for team in teams:
+        if team.id is None:
+            continue
+        club_id = club_id_for_team_name(team.name, clubs_by_name)
+        if club_id is None:
+            continue
+        team.club_id = club_id
+        linked.append(LinkedClub(team_id=int(team.id), team_name=team.name, club_id=club_id))
+    if linked:
+        session.flush()
+    return linked
 
 
 def _division(team: ScheduleTeam) -> tuple[str, str, str, str]:

@@ -255,21 +255,27 @@ class TrailingDashRepairTests(unittest.TestCase):
             order.append("merge")
             return []
 
+        def link(_session):
+            order.append("link")
+            return []
+
         def replace(_session, tier="ECNL"):
             order.append(tier)
             return 0
 
         with (
             patch("app.refresh.merge_trailing_dash_teams", side_effect=merge),
+            patch("app.refresh.attach_missing_club_ids", side_effect=link),
             patch("app.refresh.replace_ecnl_standings", side_effect=replace),
             redirect_stdout(io.StringIO()),
         ):
             upsert_published({"teams": [], "games": []}, refresh_standings=True)
-        self.assertEqual(order, ["merge", "ECNL", "ECNL-RL"])
+        self.assertEqual(order, ["merge", "link", "ECNL", "ECNL-RL"])
 
         order.clear()
         with (
             patch("app.refresh.merge_trailing_dash_teams", side_effect=merge),
+            patch("app.refresh.attach_missing_club_ids", side_effect=link),
             patch("app.refresh.replace_ecnl_standings", side_effect=replace),
             redirect_stdout(io.StringIO()),
         ):

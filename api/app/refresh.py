@@ -15,10 +15,15 @@ from sqlalchemy.orm import Session
 from sqlmodel import SQLModel
 
 from app.database import engine, ensure_capture_columns, ensure_result_columns, ensure_source_columns
-from app.ingestion.normalizer import counts_as_conference
-from app.models import Base, DataRefresh, ScheduleGame, ScheduleTeam
+from app.ingestion.normalizer import counts_as_conference, has_published_trailing_dash, standardize_team_name
+from app.models import Base, Club, DataRefresh, ScheduleGame, ScheduleTeam
 from app.standings import replace_ecnl_standings
-from app.team_repair import merge_trailing_dash_teams
+from app.team_repair import (
+    attach_missing_club_ids,
+    club_id_for_team_name,
+    club_ids_by_normalized_name,
+    merge_trailing_dash_teams,
+)
 
 _STATUSES = {"SCHEDULED", "COMPLETED", "POSTPONED", "CANCELLED"}
 _OLD_COMPLETED = timedelta(days=7)
@@ -211,10 +216,18 @@ def _find_team(
     return None
 
 
-def _assign_team(team: ScheduleTeam, row: dict) -> bool:
+def _published_name(stored: str, incoming: str) -> str:
+    """Keep a stored trailing dash when the feed only differs by that dash."""
+
+    if has_published_trailing_dash(stored) and standardize_team_name(stored) == standardize_team_name(incoming):
+        return stored
+    return incoming
+
+
+def _assign_team(team: ScheduleTeam, row: dict, clubs_by_name: dict[str, list[int]] | None = None) -> bool:
     tier = (row.get("tier") or "ECNL")[:16]
     fields = {
-        "name": row["name"][:160],
+        "name": _published_name(team.name, row["name"][:160]),
         "age_group": row["age_group"][:8],
         "tier": tier,
         "conference": row["conference"][:120],
@@ -231,6 +244,13 @@ def _assign_team(team: ScheduleTeam, row: dict) -> bool:
         club_id = int(row["club_id"])
         if team.club_id != club_id:
             team.club_id = club_id
+            changed = True
+    elif team.club_id is None and clubs_by_name is not None:
+        # The feed's club id is missing. Match the stored name to a club with
+        # the same trailing-dash normalization used for duplicate teams.
+        matched = club_id_for_team_name(fields["name"], clubs_by_name)
+        if matched is not None:
+            team.club_id = matched
             changed = True
     source_id = int(row["source_id"])
     if team.source_id != source_id:
@@ -358,12 +378,13 @@ def _reindex_team(
     by_identity: dict[tuple[str, str, str, str], list[ScheduleTeam]],
     team: ScheduleTeam,
     row: dict,
+    clubs_by_name: dict[str, list[int]] | None = None,
 ) -> bool:
     old_source = team.source_id
     old_gender = _gender_value(team.gender)
     old_natural = _natural_key(team.name, team.age_group, team.tier, team.conference, old_gender)
     old_identity = (team.name, team.age_group, team.tier, old_gender)
-    changed = _assign_team(team, row)
+    changed = _assign_team(team, row, clubs_by_name)
     if team.source_id != old_source:
         if old_source is not None and by_source.get(old_source) is team:
             del by_source[old_source]
@@ -492,6 +513,7 @@ def upsert_published(payload: dict, *, refresh_standings: bool = True, full_pass
     print("Teams started", flush=True)
     with Session(engine) as session:
         stored_teams = list(session.scalars(select(ScheduleTeam)).all())
+        clubs_by_name = club_ids_by_normalized_name(list(session.scalars(select(Club)).all()))
         by_source, by_natural, by_identity = _index_teams(stored_teams)
         for row in payload.get("teams") or []:
             if row.get("source_id") is None:
@@ -508,10 +530,10 @@ def upsert_published(payload: dict, *, refresh_standings: bool = True, full_pass
                 )
                 session.add(team)
                 stored_teams.append(team)
-                _assign_team(team, row)
+                _assign_team(team, row, clubs_by_name)
                 _remember_team(by_source, by_natural, by_identity, team)
                 teams_written += 1
-            elif _reindex_team(by_source, by_natural, by_identity, team, row):
+            elif _reindex_team(by_source, by_natural, by_identity, team, row, clubs_by_name):
                 teams_written += 1
         print(f"Teams finished written={teams_written}", flush=True)
         session.flush()
@@ -591,6 +613,11 @@ def upsert_published(payload: dict, *, refresh_standings: bool = True, full_pass
             for item in merge_trailing_dash_teams(session):
                 print(
                     f"Trailing-dash merge kept={item.kept_id} {item.kept_name} dropped={item.dropped_id} {item.dropped_name} games_removed={item.games_removed}",
+                    flush=True,
+                )
+            for item in attach_missing_club_ids(session):
+                print(
+                    f"Club link team={item.team_id} {item.team_name} club={item.club_id}",
                     flush=True,
                 )
             for tier in ("ECNL", "ECNL-RL"):
