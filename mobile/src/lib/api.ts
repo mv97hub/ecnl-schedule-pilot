@@ -142,3 +142,54 @@ export function fetchHeadToHead(teamAId: number, teamBId: number): Promise<HeadT
   });
   return request<HeadToHeadReport>(`/head-to-head?${params.toString()}`);
 }
+
+export type IssueCategory = "data" | "app" | "other";
+
+export type IssueReportInput = {
+  category: IssueCategory;
+  description: string;
+  email?: string;
+  appVersion: string;
+  screen: string;
+};
+
+/** Version from the Expo config, then the native build, then a fallback. */
+export function appVersion(): string {
+  const configured = Constants.expoConfig?.version?.trim();
+  if (configured) return configured.slice(0, 40);
+  const nativeVersion = Constants.nativeAppVersion?.trim();
+  if (nativeVersion) return nativeVersion.slice(0, 40);
+  return "unknown";
+}
+
+/** Public report. No account and no profile key. */
+export async function submitIssueReport(input: IssueReportInput): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}/issues`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({
+        category: input.category,
+        description: input.description,
+        email: input.email?.trim() ? input.email.trim() : null,
+        app_version: input.appVersion,
+        screen: input.screen,
+      }),
+    });
+  } catch {
+    throw new ApiError(0, "Could not send the report. Your draft is still here.");
+  }
+  if (response.ok) return;
+  let detail = "";
+  try {
+    const payload = (await response.json()) as { detail?: unknown };
+    if (typeof payload.detail === "string") detail = payload.detail;
+  } catch {
+    detail = "";
+  }
+  if (response.status === 429) {
+    throw new ApiError(429, detail || "Too many reports from this network. Try again later.");
+  }
+  throw new ApiError(response.status, detail || "Could not send the report. Your draft is still here.");
+}

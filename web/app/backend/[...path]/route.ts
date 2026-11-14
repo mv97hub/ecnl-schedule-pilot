@@ -1,6 +1,6 @@
 import { connection, type NextRequest } from "next/server";
 
-const REQUEST_HEADERS = ["accept", "content-type", "x-profile-key"];
+const REQUEST_HEADERS = ["accept", "content-type", "x-profile-key", "x-forwarded-for"];
 
 /**
  * Same origin the website uses. Read after `connection()` so a Render

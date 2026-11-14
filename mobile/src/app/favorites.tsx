@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { ScrollView, Text, View } from "react-native";
 
 import { FavoritesEditor } from "@/components/FavoritesEditor";
+import { ReportIssue } from "@/components/ReportIssue";
 import { LegalLinks } from "@/components/ui";
 import { colors } from "@/theme";
 
@@ -16,6 +17,7 @@ export default function FavoritesScreen() {
         </Text>
         <LegalLinks />
       </View>
+      <ReportIssue />
     </ScrollView>
   );
 }
