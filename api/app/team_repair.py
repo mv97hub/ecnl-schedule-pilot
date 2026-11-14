@@ -4,11 +4,11 @@
 stored name still has the published dash. Games move onto that team. Rows
 that then share a match key are removed, and the extra team is deleted.
 
-``rewrite_trailing_dash_names`` then stores the standardized spelling on the
-team row that was just refreshed. ``Florida Kraze Krush -`` becomes
-``Florida Kraze Krush``. A dash in the middle of a name stays, and the row
-is updated in place so a second club is not created. Standings are rebuilt
-by the caller.
+``rewrite_trailing_dash_names`` then stores the standardized spelling on
+every team row that still ends in the published dash, including a squad this
+refresh did not touch. ``Florida Kraze Krush -`` becomes ``Florida Kraze
+Krush`` on that same row. A dash in the middle of a name stays, and a second
+club is not created. Standings are rebuilt by the caller.
 
 ``attach_missing_club_ids`` fills ``club_id`` when it is null and the team's
 normalized name matches exactly one club. The crest stays on the club.
@@ -122,17 +122,16 @@ def attach_missing_club_ids(session: Session) -> list[LinkedClub]:
     return linked
 
 
-def rewrite_trailing_dash_names(session: Session, source_ids: set[int]) -> list[RenamedTeam]:
-    """Store the standardized name on refreshed teams that still end in " -".
+def rewrite_trailing_dash_names(session: Session) -> list[RenamedTeam]:
+    """Store the standardized name on every team that still ends in " -".
 
-    Only teams whose source id is in this refresh are updated, and the same
-    row is kept. A dash in the middle of a name stays. Nothing is committed.
+    The current refresh payload does not limit the scan. A squad left out of
+    this feed, such as Boys U13, is renamed on the same row. A dash in the
+    middle of a name stays. Nothing is committed.
     """
 
-    if not source_ids:
-        return []
     renamed: list[RenamedTeam] = []
-    teams = session.scalars(select(ScheduleTeam).where(ScheduleTeam.source_id.in_(source_ids))).all()
+    teams = session.scalars(select(ScheduleTeam)).all()
     for team in teams:
         if team.id is None or not has_published_trailing_dash(team.name):
             continue

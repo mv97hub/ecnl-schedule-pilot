@@ -263,7 +263,7 @@ class TrailingDashRepairTests(unittest.TestCase):
             order.append(tier)
             return 0
 
-        def rewrite(_session, _source_ids):
+        def rewrite(_session):
             order.append("rewrite")
             return []
 
