@@ -263,24 +263,30 @@ class TrailingDashRepairTests(unittest.TestCase):
             order.append(tier)
             return 0
 
+        def rewrite(_session, _source_ids):
+            order.append("rewrite")
+            return []
+
         with (
             patch("app.refresh.merge_trailing_dash_teams", side_effect=merge),
+            patch("app.refresh.rewrite_trailing_dash_names", side_effect=rewrite),
             patch("app.refresh.attach_missing_club_ids", side_effect=link),
             patch("app.refresh.replace_ecnl_standings", side_effect=replace),
             redirect_stdout(io.StringIO()),
         ):
             upsert_published({"teams": [], "games": []}, refresh_standings=True)
-        self.assertEqual(order, ["merge", "link", "ECNL", "ECNL-RL"])
+        self.assertEqual(order, ["merge", "rewrite", "link", "ECNL", "ECNL-RL"])
 
         order.clear()
         with (
             patch("app.refresh.merge_trailing_dash_teams", side_effect=merge),
+            patch("app.refresh.rewrite_trailing_dash_names", side_effect=rewrite),
             patch("app.refresh.attach_missing_club_ids", side_effect=link),
             patch("app.refresh.replace_ecnl_standings", side_effect=replace),
             redirect_stdout(io.StringIO()),
         ):
             upsert_published({"teams": [], "games": []}, refresh_standings=False)
-        self.assertEqual(order, [])
+        self.assertEqual(order, ["rewrite"])
 
 
 if __name__ == "__main__":

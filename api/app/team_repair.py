@@ -1,14 +1,17 @@
 """Repairs that run at the end of a schedule refresh.
 
 ``merge_trailing_dash_teams`` folds a plain-name twin into the squad whose
-stored name already has the published dash. The published name, such as
-``Florida Kraze Krush -``, is the one that stays. Games move onto that team.
-Rows that then share a match key are removed, and the extra team is deleted.
-Standings are rebuilt by the caller.
+stored name still has the published dash. Games move onto that team. Rows
+that then share a match key are removed, and the extra team is deleted.
+
+``rewrite_trailing_dash_names`` then stores the standardized spelling on the
+team row that was just refreshed. ``Florida Kraze Krush -`` becomes
+``Florida Kraze Krush``. A dash in the middle of a name stays, and the row
+is updated in place so a second club is not created. Standings are rebuilt
+by the caller.
 
 ``attach_missing_club_ids`` fills ``club_id`` when it is null and the team's
-normalized name matches exactly one club. The displayed team name stays, and
-the crest stays on the club.
+normalized name matches exactly one club. The crest stays on the club.
 """
 
 from __future__ import annotations
@@ -20,7 +23,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
-from app.ingestion.normalizer import build_match_key, has_published_trailing_dash, standardize_team_name
+from app.ingestion.normalizer import build_match_key, has_published_trailing_dash, standardize_team_name, stored_team_name
 from app.models import (
     Club,
     CoachingStaff,
@@ -47,6 +50,13 @@ class LinkedClub:
     team_id: int
     team_name: str
     club_id: int
+
+
+@dataclass(frozen=True)
+class RenamedTeam:
+    team_id: int
+    old_name: str
+    new_name: str
 
 
 @dataclass(frozen=True)
@@ -110,6 +120,31 @@ def attach_missing_club_ids(session: Session) -> list[LinkedClub]:
     if linked:
         session.flush()
     return linked
+
+
+def rewrite_trailing_dash_names(session: Session, source_ids: set[int]) -> list[RenamedTeam]:
+    """Store the standardized name on refreshed teams that still end in " -".
+
+    Only teams whose source id is in this refresh are updated, and the same
+    row is kept. A dash in the middle of a name stays. Nothing is committed.
+    """
+
+    if not source_ids:
+        return []
+    renamed: list[RenamedTeam] = []
+    teams = session.scalars(select(ScheduleTeam).where(ScheduleTeam.source_id.in_(source_ids))).all()
+    for team in teams:
+        if team.id is None or not has_published_trailing_dash(team.name):
+            continue
+        cleaned = stored_team_name(team.name)
+        if not cleaned or cleaned == team.name:
+            continue
+        old_name = team.name
+        team.name = cleaned
+        renamed.append(RenamedTeam(team_id=int(team.id), old_name=old_name, new_name=cleaned))
+    if renamed:
+        session.flush()
+    return renamed
 
 
 def _division(team: ScheduleTeam) -> tuple[str, str, str, str]:

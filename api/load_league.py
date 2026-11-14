@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from app.ingestion.normalizer import counts_as_conference
+from app.ingestion.normalizer import counts_as_conference, stored_team_name
 
 API = "https://api.athleteone.com/api"
 ORG_ID = 12
@@ -140,6 +140,7 @@ def display_name(team_name: str) -> str:
     "San Diego Surf ECNL RL White B2013/14" stays "San Diego Surf White".
     "San Diego Surf ECNL RL S.Cal B2013/14" becomes "San Diego Surf".
     A color, roman numeral, or coach name after the birth year is kept.
+    A published trailing " -" is removed. A dash in the middle of a name stays.
     """
 
     tokens = _GLUE_ECNL.sub(" ", team_name).split()
@@ -193,8 +194,7 @@ def display_name(team_name: str) -> str:
                 continue
             break
     cleaned = " ".join(token for index, token in enumerate(tokens) if index not in drop).strip()
-    if drop:
-        cleaned = re.sub(r"\s+-\s*$", "", cleaned).strip()
+    cleaned = stored_team_name(cleaned)
     return cleaned or team_name.strip()
 
 

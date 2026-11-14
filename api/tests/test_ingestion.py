@@ -14,7 +14,7 @@ from sqlalchemy import event, text
 from fastapi.testclient import TestClient
 
 from app.database import engine
-from app.ingestion.normalizer import build_match_key, has_published_trailing_dash, split_venue, standardize_team_name
+from app.ingestion.normalizer import build_match_key, has_published_trailing_dash, split_venue, standardize_team_name, stored_team_name
 from app.ingestion.parsing import extract_games_from_html, parse_ics, parse_score_text, parse_standings_text
 from app.main import app
 
@@ -63,6 +63,10 @@ class NormalizerTests(unittest.TestCase):
         dashed = build_match_key(day, "Florida Kraze Krush -", "Parkland Soccer Club", "U13")
         plain = build_match_key(day, "Florida Kraze Krush", "Parkland Soccer Club", "U13")
         self.assertEqual(standardize_team_name("Florida Kraze Krush -"), "Florida Kraze Krush")
+        self.assertEqual(stored_team_name("Florida Kraze Krush -"), "Florida Kraze Krush")
+        self.assertEqual(stored_team_name("Florida Kraze Krush"), "Florida Kraze Krush")
+        self.assertEqual(stored_team_name("Foo - Bar -"), "Foo - Bar")
+        self.assertEqual(stored_team_name("Legends FC - Del Mar"), "Legends FC - Del Mar")
         self.assertTrue(has_published_trailing_dash("Florida Kraze Krush -"))
         self.assertFalse(has_published_trailing_dash("Florida Kraze Krush"))
         self.assertFalse(has_published_trailing_dash("Legends FC - Del Mar"))
