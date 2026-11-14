@@ -26,6 +26,7 @@ The header switches Boys and Girls. The choice is stored in `sessionStorage` und
 | Privacy | `/privacy` | Privacy policy for the Soccer Away Day app. Favorites stay on the device. The app has no account and does not send personal data to the server. |
 | Support | `/support` | How to use Soccer Away Day without an account. A contact email will be added before App Store submission. |
 | Share image | `/api/og/h2h` | A 1200×630 image for a head-to-head link. It calls the API `/head-to-head` route. |
+| Issue reports | `/admin` | Private inbox for reports sent from the app. Preferences has Report an Issue. No account. The phone waits 60 seconds after a successful send, and a failed send keeps the draft. The page is not linked from the header, the footer, or any public page, and it sends `noindex`. Sign-in compares the password to `ADMIN_PASSWORD` on the API. |
 
 The browser calls `NEXT_PUBLIC_API_URL`, or `http://127.0.0.1:8000` when that variable is unset. The Open Graph route uses the same variable, or `http://localhost:8000`.
 
@@ -76,12 +77,19 @@ The club page Venue Guide link goes to `/locations?club=` for that club. The fie
 | POST | `/ingest/raw-text` | Parses pasted schedule text into the ingest tables. |
 | POST | `/ingest/scores` | Upserts scores on ingest games and copies matching scores onto published `game` rows. |
 | POST | `/ingest/standings` | Parses a pasted table into `conference_standing`. The rows it writes use gender `boys`. |
+| POST | `/issues` | Public. No auth. Creates one row in `issue`. `category` is `data`, `app`, or `other`. `description` is required and not blank. `email` is optional. `app_version` and `screen` are required. At most five reports per IP address per hour. |
+| POST | `/admin/login` | Body `{"password": "..."}`. Compares it to the `ADMIN_PASSWORD` environment variable. If that variable is unset or blank, login fails with 401. Success sets an httpOnly `admin_session` cookie on path `/admin` for four hours. The cookie is a signed expiry, not the password. |
+| POST | `/admin/logout` | Clears the `admin_session` cookie. |
+| GET | `/admin/issues` | Requires the session cookie. `status` is `open` (default, newest first) or `done`. |
+| PATCH | `/admin/issues/{id}` | Requires the session cookie. Body `{"done": true}` sets `status` to `done` and `completed_at`. `{"done": false}` sets `status` to `open` and clears `completed_at`. |
 
 A paste dialog in the dashboard posts to `/ingest/raw-text`, `/ingest/scores`, and `/ingest/standings`.
 
 ### Database
 
 PostgreSQL 16. `docker-compose.yml` runs `postgres:16`, publishes port 5432, and reads `.env`. The API does not use `DATABASE_URL`. `api/app/config.py` builds `postgresql+psycopg://...` from `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`, and `POSTGRES_DB`. If all five are set in the process environment, those values win. If any one is missing, the same five keys are read from the `.env` file at the repository root.
+
+`issue` stores in-app reports only. Columns are `id`, `created_at`, `category`, `description`, `email` (nullable), `app_version`, `screen`, `status` (`open` or `done`, default `open`), and `completed_at` (nullable). Set `ADMIN_PASSWORD` on the API process. The web app never reads that variable. Login fails closed when it is missing.
 
 ## Code layout
 
@@ -99,6 +107,7 @@ api/
   app/predictions.py       Predicted conference table
   app/head_to_head.py      Matchup comparison
   app/clubs.py             Club search, club page, and home venues
+  app/issues.py            Issue validation, per-IP limit, and the admin session cookie
   app/locations.py         Complex keys, ratings, tips, and the club field directory
   app/logos.py             Club logo lookup for a team
   app/ingestion/           Parse and upsert pasted or fetched club schedules
@@ -111,7 +120,7 @@ api/
   tests/                   unittest modules
   scouting.py              Head-to-head scouting report
 web/
-  app/                     Routes /, /clubs, /standings, /projected, /head-to-head, /locations, /locations/tip, /profile, /privacy, /support, /api/og/h2h
+  app/                     Routes /, /clubs, /standings, /projected, /head-to-head, /locations, /locations/tip, /profile, /privacy, /support, /admin, /api/og/h2h
   components/              Schedule, standings, projected, clubs, locations, head-to-head, profile, and ingest UI
   lib/                     API client, gender, conferences, formatting
 docker-compose.yml         Postgres 16
@@ -132,6 +141,7 @@ Tests, all under `api/tests/`:
 | `test_locations.py` | One complex per field number, one rating per profile, tips, and the pooled club directory. |
 | `test_predictions.py` | Predicted points from opponent points per game, and `/standings/predicted`. |
 | `test_mobile.py` | Enriched `/teams` rows and `GET /mobile/dashboard`. |
+| `test_issues.py` | Creating a report, the per-IP limit, login when `ADMIN_PASSWORD` is missing, and the done checkbox. |
 
 `web/README.md` is the Next.js template text. It does not describe this project.
 

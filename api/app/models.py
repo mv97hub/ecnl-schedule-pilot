@@ -482,3 +482,23 @@ class VenueTipVote(Base):
     )
     author_key: Mapped[str] = mapped_column(String(80), nullable=False)
     choice: Mapped[str] = mapped_column(String(8), nullable=False)
+
+
+class Issue(Base):
+    """One in-app report. Separate from league tables. No account is stored."""
+
+    __tablename__ = "issue"
+    __table_args__ = (
+        CheckConstraint("category IN ('data', 'app', 'other')", name="ck_issue_category"),
+        CheckConstraint("status IN ('open', 'done')", name="ck_issue_status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now, index=True)
+    category: Mapped[str] = mapped_column(String(16), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    app_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    screen: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(8), nullable=False, default="open", server_default="open", index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
