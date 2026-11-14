@@ -268,6 +268,59 @@ class ClubRouteTests(unittest.TestCase):
                     )
                 )
 
+    def test_team_club_key_opens_the_named_page(self) -> None:
+        """A squad's club_key is the page id. A split club's bare id stays 404."""
+
+        split_id = 8801601
+        single_id = 8801602
+        with Session(engine) as session:
+            session.add_all(
+                (
+                    Club(id=split_id, name="Probe Club Page Key Split", logo_url=None, parent_club_id=None),
+                    Club(id=single_id, name="Probe Club Page Key Single", logo_url=None, parent_club_id=None),
+                )
+            )
+            session.flush()
+
+            def add(name: str, age: str, club_id: int) -> int:
+                team = ScheduleTeam(
+                    name=name,
+                    age_group=age,
+                    tier="ECNL",
+                    conference="Probe Club Page East",
+                    city="St Johns",
+                    state="FL",
+                    gender="boys",
+                    club_id=club_id,
+                )
+                session.add(team)
+                session.flush()
+                return int(team.id)
+
+            north_id = add("Probe Club Page Key North", "U13", split_id)
+            add("Probe Club Page Key South", "U14", split_id)
+            single_team_id = add("Probe Club Page Key Single", "U13", single_id)
+            session.commit()
+
+        north_key = f"{split_id}-probe-club-page-key-north"
+        with TestClient(app) as client:
+            teams = client.get("/teams", params={"ids": f"{north_id},{single_team_id}"})
+            bare = client.get(f"/clubs/{split_id}")
+            opened = client.get(f"/clubs/{north_key}")
+            single_page = client.get(f"/clubs/{single_id}")
+
+        self.assertEqual(teams.status_code, 200, teams.text)
+        by_id = {row["id"]: row for row in teams.json()}
+        self.assertEqual(by_id[north_id]["club_id"], split_id)
+        self.assertEqual(by_id[north_id]["club_key"], north_key)
+        self.assertEqual(bare.status_code, 404)
+        self.assertEqual(opened.status_code, 200)
+        self.assertEqual(opened.json()["id"], north_key)
+        self.assertEqual(opened.json()["name"], "Probe Club Page Key North")
+        self.assertEqual(by_id[single_team_id]["club_key"], str(single_id))
+        self.assertEqual(single_page.status_code, 200)
+        self.assertEqual(single_page.json()["id"], single_id)
+
     def test_unknown_club_is_404(self) -> None:
         with TestClient(app) as client:
             missing = client.get(f"/clubs/{MISSING_ID}")

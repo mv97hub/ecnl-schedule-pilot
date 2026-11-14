@@ -20,6 +20,7 @@ class TeamOut(BaseModel):
     state: str
     gender: Literal["boys", "girls"] = "boys"
     club_id: int | None = None
+    club_key: str | None = None
     logo_url: str | None = None
 
 

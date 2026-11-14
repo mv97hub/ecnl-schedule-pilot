@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.clubs import public_club_keys
 from app.database import get_session
 from app.ingestion.normalizer import looks_like_showcase
 from app.logos import club_logos
@@ -95,6 +96,7 @@ def list_teams(
         by_id = {team.id: team for team in teams}
         teams = [by_id[team_id] for team_id in requested if team_id in by_id]
     logos = club_logos(session, teams)
+    keys = public_club_keys(session, teams)
     return [
         TeamOut(
             id=team.id,
@@ -106,6 +108,7 @@ def list_teams(
             state=team.state,
             gender="girls" if team.gender == "girls" else "boys",
             club_id=team.club_id,
+            club_key=keys.get(team.id),
             logo_url=logos.get(team.id),
         )
         for team in teams
