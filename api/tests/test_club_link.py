@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
+from app.clubs import name_key, name_slug
 from app.database import engine
 from app.main import app
 from app.models import Club, ScheduleTeam
@@ -240,11 +241,14 @@ class ClubLinkRepairTests(unittest.TestCase):
             before = client.get(f"/clubs/{FKK_CLUB}")
             dashed_page = client.get(f"/clubs/{dashed_key}")
             plain_page = client.get(f"/clubs/{plain_key}")
-        self.assertEqual(before.status_code, 404)
-        self.assertEqual(dashed_page.status_code, 200)
-        self.assertEqual([row["age_group"] for row in dashed_page.json()["squads"]], ["U13"])
-        self.assertEqual(plain_page.status_code, 200)
-        self.assertEqual(sorted(row["age_group"] for row in plain_page.json()["squads"]), ["U14", "U15"])
+        self.assertEqual(before.status_code, 200)
+        self.assertEqual(sorted(row["age_group"] for row in before.json()["squads"]), ["U13", "U14", "U15"])
+        self.assertEqual(dashed_page.status_code, 404)
+        self.assertEqual(plain_page.status_code, 404)
+        with Session(engine) as session:
+            still_dashed = session.get(ScheduleTeam, u13_id)
+            assert still_dashed is not None
+            self.assertEqual(still_dashed.name, "Florida Kraze Krush -")
 
         def team_row(source_id: int, name: str, age_group: str, gender: str = "boys") -> dict:
             return {
@@ -312,6 +316,105 @@ class ClubLinkRepairTests(unittest.TestCase):
                 }
             ],
         )
+
+    def test_squad_left_out_of_the_refresh_still_drops_the_trailing_dash(self) -> None:
+        """A team missing from this payload is renamed, and both spellings are one club page."""
+
+        self.assertEqual(name_key("Florida Kraze Krush -"), name_key("Florida Kraze Krush"))
+        self.assertEqual(name_slug("Florida Kraze Krush -"), "florida-kraze-krush")
+        self.assertEqual(name_slug("Florida Kraze Krush"), name_slug("Florida Kraze Krush -"))
+        self.assertEqual(name_key("Legends FC - Del Mar"), "legends fc - del mar")
+        self.assertNotEqual(name_key("Legends FC - Del Mar"), name_key("Legends FC"))
+
+        with Session(engine) as session:
+            session.add(Club(id=FKK_CLUB, name="Florida Kraze Krush", logo_url="https://example.com/kraze.png"))
+            session.add(Club(id=LEGENDS_CLUB, name="Legends FC - Del Mar", logo_url=None))
+            leftover = _team(session, FKK_U13, "Florida Kraze Krush -", club_id=FKK_CLUB)
+            plain = _team(session, FKK_U14, "Florida Kraze Krush", club_id=FKK_CLUB)
+            plain.age_group = "U14"
+            legends = _team(session, LEGENDS_TEAM, "Legends FC - Del Mar", club_id=LEGENDS_CLUB)
+            session.commit()
+            leftover_id = int(leftover.id)
+            plain_id = int(plain.id)
+            legends_id = int(legends.id)
+
+        dashed_key = f"{FKK_CLUB}-florida-kraze-krush--"
+        with TestClient(app) as client:
+            before = client.get(f"/clubs/{FKK_CLUB}")
+            dashed_page = client.get(f"/clubs/{dashed_key}")
+            listed = client.get("/clubs", params={"q": "Kraze", "all": "true"})
+        self.assertEqual(before.status_code, 200)
+        before_body = before.json()
+        self.assertEqual(before_body["id"], FKK_CLUB)
+        self.assertEqual(before_body["name"], "Florida Kraze Krush")
+        self.assertEqual(sorted(row["age_group"] for row in before_body["squads"]), ["U13", "U14"])
+        self.assertEqual({row["name"] for row in before_body["squads"]}, {"Florida Kraze Krush -", "Florida Kraze Krush"})
+        self.assertEqual(dashed_page.status_code, 404)
+        ours = [row for row in listed.json() if str(row["id"]) == str(FKK_CLUB) or str(row["id"]).startswith(f"{FKK_CLUB}-")]
+        self.assertEqual(
+            ours,
+            [
+                {
+                    "id": FKK_CLUB,
+                    "name": "Florida Kraze Krush",
+                    "logo_url": "https://example.com/kraze.png",
+                    "team_count": 2,
+                }
+            ],
+        )
+
+        upsert_published(
+            {
+                "teams": [
+                    {
+                        "source_id": FKK_U14,
+                        "name": "Florida Kraze Krush",
+                        "age_group": "U14",
+                        "tier": "ECNL",
+                        "conference": "Probe Link Conf",
+                        "city": "Winter Springs",
+                        "state": "FL",
+                        "gender": "boys",
+                        "club_id": FKK_CLUB,
+                    }
+                ],
+                "games": [],
+            },
+            refresh_standings=False,
+        )
+
+        with Session(engine) as session:
+            stored = session.get(ScheduleTeam, leftover_id)
+            kept_plain = session.get(ScheduleTeam, plain_id)
+            legends_row = session.get(ScheduleTeam, legends_id)
+            club_ids = session.scalars(select(Club.id).where(Club.id.in_([FKK_CLUB, LEGENDS_CLUB]))).all()
+            team_ids = session.scalars(select(ScheduleTeam.id).where(ScheduleTeam.club_id == FKK_CLUB)).all()
+            assert stored is not None and kept_plain is not None and legends_row is not None
+            self.assertEqual(stored.id, leftover_id)
+            self.assertEqual(stored.name, "Florida Kraze Krush")
+            self.assertEqual(stored.source_id, FKK_U13)
+            self.assertEqual(stored.club_id, FKK_CLUB)
+            self.assertEqual(kept_plain.name, "Florida Kraze Krush")
+            self.assertEqual(sorted(team_ids), sorted([leftover_id, plain_id]))
+            self.assertEqual(legends_row.name, "Legends FC - Del Mar")
+            self.assertEqual(legends_row.club_id, LEGENDS_CLUB)
+            self.assertEqual(sorted(club_ids), [FKK_CLUB, LEGENDS_CLUB])
+
+        with TestClient(app) as client:
+            after = client.get(f"/clubs/{FKK_CLUB}")
+            listed = client.get("/clubs", params={"q": "Kraze", "all": "true"})
+            dashed_after = client.get(f"/clubs/{dashed_key}")
+        self.assertEqual(after.status_code, 200)
+        after_body = after.json()
+        self.assertEqual(after_body["id"], FKK_CLUB)
+        self.assertEqual(after_body["name"], "Florida Kraze Krush")
+        self.assertEqual({row["name"] for row in after_body["squads"]}, {"Florida Kraze Krush"})
+        self.assertEqual(sorted(row["id"] for row in after_body["squads"]), sorted([leftover_id, plain_id]))
+        self.assertEqual(dashed_after.status_code, 404)
+        ours = [row for row in listed.json() if str(row["id"]) == str(FKK_CLUB) or str(row["id"]).startswith(f"{FKK_CLUB}-")]
+        self.assertEqual(len(ours), 1)
+        self.assertEqual(ours[0]["id"], FKK_CLUB)
+        self.assertEqual(ours[0]["team_count"], 2)
 
 
 if __name__ == "__main__":

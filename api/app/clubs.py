@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.ingestion.normalizer import stored_team_name
 from app.models import Club, ScheduleGame, ScheduleTeam
 from app.schemas import (
     ClubDetailOut,
@@ -160,9 +161,13 @@ class _Appearance:
 
 
 def name_key(name: str) -> str:
-    """Grouping key: the stored team name, whitespace collapsed, folded to lower case."""
+    """Grouping key: drop a published trailing dash, collapse whitespace, fold case.
 
-    return " ".join((name or "").split()).casefold()
+    ``Florida Kraze Krush -`` and ``Florida Kraze Krush`` share one club page.
+    A dash in the middle of a name stays.
+    """
+
+    return " ".join(stored_team_name(name or "").split()).casefold()
 
 
 def name_slug(name: str) -> str:
