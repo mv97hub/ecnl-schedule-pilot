@@ -46,6 +46,7 @@ export default function HomeScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bone }}
+      contentInsetAdjustmentBehavior="never"
       refreshControl={
         <RefreshControl
           refreshing={dashboard.isRefetching}

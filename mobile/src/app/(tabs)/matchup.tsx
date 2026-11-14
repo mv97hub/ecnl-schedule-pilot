@@ -98,6 +98,7 @@ export default function MatchupScreen() {
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bone }}
       contentContainerStyle={{ paddingBottom: 32 }}
+      contentInsetAdjustmentBehavior="never"
       refreshControl={<RefreshControl refreshing={report.isRefetching} tintColor={colors.white} onRefresh={() => void report.refetch()} />}
     >
       <View style={{ backgroundColor: colors.navy, paddingTop: insets.top + 16, paddingHorizontal: 20, paddingBottom: 20, gap: 14 }}>

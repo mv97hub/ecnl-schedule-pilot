@@ -106,6 +106,7 @@ export default function TablesScreen() {
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bone }}
       contentContainerStyle={{ paddingBottom: 32 }}
+      contentInsetAdjustmentBehavior="never"
       refreshControl={<RefreshControl refreshing={active.isRefetching} tintColor={colors.navy} onRefresh={() => void active.refetch()} />}
     >
       <View style={{ backgroundColor: colors.navy, paddingTop: insets.top + 16, paddingHorizontal: 20, paddingBottom: 18, gap: 6 }}>

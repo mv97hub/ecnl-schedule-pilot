@@ -60,6 +60,7 @@ export default function ClubScreen() {
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bone }}
       contentContainerStyle={{ paddingBottom: 32 }}
+      contentInsetAdjustmentBehavior="never"
       refreshControl={<RefreshControl refreshing={club.isRefetching} tintColor={colors.navy} onRefresh={() => void club.refetch()} />}
     >
       <View style={{ paddingTop: insets.top + 12, paddingHorizontal: 20, gap: 8 }}>

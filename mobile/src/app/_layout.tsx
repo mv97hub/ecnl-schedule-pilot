@@ -1,7 +1,7 @@
 import "react-native-gesture-handler";
 
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { Stack } from "expo-router";
+import { Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
@@ -16,6 +16,8 @@ SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 export default function RootLayout() {
   const setHydrated = useFavorites((state) => state.setHydrated);
+  const segments = useSegments() as readonly string[];
+  const onHome = segments[0] === "(tabs)" && (segments.length === 1 || segments[1] === "index");
 
   useEffect(() => {
     void ensureProfileKey();
@@ -30,7 +32,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bone }}>
       <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: queryPersister, maxAge: QUERY_MAX_AGE }}>
-        <StatusBar style="dark" />
+        <StatusBar style={onHome ? "light" : "dark"} />
         <Stack
           screenOptions={{
             headerStyle: { backgroundColor: colors.bone },
