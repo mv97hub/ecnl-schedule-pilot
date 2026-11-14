@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 import unittest
-from datetime import time
+from datetime import date, time
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -14,7 +14,7 @@ from sqlalchemy import event, text
 from fastapi.testclient import TestClient
 
 from app.database import engine
-from app.ingestion.normalizer import split_venue, standardize_team_name
+from app.ingestion.normalizer import build_match_key, has_published_trailing_dash, split_venue, standardize_team_name
 from app.ingestion.parsing import extract_games_from_html, parse_ics, parse_score_text, parse_standings_text
 from app.main import app
 
@@ -56,6 +56,21 @@ class NormalizerTests(unittest.TestCase):
     def test_standardizes_team_names(self) -> None:
         self.assertEqual(standardize_team_name("  Sporting SA JAX ECNL B2013/14 "), "Sporting SA JAX")
         self.assertEqual(standardize_team_name("GSA"), "GSA")
+        self.assertEqual(standardize_team_name("Legends FC - Del Mar"), "Legends FC - Del Mar")
+
+    def test_trailing_dash_shares_a_match_key(self) -> None:
+        day = date(2026, 8, 30)
+        dashed = build_match_key(day, "Florida Kraze Krush -", "Parkland Soccer Club", "U13")
+        plain = build_match_key(day, "Florida Kraze Krush", "Parkland Soccer Club", "U13")
+        self.assertEqual(standardize_team_name("Florida Kraze Krush -"), "Florida Kraze Krush")
+        self.assertTrue(has_published_trailing_dash("Florida Kraze Krush -"))
+        self.assertFalse(has_published_trailing_dash("Florida Kraze Krush"))
+        self.assertFalse(has_published_trailing_dash("Legends FC - Del Mar"))
+        self.assertEqual(dashed, plain)
+        self.assertNotEqual(
+            dashed,
+            build_match_key(day, "Legends FC - Del Mar", "Parkland Soccer Club", "U13"),
+        )
 
     def test_ics_and_html_parsers(self) -> None:
         ics_games = parse_ics(ICS, age_group="U13", tier=None)

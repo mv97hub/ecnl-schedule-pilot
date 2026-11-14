@@ -18,6 +18,7 @@ from app.database import engine, ensure_capture_columns, ensure_result_columns, 
 from app.ingestion.normalizer import counts_as_conference
 from app.models import Base, DataRefresh, ScheduleGame, ScheduleTeam
 from app.standings import replace_ecnl_standings
+from app.team_repair import merge_trailing_dash_teams
 
 _STATUSES = {"SCHEDULED", "COMPLETED", "POSTPONED", "CANCELLED"}
 _OLD_COMPLETED = timedelta(days=7)
@@ -587,6 +588,11 @@ def upsert_published(payload: dict, *, refresh_standings: bool = True, full_pass
 
     if refresh_standings:
         with Session(engine) as session:
+            for item in merge_trailing_dash_teams(session):
+                print(
+                    f"Trailing-dash merge kept={item.kept_id} {item.kept_name} dropped={item.dropped_id} {item.dropped_name} games_removed={item.games_removed}",
+                    flush=True,
+                )
             for tier in ("ECNL", "ECNL-RL"):
                 print(f"Standings started {tier}", flush=True)
                 replace_ecnl_standings(session, tier)
