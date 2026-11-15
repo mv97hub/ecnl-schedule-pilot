@@ -23,10 +23,6 @@ export default function Onboarding() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bone }}>
       <ScrollView contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 40 }}>
         <Text style={{ color: colors.navy, fontSize: 34, fontWeight: "800" }}>Premier Gameday HQ</Text>
-        <View>
-          <Text style={{ color: colors.secondary, fontSize: 16, lineHeight: 22 }}>{APP_DESCRIPTION}</Text>
-          {step === "club" ? <LegalLinks /> : null}
-        </View>
         <Text style={{ color: colors.ink, fontSize: 18, fontWeight: "700" }}>
           {step === "club" ? "Pick a favorite club. This step is optional." : "Pick up to 4 teams. Slot 1 is the default."}
         </Text>
@@ -46,6 +42,10 @@ export default function Onboarding() {
             {pickedTeams > 0 ? <GoldButton label="Go to Home" onPress={finish} /> : <OutlineButton label="Skip for now" onPress={finish} />}
           </View>
         )}
+        <View>
+          <Text style={{ color: colors.secondary, fontSize: 16, lineHeight: 22 }}>{APP_DESCRIPTION}</Text>
+          {step === "club" ? <LegalLinks /> : null}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
