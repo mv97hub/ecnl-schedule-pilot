@@ -762,6 +762,47 @@ class ClubRouteTests(unittest.TestCase):
         self.assertEqual(tlh.json()["id"], tlh_alias.json()["id"])
         self.assertNotEqual(alias.json()["team_count"], tlh_alias.json()["team_count"])
 
+    def test_sporting_jax_search_finds_sa_jax_and_skips_sa_tlh(self) -> None:
+        club_id = 8801701
+
+        def clear() -> None:
+            with engine.begin() as connection:
+                connection.execute(text("DELETE FROM team WHERE club_id = :club_id"), {"club_id": club_id})
+                connection.execute(text("DELETE FROM club WHERE id = :club_id"), {"club_id": club_id})
+
+        clear()
+        with Session(engine) as session:
+            session.add(Club(id=club_id, name="Sporting SA", logo_url=None))
+            session.flush()
+            for name, age in (("Sporting SA JAX", "U13"), ("Sporting SA JAX", "U14"), ("Sporting SA TLH", "U13")):
+                session.add(
+                    ScheduleTeam(
+                        name=name,
+                        age_group=age,
+                        tier="ECNL",
+                        conference="ECNL Boys Probe Club Page East",
+                        city="Jacksonville",
+                        state="FL",
+                        gender="boys",
+                        club_id=club_id,
+                    )
+                )
+            session.commit()
+        try:
+            with TestClient(app) as client:
+                found = client.get("/clubs", params={"q": "sporting jax", "all": "true"})
+                tlh = client.get("/clubs", params={"q": "sporting tlh", "all": "true"})
+        finally:
+            clear()
+
+        self.assertEqual(found.status_code, 200, found.text)
+        names = {row["name"] for row in found.json()}
+        self.assertIn("Sporting SA JAX", names)
+        self.assertNotIn("Sporting SA TLH", names)
+        tlh_names = {row["name"] for row in tlh.json()}
+        self.assertIn("Sporting SA TLH", tlh_names)
+        self.assertNotIn("Sporting SA JAX", tlh_names)
+
     def test_empty_query_is_capped_to_clubs_with_teams(self) -> None:
         from app import clubs as clubs_module
 
