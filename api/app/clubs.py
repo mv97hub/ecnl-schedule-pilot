@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.ingestion.normalizer import stored_team_name
@@ -562,6 +562,64 @@ def _contains(value: str) -> str:
     return f"%{escaped}%"
 
 
+def _normalized_search_text(column):
+    """Lowercase name, one space between words, and a space on each side."""
+
+    collapsed = func.trim(func.regexp_replace(func.lower(func.coalesce(column, "")), r"\s+", " ", "g"))
+    return func.concat(" ", collapsed, " ")
+
+
+def _ordered_words_clause(column, needle: str):
+    """SQL match for two or more words in order, with other words allowed between them.
+
+    A single word returns None. The caller keeps the continuous ILIKE check for that case.
+    """
+
+    words = needle.casefold().split()
+    if len(words) < 2:
+        return None
+    haystack = _normalized_search_text(column)
+    checks = []
+    for index, word in enumerate(words):
+        found_at = func.strpos(haystack, f" {word} ")
+        checks.append(found_at > 0)
+        if index < len(words) - 1:
+            haystack = func.substr(haystack, found_at + len(word) + 1)
+    return and_(*checks)
+
+
+def _name_has_ordered_words(name: str, needle: str) -> bool:
+    """True when each word of needle appears, in order, as a whole word in name."""
+
+    words = needle.casefold().split()
+    if len(words) < 2:
+        return False
+    name_words = name.casefold().split()
+    start = 0
+    for word in words:
+        try:
+            index = name_words.index(word, start)
+        except ValueError:
+            return False
+        start = index + 1
+    return True
+
+
+def _name_matches_query(name: str, needle: str) -> bool:
+    folded = needle.casefold()
+    if folded in name.casefold():
+        return True
+    return _name_has_ordered_words(name, needle)
+
+
+def _column_matches_query(column, needle: str):
+    continuous = column.ilike(_contains(needle), escape="\\")
+    ordered = _ordered_words_clause(column, needle)
+    if ordered is None:
+        return continuous
+    return or_(continuous, ordered)
+
+
 def _names_by_club(session: Session, club_ids: set[int]) -> dict[int, set[str]]:
     """Folded team names stored on each club id."""
 
@@ -641,6 +699,7 @@ def search_clubs(session: Session, q: str | None, *, limit: int | None = None) -
 
     A missing limit uses CLUB_LIST_LIMIT at call time, which is the clubs page.
     A negative limit returns every match, which is the locations filter.
+    One word must appear continuously. Two or more words may have other words between them, in order.
     """
 
     counts = (
@@ -652,16 +711,15 @@ def search_clubs(session: Session, q: str | None, *, limit: int | None = None) -
     statement = select(Club).join(counts, counts.c.club_id == Club.id)
     needle = (q or "").strip()
     if needle:
-        team_hit = select(ScheduleTeam.club_id).where(ScheduleTeam.name.ilike(_contains(needle), escape="\\"))
-        statement = statement.where(or_(Club.name.ilike(_contains(needle), escape="\\"), Club.id.in_(team_hit)))
+        team_hit = select(ScheduleTeam.club_id).where(_column_matches_query(ScheduleTeam.name, needle))
+        statement = statement.where(or_(_column_matches_query(Club.name, needle), Club.id.in_(team_hit)))
         statement = statement.order_by(Club.name, Club.id)
     else:
         statement = statement.order_by(counts.c.team_count.desc(), Club.name, Club.id)
     clubs = list(session.scalars(statement).all())
     items = _expand_clubs(session, clubs)
     if needle:
-        folded = needle.casefold()
-        items = [item for item in items if folded in item.name.casefold()]
+        items = [item for item in items if _name_matches_query(item.name, needle)]
         items.sort(key=lambda item: (item.name.casefold(), str(item.id)))
     else:
         items.sort(key=lambda item: (-item.team_count, item.name.casefold(), str(item.id)))
