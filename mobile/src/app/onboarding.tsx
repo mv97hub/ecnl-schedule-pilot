@@ -39,7 +39,7 @@ export default function Onboarding() {
         ) : (
           <View style={{ gap: 8 }}>
             <OutlineButton label="Back" onPress={() => setStep("club")} />
-            {pickedTeams > 0 ? <GoldButton label="Go to Home" onPress={finish} /> : <OutlineButton label="Skip for now" onPress={finish} />}
+            {pickedTeams > 0 ? <GoldButton label="Done" onPress={finish} /> : <OutlineButton label="Skip for now" onPress={finish} />}
           </View>
         )}
         <View>
