@@ -22,7 +22,7 @@ Boys and Girls are chosen on the page that needs one division. Team Schedules an
 | Locations Guide | `/locations` | A club filter, then that club's home fields, Club Ratings, and family tips. Details are in [Locations Guide](#locations-guide). |
 | Field | `/locations/{venue_key}` | One complex: scorecard, rating form, family tips, then upcoming and recent games. |
 | Add a family tip | `/locations/tip` | A dropdown of the club's fields (`?club=`), then the tip form. |
-| Profile | `/profile` | Google or Apple sign-in, the club and team editor, plus a home address saved in `sessionStorage` for this browser tab. The address is not written to the account. One club and up to four teams are saved on the account. Slot 1 is the default team. |
+| Profile | `/profile` | Google or Apple sign-in. Signed out, this page is only the sign-in card. Signed in, a side menu opens Favorites (`/profile/favorites`), Home address (`/profile/address`), and Team calendar (`/profile/calendar`). On a phone the menu stacks above the page. One club and up to four teams are saved on the account. Slot 1 is the default team. The home address is saved on the account. Each favorite team can store one PlayMetrics or TeamSnap calendar link. Those links are not fetched. |
 | Privacy | `/privacy` | Privacy policy for the Premier Gameday HQ app. Favorites stay on the device. The app has no account and does not send personal data to the server. The website section covers the session cookie and location ratings. The two admin accounts can see the email on the location history page. Contact premiergamedayhq@gmail.com. |
 | Support | `/support` | How to use Premier Gameday HQ without an account. Email premiergamedayhq@gmail.com, or send a report from the page. |
 | Share image | `/api/og/h2h` | A 1200×630 image for a head-to-head link. It calls the API `/head-to-head` route. |
@@ -46,7 +46,7 @@ Add a family tip sits next to the Family tips heading and opens `/locations/tip?
 
 The field page scorecard does not grow a second block for tips. Under the Scorecard heading, one line shows the overall rating, or `No family ratings yet`, the tip count, and the average of the tip stars when there is at least one tip. Family tips, including that page's add-a-tip form, are above Upcoming games and Recent games. Each of those lists is at most eight games. Category tabs on the field page use the full names: Hotel, Team Food and Dining, Between-Game Hangout, Activity, and Sideline and Parking Tip.
 
-Ratings, tips, and tip votes require a signed-in website account. The website finishes Google or Apple sign-in, asks the API for a session, and stores the raw token in an httpOnly Secure SameSite=Lax cookie on premiergamedayhq.com. The browser does not send that cookie to the API host. The website server sends `Authorization: Bearer`. `user_id` stores the account id and `author_key` is `user:{id}`, so one account has one rating per complex and one vote per tip. The name on a tip is the account display name. Email is not shown on the location page. Rows already stored under a browser `author_key` stay visible and are not rewritten. Signed-out visitors can still read every location. The home address on Profile stays in `sessionStorage`.
+Ratings, tips, and tip votes require a signed-in website account. The website finishes Google or Apple sign-in, asks the API for a session, and stores the raw token in an httpOnly Secure SameSite=Lax cookie on premiergamedayhq.com. The browser does not send that cookie to the API host. The website server sends `Authorization: Bearer`. `user_id` stores the account id and `author_key` is `user:{id}`, so one account has one rating per complex and one vote per tip. The name on a tip is the account display name. Email is not shown on the location page. Rows already stored under a browser `author_key` stay visible and are not rewritten. Signed-out visitors can still read every location. A home address saved on the account is not public. Latitude and longitude stay empty, so the drive estimate is not filled from that address.
 
 The club page Venue Guide link goes to `/locations?club=` for that club. The field rows under it still open Google Maps. A Venue Guide link on a team schedule opens `/locations/{venue_key}` for that one complex.
 
@@ -71,11 +71,16 @@ The club page Venue Guide link goes to `/locations?club=` for that club. The fie
 | POST | `/locations/recommendations` | Requires `Authorization: Bearer`. `category` is `HOTEL`, `RESTAURANT`, `COFFEE_GAP`, `ACTIVITY`, or `SIDELINE_TIP`. `rating` is 1–5. `tags` must be in `TIP_TAGS` in `api/app/locations.py`. The route builds `venue_key` from the venue name, city, and state. The display name comes from the account. The same transaction appends a `location_write_event` row. The response shape is unchanged. |
 | POST | `/locations/recommendations/{recommendation_id}/vote` | Requires `Authorization: Bearer`. Body `{"choice": "up"}` or `{"choice": "down"}`. One vote per account. The same choice again changes nothing on the current vote row. An unknown id is 404. The same transaction appends a `location_write_event` row. The response shape is unchanged. |
 | POST | `/auth/session` | Called by the website with header `X-Internal-Auth` set to `AUTH_INTERNAL_SECRET`. Body is the provider, subject, email, whether that email is verified, display name, and client (`web`, `ios`, or `android`). Returns a raw session token once. If `AUTH_INTERNAL_SECRET` is missing, the response is 503 and names that variable. |
-| GET | `/auth/me` | Requires `Authorization: Bearer`. Returns the display name, email, and providers. |
-| GET | `/me` | Requires `Authorization: Bearer`. Returns the same person plus `club_id` and ordered `team_ids`. A club or team that no longer exists is left out of this response. |
-| PUT | `/me/favorites` | Requires `Authorization: Bearer`. Body `club_id` (a public club key, or null) and `team_ids` (at most four ids, in slot order). Replaces the account's favorites. An unknown club or team is 400. |
+| GET | `/auth/me` | Requires `Authorization: Bearer`. Returns the display name, email, and providers. When a home address is saved, the response also includes `home_address` (`street`, `unit`, `city`, `state`, `postal_code`). With no address, that field is omitted, so the previous fields stay as they were. |
+| GET | `/me` | Requires `Authorization: Bearer`. Returns the same person plus `club_id` and ordered `team_ids`. A club or team that no longer exists is left out of this response. This shape does not include the home address or calendar links. |
+| PUT | `/me/favorites` | Requires `Authorization: Bearer`. Body `club_id` (a public club key, or null) and `team_ids` (at most four ids, in slot order). Replaces the account's favorites. An unknown club or team is 400. A team removed from the list loses its calendar link. |
+| PUT | `/me/home-address` | Requires `Authorization: Bearer`. Saves `street`, `unit`, `city`, a US `state`, and `postal_code` on the account. Returns the same body as `GET /auth/me`, including `home_address`. Latitude and longitude stay empty. |
+| DELETE | `/me/home-address` | Requires `Authorization: Bearer`. Removes the saved home address. |
+| GET | `/me/calendars` | Requires `Authorization: Bearer`. Returns `calendars`: one PlayMetrics or TeamSnap link for each current favorite team that has one, in slot order. The link is returned only to that signed-in user. |
+| PUT | `/me/calendars` | Requires `Authorization: Bearer`. Body `team_id`, `source` (`playmetrics` or `teamsnap`), and `url`. An `https` link is stored. A `webcal` link is rewritten to `https` before it is stored. Anything else is 400. The team must already be a favorite. A later save for the same team replaces that one row. The feed is not fetched. |
+| DELETE | `/me/calendars/{team_id}` | Requires `Authorization: Bearer`. Removes that team's calendar link. |
 | POST | `/auth/logout` | Deletes the bearer session. |
-| DELETE | `/auth/account` | Deletes the user, identities, sessions, favorites, and that person’s ratings, tips, and votes. History rows in `location_write_event` stay, with the email and display name copied at the time of the write. |
+| DELETE | `/auth/account` | Deletes the user, identities, sessions, favorites, home address, calendar links, and that person’s ratings, tips, and votes. History rows in `location_write_event` stay, with the email and display name copied at the time of the write. Calendar links are not copied into that history. |
 | GET | `/head-to-head` | Compares `team_a_id` and `team_b_id`. They must differ and share a gender. `conference_only` limits the games used. |
 | GET | `/data-refresh` | `last_successful_finish` for the newest successful `data_refresh` row whose `job` is `schedule`. People and reference runs are not included. |
 | POST | `/ingest/ics` | Fetches a public calendar and upserts `ingest_team` / `ingest_game`. |
@@ -96,7 +101,7 @@ PostgreSQL 16. `docker-compose.yml` runs `postgres:16`, publishes port 5432, and
 
 `issue` stores in-app reports only. Columns are `id`, `created_at`, `category`, `description`, `email` (nullable), `app_version`, `screen`, `status` (`open` or `done`, default `open`), and `completed_at` (nullable).
 
-Accounts live in `app_user`, `auth_identity`, and `app_session`. `user_favorite` stores one club (`position` 0) and up to four teams (`position` 1 through 4) for an account. `app_session` stores a hash of the token, never the raw token. Set `AUTH_INTERNAL_SECRET` on the API and on the website. The website also needs `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, and `APPLE_PRIVATE_KEY`. Sign-in fails clearly when a required value is missing. Redirects are `https://premiergamedayhq.com/api/auth/google/callback` and `https://premiergamedayhq.com/api/auth/apple/callback`.
+Accounts live in `app_user`, `auth_identity`, and `app_session`. `user_favorite` stores one club (`position` 0) and up to four teams (`position` 1 through 4) for an account. `user_home_address` stores one street address for that account. `user_calendar` stores one PlayMetrics or TeamSnap link per favorite team. `app_session` stores a hash of the token, never the raw token. Set `AUTH_INTERNAL_SECRET` on the API and on the website. The website also needs `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, and `APPLE_PRIVATE_KEY`. Sign-in fails clearly when a required value is missing. Redirects are `https://premiergamedayhq.com/api/auth/google/callback` and `https://premiergamedayhq.com/api/auth/apple/callback`.
 
 ## Code layout
 
@@ -128,7 +133,7 @@ api/
   tests/                   unittest modules
   scouting.py              Head-to-head scouting report
 web/
-  app/                     Routes /, /clubs, /standings, /projected, /head-to-head, /locations, /locations/tip, /profile, /privacy, /support, /admin, /admin/history, /api/og/h2h
+  app/                     Routes /, /clubs, /standings, /projected, /head-to-head, /locations, /locations/tip, /profile, /profile/favorites, /profile/address, /profile/calendar, /privacy, /support, /admin, /admin/history, /api/og/h2h
   components/              Schedule, standings, projected, clubs, locations, head-to-head, profile, and ingest UI
   lib/                     API client, gender, conferences, formatting
 docker-compose.yml         Postgres 16
@@ -153,6 +158,7 @@ Tests, all under `api/tests/`:
 | `test_mobile.py` | Enriched `/teams` rows and `GET /mobile/dashboard`. |
 | `test_issues.py` | Creating a report, the per-IP limit, the admin allow list, and the done checkbox. |
 | `test_auth.py` | Session tokens, linking a verified email, Apple private relay, and deleting an account. |
+| `test_profile.py` | Saving, reading, and clearing a home address. A rejected calendar link, one link per favorite team, and delete-account removing the address and that user's links. |
 
 `web/README.md` is the Next.js template text. It does not describe this project.
 
@@ -310,6 +316,10 @@ These are written by the locations routes, not by the refresh jobs. `venue_key` 
 `location_write_event` columns: `created_at`, `user_id`, `email`, `display_name` (both copied at that moment), `kind`, `venue_key`, `venue_name`, `rating_id`, `tip_id`, `action`, `previous_values`, `new_values`. A rating stores the five scores, `surface`, and `comment`. A tip stores `category`, `title`, `stars`, `review_text`, and `tags`. A vote stores `choice`.
 
 `user_favorite` columns: `user_id`, `kind` (`club` or `team`), `ref` (the public club key, or the team id as text), `position` (0 for the club, 1 through 4 for teams). Unique on user plus kind plus ref, and on user plus kind plus position. Deleting the account deletes these rows.
+
+`user_home_address` columns: `user_id` (primary key, references `app_user.id`, deleted with the account), `street`, `unit`, `city`, `state`, `postal_code`, `latitude`, `longitude`. Latitude and longitude stay null. The row is not public and is not written into location history.
+
+`user_calendar` columns: `user_id` (references `app_user.id`, deleted with the account), `team_id` (references `team.id`, deleted with that team), `source` (`playmetrics` or `teamsnap`), `url`. Unique on user plus team. The url is a secret link for that signed-in user. Removing the team from favorites deletes the row. The feed is not fetched, and the url is not shown on public pages, location pages, or admin history.
 
 ### Ingest tables
 

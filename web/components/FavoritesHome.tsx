@@ -164,7 +164,7 @@ export function FavoritesHome() {
           <Link href={scheduleHref(defaultTeamId)} className="text-sm font-medium text-navy underline underline-offset-4">
             Full schedule
           </Link>
-          <Link href="/profile" className="text-sm font-medium text-navy underline underline-offset-4">
+          <Link href="/profile/favorites" className="text-sm font-medium text-navy underline underline-offset-4">
             Edit club and teams
           </Link>
         </div>
@@ -174,11 +174,11 @@ export function FavoritesHome() {
         {empty ? (
           <section className="mt-6 rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm">
             <h2 className="text-lg font-semibold text-navy">
-              <Link href="/profile" className="underline underline-offset-4">
+              <Link href="/profile/favorites" className="underline underline-offset-4">
                 Pick your club and teams
               </Link>
             </h2>
-            <p className="mt-1 text-sm text-stone-500">Add one club and up to four teams on Profile.</p>
+            <p className="mt-1 text-sm text-stone-500">Add one club and up to four teams under Favorites.</p>
           </section>
         ) : null}
 

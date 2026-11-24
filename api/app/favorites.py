@@ -7,7 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.clubs import club_detail
-from app.models import ScheduleTeam, UserFavorite
+from app.models import ScheduleTeam, UserCalendar, UserFavorite
 
 MAX_TEAMS = 4
 
@@ -43,6 +43,15 @@ def replace_favorites(db: Session, user_id: int, club_id: str | None, team_ids: 
         db.add(UserFavorite(user_id=user_id, kind="club", ref=club, position=0))
     for index, team_id in enumerate(team_ids, start=1):
         db.add(UserFavorite(user_id=user_id, kind="team", ref=str(team_id), position=index))
+    if team_ids:
+        db.execute(
+            delete(UserCalendar).where(
+                UserCalendar.user_id == user_id,
+                UserCalendar.team_id.not_in(team_ids),
+            )
+        )
+    else:
+        db.execute(delete(UserCalendar).where(UserCalendar.user_id == user_id))
     db.commit()
 
 

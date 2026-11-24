@@ -64,59 +64,7 @@ export const US_STATES: ReadonlyArray<readonly [string, string]> = [
   ["WY", "Wyoming"],
 ];
 
-const KEY = "ecnl-home-address";
-
 export function formatHomeAddress(address: Pick<HomeAddress, "street" | "unit" | "city" | "state" | "postalCode">): string {
   const street = address.unit.trim() ? `${address.street.trim()}, ${address.unit.trim()}` : address.street.trim();
   return `${street}, ${address.city.trim()}, ${address.state} ${address.postalCode.trim()}`;
-}
-
-export function saveHomeAddress(input: Pick<HomeAddress, "street" | "unit" | "city" | "state" | "postalCode">): HomeAddress {
-  const address: HomeAddress = {
-    street: input.street.trim(),
-    unit: input.unit.trim(),
-    city: input.city.trim(),
-    state: input.state,
-    postalCode: input.postalCode.trim(),
-    formatted: "",
-    latitude: null,
-    longitude: null,
-    placeId: null,
-  };
-  address.formatted = formatHomeAddress(address);
-  sessionStorage.setItem(KEY, JSON.stringify(address));
-  return address;
-}
-
-export function readHomeAddress(): HomeAddress | null {
-  try {
-    const raw = sessionStorage.getItem(KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<HomeAddress>;
-    if (!parsed.street || !parsed.city || !parsed.state || !parsed.postalCode) return null;
-    const address: HomeAddress = {
-      street: parsed.street,
-      unit: parsed.unit ?? "",
-      city: parsed.city,
-      state: parsed.state,
-      postalCode: parsed.postalCode,
-      formatted: parsed.formatted || formatHomeAddress({
-        street: parsed.street,
-        unit: parsed.unit ?? "",
-        city: parsed.city,
-        state: parsed.state,
-        postalCode: parsed.postalCode,
-      }),
-      latitude: typeof parsed.latitude === "number" ? parsed.latitude : null,
-      longitude: typeof parsed.longitude === "number" ? parsed.longitude : null,
-      placeId: typeof parsed.placeId === "string" ? parsed.placeId : null,
-    };
-    return address;
-  } catch {
-    return null;
-  }
-}
-
-export function clearHomeAddress() {
-  sessionStorage.removeItem(KEY);
 }

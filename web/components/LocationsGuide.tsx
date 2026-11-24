@@ -9,7 +9,7 @@ import { ClubMark } from "@/components/ClubMark";
 import { TipVotes, sortTips } from "@/components/TipVotes";
 import { fetchClubCatalog, fetchClubLocations, voteRecommendation } from "@/lib/api";
 import { easternStamp } from "@/lib/format";
-import { readHomeAddress, type HomeAddress } from "@/lib/homeAddress";
+import type { HomeAddress } from "@/lib/homeAddress";
 import { signInHref, useAccount } from "@/lib/useAccount";
 import type { ClubListItem, ClubLocationTip, ClubLocations, LocationAggregate, LocationCard, TipCategory, TipVote } from "@/lib/types";
 
@@ -420,15 +420,11 @@ export function LocationsDirectory() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedId = (searchParams.get("club") ?? "").trim();
-  const [home, setHome] = useState<HomeAddress | null>(null);
+  const home: HomeAddress | null = null;
   const [directory, setDirectory] = useState<ClubLocations | null>(null);
   const [directoryLoading, setDirectoryLoading] = useState(false);
   const [directoryError, setDirectoryError] = useState<string | null>(null);
   const [picked, setPicked] = useState<ClubListItem | null>(null);
-
-  useEffect(() => {
-    setHome(readHomeAddress());
-  }, []);
 
   useEffect(() => {
     if (!selectedId) {
@@ -440,7 +436,7 @@ export function LocationsDirectory() {
     let active = true;
     setDirectoryLoading(true);
     setDirectory(null);
-    fetchClubLocations(selectedId, readHomeAddress())
+    fetchClubLocations(selectedId, home)
       .then((payload) => {
         if (!active) return;
         setDirectory(payload);
@@ -458,7 +454,7 @@ export function LocationsDirectory() {
     return () => {
       active = false;
     };
-  }, [selectedId]);
+  }, [home, selectedId]);
 
   function selectClub(club: ClubListItem) {
     setPicked(club);

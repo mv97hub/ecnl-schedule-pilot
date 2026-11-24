@@ -2,6 +2,21 @@ import { type NextRequest } from "next/server";
 
 import { apiOrigin, sessionToken } from "@/lib/siteAuth";
 
+function homeAddress(value: unknown): { street: string; unit: string; city: string; state: string; postal_code: string } | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.street !== "string" || typeof row.city !== "string" || typeof row.state !== "string" || typeof row.postal_code !== "string") {
+    return null;
+  }
+  return {
+    street: row.street,
+    unit: typeof row.unit === "string" ? row.unit : "",
+    city: row.city,
+    state: row.state,
+    postal_code: row.postal_code,
+  };
+}
+
 export async function GET(request: NextRequest): Promise<Response> {
   const token = sessionToken(request);
   if (!token) return Response.json({ signed_in: false });
@@ -15,12 +30,14 @@ export async function GET(request: NextRequest): Promise<Response> {
       display_name?: string;
       email?: string | null;
       providers?: string[];
+      home_address?: unknown;
     };
     return Response.json({
       signed_in: true,
       display_name: user.display_name ?? "",
       email: user.email ?? null,
       providers: Array.isArray(user.providers) ? user.providers : [],
+      home_address: homeAddress(user.home_address),
     });
   } catch {
     return Response.json({ signed_in: false });

@@ -1,17 +1,12 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 
-import { ProfileForm } from "@/components/ProfileForm";
+import { ProfileAccount } from "@/components/ProfileAccount";
 
 export const metadata: Metadata = {
   title: "Profile | ECNL",
-  description: "Sign in with Google or Apple. A home address stays in this browser session.",
+  description: "Sign in with Google or Apple. A home address and team calendar links stay on the account.",
 };
 
 export default function ProfilePage() {
-  return (
-    <Suspense fallback={null}>
-      <ProfileForm />
-    </Suspense>
-  );
+  return <ProfileAccount />;
 }

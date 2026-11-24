@@ -468,7 +468,7 @@ class VenueRecommendation(Base):
 
 
 class AppUser(Base):
-    """One person. The website and a later app share this row. The home address is not stored here."""
+    """One person. The website and a later app share this row. The home address is `user_home_address`."""
 
     __tablename__ = "app_user"
 
@@ -530,6 +530,37 @@ class UserFavorite(Base):
     kind: Mapped[str] = mapped_column(String(8), nullable=False)
     ref: Mapped[str] = mapped_column(String(200), nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class UserHomeAddress(Base):
+    """Street address saved on the account. Latitude and longitude stay empty."""
+
+    __tablename__ = "user_home_address"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    street: Mapped[str] = mapped_column(String(160), nullable=False)
+    unit: Mapped[str] = mapped_column(String(40), nullable=False, default="", server_default="")
+    city: Mapped[str] = mapped_column(String(80), nullable=False)
+    state: Mapped[str] = mapped_column(String(2), nullable=False)
+    postal_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class UserCalendar(Base):
+    """One secret PlayMetrics or TeamSnap link for one favorite team. The feed is not fetched here."""
+
+    __tablename__ = "user_calendar"
+    __table_args__ = (
+        UniqueConstraint("user_id", "team_id", name="uq_user_calendar_team"),
+        CheckConstraint("source IN ('playmetrics', 'teamsnap')", name="ck_user_calendar_source"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), nullable=False, index=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("team.id", ondelete="CASCADE"), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class LocationWriteEvent(Base):
