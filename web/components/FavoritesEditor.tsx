@@ -24,10 +24,17 @@ function squadLabel(squad: Pick<ClubSquad, "gender" | "age_group" | "tier">): st
   return `${squad.gender === "girls" ? "G" : "B"} ${squad.age_group} ${squad.tier}`;
 }
 
+function genderMark(gender: NamedTeam["gender"]): string | null {
+  if (gender === "girls") return "G";
+  if (gender === "boys") return "B";
+  return null;
+}
+
 function teamLine(team: NamedTeam | undefined, id: number): string {
   if (!team) return `Team ${id}`;
   const tier = team.tier ?? "ECNL";
-  return `${team.name} · ${team.age_group} · ${tier}`;
+  const mark = genderMark(team.gender);
+  return mark ? `${team.name} · ${mark} ${team.age_group} · ${tier}` : `${team.name} · ${team.age_group} · ${tier}`;
 }
 
 export function FavoritesEditor({ signedIn }: { signedIn: boolean }) {
@@ -127,7 +134,7 @@ export function FavoritesEditor({ signedIn }: { signedIn: boolean }) {
     const key = `${gender}:${teamText}`;
     fetchTeams(teamText, gender)
       .then((rows) => {
-        if (active) setFetchedHits({ key, teams: rows as NamedTeam[] });
+        if (active) setFetchedHits({ key, teams: rows.map((team) => ({ ...team, gender: team.gender ?? gender })) });
       })
       .catch(() => {
         if (active) setFetchedHits({ key, teams: [] });
@@ -356,7 +363,7 @@ export function FavoritesEditor({ signedIn }: { signedIn: boolean }) {
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium text-navy">{team.name}</span>
                     <span className="block text-xs text-stone-500">
-                      {team.age_group} · {team.tier ?? "ECNL"}
+                      {genderMark(team.gender) ?? (gender === "girls" ? "G" : "B")} {team.age_group} · {team.tier ?? "ECNL"}
                     </span>
                   </span>
                   {signedIn ? (

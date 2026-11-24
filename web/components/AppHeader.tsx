@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
-import { useLeagueGender } from "@/components/GenderProvider";
 import { selectionQuery } from "@/lib/selection";
 import { useAccount } from "@/lib/useAccount";
 
@@ -35,7 +34,6 @@ function AppHeaderPath() {
 }
 
 function AppHeaderBar({ path, query, view = null, scheduleBoard = false }: { path: string; query: string; view?: string | null; scheduleBoard?: boolean }) {
-  const { gender, setGender } = useLeagueGender();
   const account = useAccount();
   const accountLabel = account === undefined ? null : account ? account.display_name.trim() || "Account" : "Sign in";
   const home = path === "/" && !scheduleBoard && account != null;
@@ -53,20 +51,6 @@ function AppHeaderBar({ path, query, view = null, scheduleBoard = false }: { pat
           <Link href="/" className="shrink-0 whitespace-nowrap text-sm font-semibold tracking-tight">
             Premier Gameday HQ
           </Link>
-          <div className="flex shrink-0 items-center gap-0.5 rounded-lg bg-black/20 p-1 ring-2 ring-gold" role="group" aria-label="Boys or girls">
-            {(["boys", "girls"] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                data-gender={value}
-                aria-pressed={gender === value}
-                onClick={() => setGender(value)}
-                className={`rounded-md px-3.5 py-1.5 text-sm font-bold ${gender === value ? "bg-gold text-navy shadow-sm" : "text-bone hover:bg-white/10"}`}
-              >
-                {value === "boys" ? "Boys" : "Girls"}
-              </button>
-            ))}
-          </div>
           <nav className="flex min-w-0 max-w-full flex-wrap items-center gap-1 text-sm" aria-label="Primary">
             <Link
               href="/"

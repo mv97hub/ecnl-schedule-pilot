@@ -10,7 +10,7 @@ There is no `render.yaml` and no other deploy file in this repository. Web and A
 
 ### Dashboard (`web/`)
 
-The header switches Boys and Girls. The choice is stored in `sessionStorage` under `ecnl-league-gender` and sent as `gender=boys` or `gender=girls`. It is not a separate route. A `gender` query on the page is used when one is present.
+Boys and Girls are chosen on the page that needs one division. Team Schedules and Conference Standings each have a Boys/Girls control beside their other filters. Head-to-Head follows the first team, and the other team is that same gender. Clubs, the Locations Guide, and the signed-in home show boys and girls together. There is no site-wide switch and no `ecnl-league-gender` value. A `gender` query on standings or head-to-head is used when one is present. A link such as `/?team=` opens that team even when it is the other gender.
 
 | Page | Route | What it shows |
 | --- | --- | --- |

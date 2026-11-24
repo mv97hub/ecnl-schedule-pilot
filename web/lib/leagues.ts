@@ -20,6 +20,12 @@ export const CONFERENCES = [
 
 export type LeagueGender = "boys" | "girls";
 
+export function parseLeagueGender(value: string | null | undefined): LeagueGender | null {
+  if (value === "girls") return "girls";
+  if (value === "boys") return "boys";
+  return null;
+}
+
 const BIRTH_YEARS = [
   ["U13", "2013"],
   ["U14", "2012"],

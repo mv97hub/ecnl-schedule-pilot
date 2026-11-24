@@ -5,9 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { BreadcrumbTrail } from "@/components/BreadcrumbTrail";
-import { useLeagueGender } from "@/components/GenderProvider";
 import { ConferenceSelect } from "@/components/ConferenceSelect";
 import { FilterPills } from "@/components/FilterPills";
+import { GenderPills } from "@/components/GenderPills";
 import { HeaderSelect } from "@/components/HeaderSelect";
 import { CalendarView, ScheduleBoard, ViewSwitch, type ScheduleView } from "@/components/ScheduleBoard";
 import { SeasonTimeline } from "@/components/SeasonTimeline";
@@ -15,7 +15,7 @@ import { TeamHero } from "@/components/TeamHero";
 import { TeamSelector } from "@/components/TeamSelector";
 import { fetchDataRefresh, fetchSchedule, fetchTeams } from "@/lib/api";
 import { formatDataAsOf } from "@/lib/format";
-import { AGE_GROUPS, TIERS, ageGroupsFor, type LeagueGender } from "@/lib/leagues";
+import { AGE_GROUPS, TIERS, ageGroupsFor, parseLeagueGender, type LeagueGender } from "@/lib/leagues";
 import { rememberSquad, rememberedSquad, shortConference } from "@/lib/selection";
 import type { Game, ScheduleFilter, Team, TeamRecordSummary } from "@/lib/types";
 
@@ -53,7 +53,9 @@ export function Dashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const teamParam = searchParams.get("team");
-  const { gender, ready: genderReady, setGender, claimGenderChange, restoreGenderChange } = useLeagueGender();
+  const [gender, setGender] = useState<LeagueGender>(() => parseLeagueGender(searchParams.get("gender")) ?? "boys");
+  const userSwitchRef = useRef(false);
+  const bootedRef = useRef(false);
   const ageOptions = ageGroupsFor(gender);
   const genderWord = gender === "girls" ? "Girls" : "Boys";
   const [teams, setTeams] = useState<Team[]>([]);
@@ -75,7 +77,6 @@ export function Dashboard() {
   const filtersRef = useRef({ tier, conference, ageGroup });
   const clubRef = useRef(clubName);
   const selectedRef = useRef(selectedId);
-  const seenGender = useRef<LeagueGender | null>(null);
   const teamCache = useRef<{ gender: LeagueGender; teams: Team[] } | null>(null);
   filtersRef.current = { tier, conference, ageGroup };
   clubRef.current = clubName;
@@ -96,33 +97,42 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (!genderReady) return;
     let cancelled = false;
-    const previousGender = seenGender.current;
-    const genderChanged = previousGender != null && previousGender !== gender;
-    seenGender.current = gender;
-    const claimed = claimGenderChange(gender);
-    const userSwitched = genderChanged && claimed === "user";
+    const userSwitched = userSwitchRef.current;
+    userSwitchRef.current = false;
     const claimState = { settled: false };
     const requestedId = positiveTeamId(teamParam);
 
     async function load() {
       setError(null);
-      const cached = teamCache.current?.gender === gender ? teamCache.current.teams : null;
+      const active = gender;
+      if (!bootedRef.current) {
+        bootedRef.current = true;
+        const explicit = parseLeagueGender(new URLSearchParams(window.location.search).get("gender"));
+        if (!userSwitched && requestedId == null && !explicit) {
+          const memory = rememberedSquad();
+          if (memory && memory.gender !== active) {
+            claimState.settled = true;
+            setGender(memory.gender);
+            return;
+          }
+        }
+      }
+      const cached = teamCache.current?.gender === active ? teamCache.current.teams : null;
       if (!cached) setTeamsLoading(true);
-      const data = cached ?? (await fetchTeams(undefined, gender));
+      const data = cached ?? (await fetchTeams(undefined, active));
       if (cancelled) return;
-      teamCache.current = { gender, teams: data };
+      teamCache.current = { gender: active, teams: data };
 
       let team = requestedId == null ? undefined : data.find((item) => item.id === requestedId);
       if (requestedId != null && !team && !userSwitched) {
-        const other = otherGender(gender);
+        const other = otherGender(active);
         const others = await fetchTeams(undefined, other);
         if (cancelled) return;
         if (others.some((item) => item.id === requestedId)) {
           teamCache.current = { gender: other, teams: others };
           claimState.settled = true;
-          setGender(other, "adopt");
+          setGender(other);
           return;
         }
         setError("That team is not on the boys or girls schedule.");
@@ -137,7 +147,7 @@ export function Dashboard() {
           team = pickSquad(data, filtersRef.current, clubRef.current);
         } else if (requestedId == null) {
           const memory = rememberedSquad();
-          const fromMemory = memory && memory.gender === gender ? data.find((item) => item.id === memory.id) : undefined;
+          const fromMemory = memory && memory.gender === active ? data.find((item) => item.id === memory.id) : undefined;
           team = fromMemory ?? pickSquad(data, filtersRef.current, null);
         }
       }
@@ -153,7 +163,7 @@ export function Dashboard() {
           tier: teamTier(team),
           conference: shortConference(team.conference),
           ageGroup: team.age_group,
-          gender,
+          gender: active,
         });
         if (selectedRef.current !== team.id) {
           setGames([]);
@@ -163,9 +173,10 @@ export function Dashboard() {
           setScheduleLoading(true);
         }
         setSelectedId(team.id);
-        if (String(team.id) !== teamParam) {
+        if (String(team.id) !== teamParam || parseLeagueGender(new URLSearchParams(window.location.search).get("gender")) !== active) {
           const params = new URLSearchParams(window.location.search);
           params.set("team", String(team.id));
+          params.set("gender", active);
           const href = `/?${params.toString()}`;
           if (userSwitched) router.push(href, { scroll: false });
           else if (requestedId == null) router.replace(href, { scroll: false });
@@ -185,11 +196,11 @@ export function Dashboard() {
     return () => {
       cancelled = true;
       if (!claimState.settled) {
-        seenGender.current = previousGender;
-        if (claimed) restoreGenderChange(claimed, gender);
+        bootedRef.current = false;
+        if (userSwitched) userSwitchRef.current = true;
       }
     };
-  }, [genderReady, gender, teamParam, claimGenderChange, restoreGenderChange, setGender, router]);
+  }, [gender, teamParam, router]);
 
   useEffect(() => {
     if (selectedId == null) return;
@@ -257,13 +268,20 @@ export function Dashboard() {
     selectTeam(nextTeam);
     if (!nextTeam) return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("team") === String(nextTeam.id)) return;
+    params.set("gender", gender);
+    if (params.get("team") === String(nextTeam.id) && parseLeagueGender(new URLSearchParams(window.location.search).get("gender")) === gender) return;
     params.set("team", String(nextTeam.id));
     router.push(`/?${params.toString()}`, { scroll: false });
   }
 
   function squad(pool: Team[], name: string | null) {
     return (name ? pool.find((team) => team.name === name) : undefined) ?? pool[0];
+  }
+
+  function chooseGender(next: LeagueGender) {
+    if (next === gender) return;
+    userSwitchRef.current = true;
+    setGender(next);
   }
 
   function chooseTier(next: string) {
@@ -310,6 +328,10 @@ export function Dashboard() {
             {dataAsOf && <p className="mt-1 text-sm text-bone/75">{dataAsOf}</p>}
           </div>
           <div className="grid min-w-0 gap-2 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
+            <div className="flex w-full min-w-0 items-center gap-2">
+              <span className="w-[6.75rem] shrink-0 text-[11px] font-semibold uppercase leading-none tracking-wide text-bone/80 sm:text-xs">League</span>
+              <GenderPills tone="navy" gender={gender} onChange={chooseGender} disabled={teamsLoading} />
+            </div>
             <HeaderSelect
               id="tier"
               label="Tier"
