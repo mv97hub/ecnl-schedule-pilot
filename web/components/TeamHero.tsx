@@ -49,7 +49,7 @@ export function TeamHero({
     gender,
   }).toString();
   const standingsHref = `/standings?${tableQuery}`;
-  const projectedHref = `/projected?${tableQuery}`;
+  const projectedHref = `/standings?${tableQuery}&view=projected`;
 
   return (
     <section className="rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-sm" aria-label="Team summary">

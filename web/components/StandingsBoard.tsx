@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { parseLeagueGender, useLeagueGender } from "@/components/GenderProvider";
+import { ProjectedBoard } from "@/components/ProjectedBoard";
 import { ResultMark } from "@/components/ResultMark";
 import { fetchStandings, fetchTeams } from "@/lib/api";
 import { PLAYOFF_SPOTS, TIERS, ageGroupsFor, type LeagueGender } from "@/lib/leagues";
@@ -16,11 +17,14 @@ const AGES = new Set(["U13", "U14", "U15", "U16", "U17", "U18/19"]);
 
 type TierName = (typeof TIERS)[number];
 
+type BoardView = "current" | "projected";
+
 type StandingsFilters = {
   conference: string;
   tier: TierName;
   ageGroup: string;
   mode: StandingsMode;
+  view: BoardView;
   gender: LeagueGender;
   team: number | null;
 };
@@ -33,6 +37,7 @@ function readQuery(params: URLSearchParams) {
     tier: params.get("tier") === "ECNL-RL" ? "ECNL-RL" : "ECNL",
     ageGroup: age && AGES.has(age) ? age : "U13",
     mode: params.get("mode") === "calculated" ? "calculated" : "official",
+    view: params.get("view") === "projected" ? "projected" : "current",
     team: Number.isInteger(team) && team > 0 ? team : null,
     gender: parseLeagueGender(params.get("gender")),
   } as const;
@@ -49,8 +54,15 @@ function standingsSearch(filters: StandingsFilters): string {
   params.set("age_group", filters.ageGroup);
   params.set("mode", filters.mode);
   params.set("gender", filters.gender);
+  params.set("view", filters.view === "projected" ? "projected" : "current");
   if (filters.team != null) params.set("team", String(filters.team));
   return params.toString();
+}
+
+function viewMatches(params: URLSearchParams, view: BoardView): boolean {
+  const raw = params.get("view");
+  if (view === "projected") return raw === "projected";
+  return raw == null || raw === "current";
 }
 
 function queryMatches(params: URLSearchParams, filters: StandingsFilters): boolean {
@@ -61,6 +73,7 @@ function queryMatches(params: URLSearchParams, filters: StandingsFilters): boole
     params.get("age_group") === filters.ageGroup &&
     params.get("mode") === filters.mode &&
     params.get("gender") === filters.gender &&
+    viewMatches(params, filters.view) &&
     (params.get("team") ?? null) === team
   );
 }
@@ -71,6 +84,7 @@ function resolveFilters(params: URLSearchParams, teams: Team[], gender: LeagueGe
   let tier: TierName = read.tier;
   let ageGroup = read.ageGroup;
   const mode = read.mode;
+  const view = read.view;
   let team = userSwitched ? null : read.team;
 
   if (!params.has("conference")) {
@@ -90,7 +104,7 @@ function resolveFilters(params: URLSearchParams, teams: Team[], gender: LeagueGe
   if (options.length === 0) return null;
   if (!options.includes(conference)) conference = options[0];
 
-  const filters: StandingsFilters = { conference, tier, ageGroup, mode, gender, team };
+  const filters: StandingsFilters = { conference, tier, ageGroup, mode, view, gender, team };
   if (queryMatches(params, filters)) return { filters, history: "none" };
   return { filters, history: userSwitched ? "push" : "replace" };
 }
@@ -147,10 +161,11 @@ export function StandingsBoard() {
         tier: read.tier,
         ageGroup: read.ageGroup,
         mode: read.mode,
+        view: read.view,
         gender: read.gender,
         team: read.team,
       });
-      setLoading(true);
+      setLoading(read.view !== "projected");
       setGender(read.gender, "adopt");
       return () => {
         if (!claimState.settled) {
@@ -194,7 +209,7 @@ export function StandingsBoard() {
   }, [teamsReady, gender, roster, searchParams, claimGenderChange, restoreGenderChange, setGender, router]);
 
   useEffect(() => {
-    if (!applied?.conference) return;
+    if (!applied?.conference || applied.view === "projected") return;
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -216,14 +231,17 @@ export function StandingsBoard() {
   }, [applied]);
 
   const conferenceOptions = useMemo(() => conferencesFor(roster, applied?.tier ?? "ECNL"), [roster, applied?.tier]);
+  const read = readQuery(searchParams);
   const view = applied ?? {
-    conference: readQuery(searchParams).conference || "Southeast",
-    tier: readQuery(searchParams).tier,
-    ageGroup: readQuery(searchParams).ageGroup,
-    mode: readQuery(searchParams).mode,
+    conference: read.conference || "Southeast",
+    tier: read.tier,
+    ageGroup: read.ageGroup,
+    mode: read.mode,
+    view: read.view,
     gender,
-    team: readQuery(searchParams).team,
+    team: read.team,
   };
+  const projected = view.view === "projected";
 
   function update(patch: Partial<StandingsFilters>) {
     const current = applied ?? view;
@@ -233,7 +251,7 @@ export function StandingsBoard() {
       if (options.length > 0 && !options.includes(next.conference)) next = { ...next, conference: options[0] };
     }
     if (queryMatches(searchParams, next)) return;
-    setLoading(true);
+    setLoading(next.view !== "projected");
     setError(null);
     setApplied(next);
     const query = standingsSearch(next);
@@ -245,9 +263,32 @@ export function StandingsBoard() {
     <div className="min-h-full bg-bone">
       <main className="mx-auto max-w-6xl px-6 py-8">
         <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Conference standings</h1>
-        <p className="mt-1 text-sm text-slate-500">Sorted by points per game, then goal difference and goals for.</p>
+        {projected ? null : <p className="mt-1 text-sm text-slate-500">Sorted by points per game, then goal difference and goals for.</p>}
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-4">
+        <div className="mt-6 inline-flex items-center gap-0.5 rounded-lg bg-white p-1 ring-1 ring-stone-200" role="group" aria-label="Current or projected">
+          {([
+            ["current", "Current"],
+            ["projected", "Projected"],
+          ] as const).map(([value, label]) => {
+            const selected = view.view === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => {
+                  if (selected) return;
+                  update({ view: value });
+                }}
+                className={`rounded-md px-4 py-1.5 text-sm font-semibold ${selected ? "bg-navy text-bone shadow-sm" : "text-slate-600 hover:bg-stone-50"}`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className={`mt-4 grid gap-3 ${projected ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}>
           <label className="text-sm font-medium text-slate-700">
             Tier
             <select
@@ -299,36 +340,49 @@ export function StandingsBoard() {
               ))}
             </select>
           </label>
-          <label className="text-sm font-medium text-slate-700">
-            Table
-            <select
-              aria-label="Table source"
-              value={view.mode}
-              onChange={(event) => {
-                const next = event.target.value === "calculated" ? "calculated" : "official";
-                if (next === view.mode) return;
-                update({ mode: next });
-              }}
-              className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
-            >
-              <option value="official">Official</option>
-              <option value="calculated">From played games</option>
-            </select>
-          </label>
+          {projected ? null : (
+            <label className="text-sm font-medium text-slate-700">
+              Table
+              <select
+                aria-label="Table source"
+                value={view.mode}
+                onChange={(event) => {
+                  const next = event.target.value === "calculated" ? "calculated" : "official";
+                  if (next === view.mode) return;
+                  update({ mode: next });
+                }}
+                className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+              >
+                <option value="official">Official</option>
+                <option value="calculated">From played games</option>
+              </select>
+            </label>
+          )}
         </div>
 
-        <p className="mt-4 text-xs text-stone-500">A bar on the left marks the top {PLAYOFF_SPOTS} playoff spots.</p>
+        {projected ? null : <p className="mt-4 text-xs text-stone-500">A bar on the left marks the top {PLAYOFF_SPOTS} playoff spots.</p>}
 
-        {error && <p className="mt-4 rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-ink">{error}</p>}
+        {!projected && error && <p className="mt-4 rounded-xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-ink">{error}</p>}
 
-        {!applied && !loading ? (
+        {projected && applied ? (
+          <ProjectedBoard
+            key={`${applied.conference}|${applied.tier}|${applied.ageGroup}|${applied.gender}`}
+            filters={{
+              conference: applied.conference,
+              tier: applied.tier,
+              ageGroup: applied.ageGroup,
+              gender: applied.gender,
+              team: applied.team,
+            }}
+          />
+        ) : !applied && !loading ? (
           <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-slate-500">
             No table for this tier yet.
           </div>
         ) : loading || !applied ? (
           <div className="mt-6 flex items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-slate-500">
             <LoaderCircle className="size-4 animate-spin" />
-            Loading standings
+            {projected ? "Loading projected standings" : "Loading standings"}
           </div>
         ) : rows.length === 0 ? (
           <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-slate-500">
