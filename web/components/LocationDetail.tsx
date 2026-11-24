@@ -2,15 +2,15 @@
 
 import { Car, ExternalLink, LoaderCircle, Star } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { TipVotes, sortTips } from "@/components/TipVotes";
 import { fetchLocationDetail, postRating, postRecommendation, voteRecommendation } from "@/lib/api";
 import { easternStamp } from "@/lib/format";
 import { readHomeAddress, type HomeAddress } from "@/lib/homeAddress";
-import { profileKey, readAuthorName, saveAuthorName } from "@/lib/profileKey";
 import type { LocationDetail, LocationGame, SurfaceVote, TipCategory, TipVote } from "@/lib/types";
+import { signInHref, useAccount } from "@/lib/useAccount";
 
 const CRITERIA = [
   { key: "field_quality", label: "Field quality" },
@@ -184,6 +184,9 @@ export function LocationRoute() {
 }
 
 function LocationDetailView({ venueKey }: { venueKey: string }) {
+  const path = usePathname();
+  const account = useAccount();
+  const returnHref = signInHref(path || `/locations/${encodeURIComponent(venueKey)}`);
   const [detail, setDetail] = useState<LocationDetail | null>(null);
   const [home, setHome] = useState<HomeAddress | null>(null);
   const [loading, setLoading] = useState(true);
@@ -192,7 +195,6 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
   const [scores, setScores] = useState<Scores>(EMPTY_SCORES);
   const [surface, setSurface] = useState<SurfaceVote | "">("");
   const [comment, setComment] = useState("");
-  const [authorName, setAuthorName] = useState("");
   const [ratingError, setRatingError] = useState<string | null>(null);
   const [ratingMessage, setRatingMessage] = useState<string | null>(null);
   const [savingRating, setSavingRating] = useState(false);
@@ -207,10 +209,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
 
   useEffect(() => {
     const savedHome = readHomeAddress();
-    const savedName = readAuthorName();
     setHome(savedHome);
-    if (savedName) setAuthorName(savedName);
-    profileKey();
     if (!venueKey) {
       setError("That complex link is missing a venue.");
       setLoading(false);
@@ -234,7 +233,6 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
           });
           setSurface(next.my_rating.surface_vote ?? "");
           setComment(next.my_rating.comment ?? "");
-          if (!savedName && next.my_rating.author_name) setAuthorName(next.my_rating.author_name);
         }
       })
       .catch((err: unknown) => {
@@ -258,11 +256,6 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
     return tips.filter((tip) => allowed.has(tip.category));
   }, [detail, tab]);
 
-  function updateName(value: string) {
-    setAuthorName(value);
-    saveAuthorName(value);
-  }
-
   function toggleTag(tag: string) {
     setTags((current) => (current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag]));
   }
@@ -284,7 +277,6 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
         ...scores,
         surface_vote: surface || null,
         comment: comment.trim() || null,
-        author_name: authorName.trim() || null,
       });
       setRatingMessage("Rating saved.");
       const next = await fetchLocationDetail(venueKey, home);
@@ -314,7 +306,6 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
         rating: tipStars,
         review_text: review.trim(),
         tags,
-        author_name: authorName.trim() || null,
       });
       setTitle("");
       setTipStars(0);
@@ -417,6 +408,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                   ))}
                 </div>
               </section>
+              {account ? (
               <form
                 className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm"
                 onSubmit={(event) => {
@@ -425,7 +417,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                 }}
               >
                 <h2 className="text-lg font-semibold text-navy">Rate this complex</h2>
-                <p className="mt-1 text-sm text-stone-500">One rating for this browser. Saving again updates it.</p>
+                <p className="mt-1 text-sm text-stone-500">One rating for this account. Saving again updates it.</p>
                 <div className="mt-4 space-y-3">
                   {CRITERIA.map((item) => (
                     <ScorePicker
@@ -454,10 +446,6 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                       className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-navy"
                     />
                   </label>
-                  <label htmlFor="rating-name" className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
-                    Display name
-                    <input id="rating-name" value={authorName} onChange={(event) => updateName(event.target.value)} placeholder="Optional" className={field} />
-                  </label>
                 </div>
                 {ratingError ? <p className="mt-3 text-sm text-ink">{ratingError}</p> : null}
                 {ratingMessage ? <p className="mt-3 text-sm text-navy">{ratingMessage}</p> : null}
@@ -465,6 +453,19 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                   {savingRating ? "Saving" : "Save rating"}
                 </button>
               </form>
+              ) : account === undefined ? (
+              <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+                <h2 className="text-lg font-semibold text-navy">Rate this complex</h2>
+                <p className="mt-4 text-sm text-stone-500">Loading</p>
+              </section>
+              ) : (
+              <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+                <h2 className="text-lg font-semibold text-navy">Rate this complex</h2>
+                <Link href={returnHref} className="mt-4 inline-flex rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy">
+                  Sign in to rate
+                </Link>
+              </section>
+              )}
             </div>
 
             <section className="mt-6">
@@ -519,13 +520,19 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                       <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-stone-500">
                         <span>{tip.author_name}</span>
                         <span data-tip-added={tip.created_at}>{formatPosted(tip.created_at)}</span>
-                        <TipVotes tip={tip} pending={pendingVote === tip.id} onVote={(choice) => void vote(tip.id, choice)} />
+                        <TipVotes
+                          tip={tip}
+                          pending={pendingVote === tip.id || account === undefined}
+                          signInHref={account === null ? returnHref : null}
+                          onVote={(choice) => void vote(tip.id, choice)}
+                        />
                       </div>
                     </li>
                   ))}
                 </ul>
               )}
 
+              {account ? (
               <form
                 className="mt-4 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm"
                 onSubmit={(event) => {
@@ -564,10 +571,6 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                     ))}
                   </div>
                 </fieldset>
-                <label htmlFor="tip-name" className="mt-3 block text-[10px] font-medium uppercase tracking-wide text-stone-400">
-                  Display name
-                  <input id="tip-name" value={authorName} onChange={(event) => updateName(event.target.value)} placeholder="Remembered in this browser" className={field} />
-                </label>
                 <label htmlFor="tip-review" className="mt-3 block text-[10px] font-medium uppercase tracking-wide text-stone-400">
                   Review
                   <textarea
@@ -583,6 +586,19 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                   {savingTip ? "Saving" : "Add tip"}
                 </button>
               </form>
+              ) : account === undefined ? (
+              <section className="mt-4 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+                <h3 className="text-lg font-semibold text-navy">Add a tip</h3>
+                <p className="mt-4 text-sm text-stone-500">Loading</p>
+              </section>
+              ) : (
+              <section className="mt-4 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+                <h3 className="text-lg font-semibold text-navy">Add a tip</h3>
+                <Link href={returnHref} className="mt-4 inline-flex rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy">
+                  Sign in to add a tip
+                </Link>
+              </section>
+              )}
             </section>
 
             <div className="mt-6 grid gap-4 lg:grid-cols-2">

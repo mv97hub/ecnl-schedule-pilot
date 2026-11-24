@@ -467,8 +467,52 @@ class VenueRecommendation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
 
 
+class AppUser(Base):
+    """One person. The website and a later app share this row. The home address is not stored here."""
+
+    __tablename__ = "app_user"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
+
+
+class AuthIdentity(Base):
+    """A Google or Apple subject for one user. The same verified email can add the other provider."""
+
+    __tablename__ = "auth_identity"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_subject", name="uq_auth_identity_provider_subject"),
+        CheckConstraint("provider IN ('google', 'apple')", name="ck_auth_identity_provider"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    provider_subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    email_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+
+
+class AppSession(Base):
+    """A hashed session token. The raw token is returned once and is not stored."""
+
+    __tablename__ = "app_session"
+    __table_args__ = (
+        CheckConstraint("client IN ('web', 'ios', 'android')", name="ck_app_session_client"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    client: Mapped[str] = mapped_column(String(16), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
+
+
 class VenueTipVote(Base):
-    """The current thumbs up or down from one browser profile. A later vote updates this row."""
+    """The current thumbs up or down from one account, or from an older browser profile. A later vote updates this row."""
 
     __tablename__ = "venue_tip_vote"
     __table_args__ = (

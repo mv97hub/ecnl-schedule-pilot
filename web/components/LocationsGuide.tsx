@@ -10,6 +10,7 @@ import { TipVotes, sortTips } from "@/components/TipVotes";
 import { fetchClubCatalog, fetchClubLocations, voteRecommendation } from "@/lib/api";
 import { easternStamp } from "@/lib/format";
 import { readHomeAddress, type HomeAddress } from "@/lib/homeAddress";
+import { signInHref, useAccount } from "@/lib/useAccount";
 import type { ClubListItem, ClubLocationTip, ClubLocations, LocationAggregate, LocationCard, TipCategory, TipVote } from "@/lib/types";
 
 const CRITERIA: { key: keyof LocationAggregate; label: string }[] = [
@@ -307,6 +308,8 @@ function Aggregate({ scores }: { scores: LocationAggregate }) {
 }
 
 function Tips({ tips, clubId }: { tips: ClubLocationTip[]; clubId: string }) {
+  const account = useAccount();
+  const returnHref = signInHref(`/locations?club=${encodeURIComponent(clubId)}`);
   const [filter, setFilter] = useState<(typeof TIP_FILTERS)[number]["id"]>("all");
   const [rows, setRows] = useState<ClubLocationTip[]>(() => sortTips(tips));
   const [pendingVote, setPendingVote] = useState<number | null>(null);
@@ -398,7 +401,12 @@ function Tips({ tips, clubId }: { tips: ClubLocationTip[]; clubId: string }) {
               <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-stone-500">
                 <span>{tip.author_name}</span>
                 <span data-tip-added={tip.created_at}>{easternStamp(tip.created_at)?.dateLabel}</span>
-                <TipVotes tip={tip} pending={pendingVote === tip.id} onVote={(choice) => void vote(tip.id, choice)} />
+                <TipVotes
+                  tip={tip}
+                  pending={pendingVote === tip.id || account === undefined}
+                  signInHref={account === null ? returnHref : null}
+                  onVote={(choice) => void vote(tip.id, choice)}
+                />
               </div>
             </li>
           ))}
