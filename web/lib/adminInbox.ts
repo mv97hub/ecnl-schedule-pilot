@@ -133,6 +133,7 @@ export function inboxPage(issues: IssueRow[], filter: "open" | "done", updateFai
 <nav class="tabs">
 <a class="tab" href="/admin"${openCurrent}>Open</a>
 <a class="tab" href="/admin?status=done"${doneCurrent}>Done</a>
+<a class="tab" href="/admin/history">History</a>
 </nav>
 ${banner}
 ${rows}`,

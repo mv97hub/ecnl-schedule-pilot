@@ -72,6 +72,16 @@ class LocationGuideTests(unittest.TestCase):
 
     def _cleanup(self) -> None:
         with engine.begin() as connection:
+            if connection.execute(text("SELECT to_regclass('public.location_write_event')")).scalar() is not None:
+                connection.execute(
+                    text(
+                        """
+                        DELETE FROM location_write_event
+                        WHERE email LIKE '%@probe-location.test'
+                           OR venue_key ILIKE '%|probeville|%'
+                        """
+                    )
+                )
             if connection.execute(text("SELECT to_regclass('public.venue_rating')")).scalar() is not None:
                 connection.execute(
                     text("DELETE FROM venue_rating WHERE city = 'Probeville' OR author_key LIKE 'probe-location-%'")

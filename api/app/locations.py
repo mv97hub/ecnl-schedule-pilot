@@ -23,7 +23,7 @@ from app.auth import author_for, bearer_token, require_bearer, require_user, use
 from app.clubs import club_location_source
 from app.database import get_session
 from app.ingestion.normalizer import split_venue
-from app.models import ScheduleGame, VenueRating, VenueRecommendation, VenueTipVote
+from app.models import AppUser, LocationWriteEvent, ScheduleGame, VenueRating, VenueRecommendation, VenueTipVote
 
 router = APIRouter(tags=["locations"])
 
@@ -812,6 +812,61 @@ def location_detail(
     )
 
 
+def _rating_values(row: VenueRating) -> dict[str, object]:
+    return {
+        "field_quality": row.field_quality,
+        "referees": row.referees,
+        "parent_vibe": row.parent_vibe,
+        "parking_access": row.parking_access,
+        "amenities": row.amenities,
+        "surface": row.surface_vote,
+        "comment": row.comment,
+    }
+
+
+def _tip_values(row: VenueRecommendation) -> dict[str, object]:
+    return {
+        "category": row.category,
+        "title": row.title,
+        "stars": row.rating,
+        "review_text": row.review_text,
+        "tags": row.tags,
+    }
+
+
+def _record_write(
+    session: Session,
+    user: AppUser,
+    *,
+    kind: str,
+    venue_key: str,
+    venue_name: str,
+    rating_id: int | None,
+    tip_id: int | None,
+    action: str,
+    previous: dict[str, object] | None,
+    new: dict[str, object],
+) -> None:
+    """Append one history row in the caller's transaction. Nothing here is updated later."""
+
+    session.add(
+        LocationWriteEvent(
+            created_at=datetime.now(UTC),
+            user_id=int(user.id),
+            email=user.email,
+            display_name=user.display_name,
+            kind=kind,
+            venue_key=venue_key,
+            venue_name=venue_name,
+            rating_id=rating_id,
+            tip_id=tip_id,
+            action=action,
+            previous_values=previous,
+            new_values=new,
+        )
+    )
+
+
 def _averages_out(session: Session, venue_key: str, venue_name: str, city: str, state: str) -> AveragesOut:
     rows = list(session.scalars(select(VenueRating).where(VenueRating.venue_key == venue_key)).all())
     summary = _summarize(rows)
@@ -844,6 +899,8 @@ def rate_location(
         select(VenueRating).where(VenueRating.venue_key == venue_key, VenueRating.author_key == author_key)
     )
     comment = _blank(payload.comment)
+    previous: dict[str, object] | None = None
+    action = "create"
     if existing is None:
         existing = VenueRating(
             venue_key=venue_key,
@@ -864,6 +921,8 @@ def rate_location(
         )
         session.add(existing)
     else:
+        previous = _rating_values(existing)
+        action = "update"
         existing.venue_name = venue_name
         existing.city = city
         existing.state = state
@@ -877,6 +936,19 @@ def rate_location(
         existing.surface_vote = payload.surface_vote
         existing.comment = comment
         existing.updated_at = datetime.now(UTC)
+    session.flush()
+    _record_write(
+        session,
+        user,
+        kind="rating",
+        venue_key=venue_key,
+        venue_name=venue_name,
+        rating_id=existing.id,
+        tip_id=None,
+        action=action,
+        previous=previous,
+        new=_rating_values(existing),
+    )
     session.commit()
     return _averages_out(session, venue_key, venue_name, city, state)
 
@@ -912,6 +984,19 @@ def add_recommendation(
         created_at=datetime.now(UTC),
     )
     session.add(row)
+    session.flush()
+    _record_write(
+        session,
+        user,
+        kind="tip",
+        venue_key=venue_key,
+        venue_name=venue_name,
+        rating_id=None,
+        tip_id=row.id,
+        action="create",
+        previous=None,
+        new=_tip_values(row),
+    )
     session.commit()
     session.refresh(row)
     return _recommendation_out(row)
@@ -952,13 +1037,30 @@ def vote_recommendation(
             VenueTipVote.author_key == author_key,
         )
     )
+    previous: dict[str, object] | None = None
+    action = "create"
     if existing is None:
         existing = VenueTipVote(recommendation_id=row.id, author_key=author_key, choice=payload.choice)
         session.add(existing)
         _apply_vote(row, None, payload.choice)
     else:
+        previous = {"choice": existing.choice}
+        action = "update"
         _apply_vote(row, existing.choice, payload.choice)
         existing.choice = payload.choice
+    session.flush()
+    _record_write(
+        session,
+        user,
+        kind="vote",
+        venue_key=row.venue_key,
+        venue_name=row.venue_name,
+        rating_id=None,
+        tip_id=row.id,
+        action=action,
+        previous=previous,
+        new={"choice": payload.choice},
+    )
     session.commit()
     session.refresh(row)
     return _recommendation_out(row, payload.choice)

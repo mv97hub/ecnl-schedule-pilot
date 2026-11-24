@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { FavoritesEditor } from "@/components/FavoritesEditor";
 import { clearHomeAddress, readHomeAddress, saveHomeAddress, US_STATES, type HomeAddress } from "@/lib/homeAddress";
 import { providerLabel, useAccount } from "@/lib/useAccount";
 
@@ -122,7 +123,7 @@ export function ProfileForm() {
             </div>
           </section>
         ) : (
-          <section className="mt-6 max-w-xl rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Sign in">
+          <section id="sign-in" className="mt-6 max-w-xl rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Sign in">
             <h2 className="text-lg font-semibold text-navy">Sign in</h2>
             <p className="mt-1 text-sm text-stone-500">Google or Apple is used for location ratings and tips. The home address is not saved on the account.</p>
             <div className="mt-4 flex flex-wrap gap-2">
@@ -135,6 +136,7 @@ export function ProfileForm() {
             </div>
           </section>
         )}
+        {account !== undefined ? <FavoritesEditor signedIn={account != null} /> : null}
         {ready && !editing && saved ? (
           <section className="mt-6 max-w-xl rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Saved home address">
             <h2 className="text-lg font-semibold text-navy">Home address</h2>

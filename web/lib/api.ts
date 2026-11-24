@@ -1,5 +1,5 @@
 import type { LeagueGender } from "@/lib/leagues";
-import type { ClubDetail, ClubListItem, ClubLocations, HeadToHeadReport, LocationCard, LocationDetail, LocationTip, PredictedStandings, ScheduleFilter, ScheduleResponse, StandingRow, StandingsMode, Team } from "@/lib/types";
+import type { AccountFavorites, ClubDetail, ClubListItem, ClubLocations, HeadToHeadReport, LocationCard, LocationDetail, LocationTip, MobileDashboard, PredictedStandings, ScheduleFilter, ScheduleResponse, StandingRow, StandingsMode, Team } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
@@ -21,6 +21,20 @@ export function fetchTeams(q?: string, gender: LeagueGender = "boys"): Promise<T
   params.set("gender", gender);
   const query = params.toString();
   return request<Team[]>(`/teams${query ? `?${query}` : ""}`);
+}
+
+export function fetchTeamsByIds(ids: number[]): Promise<Team[]> {
+  if (ids.length === 0) return Promise.resolve([]);
+  const params = new URLSearchParams({ ids: ids.join(",") });
+  return request<Team[]>(`/teams?${params.toString()}`);
+}
+
+export function fetchMobileDashboard(teamIds: number[], clubId: string | null): Promise<MobileDashboard> {
+  const params = new URLSearchParams();
+  if (teamIds.length > 0) params.set("team_ids", teamIds.join(","));
+  if (clubId) params.set("club_id", clubId);
+  const query = params.toString();
+  return request<MobileDashboard>(`/mobile/dashboard${query ? `?${query}` : ""}`);
 }
 
 export function fetchSchedule(teamId: number, filter: ScheduleFilter): Promise<ScheduleResponse> {
@@ -145,6 +159,30 @@ export function postRecommendation(body: unknown): Promise<LocationTip> {
 
 export function voteRecommendation(id: number, choice: "up" | "down"): Promise<LocationTip> {
   return sendJson<LocationTip>(`/locations/recommendations/${id}/vote`, { choice });
+}
+
+function favoritesFrom(body: { club_id?: string | null; team_ids?: unknown }): AccountFavorites {
+  const teamIds = Array.isArray(body.team_ids)
+    ? body.team_ids.filter((item): item is number => Number.isInteger(item) && item > 0)
+    : [];
+  return {
+    club_id: typeof body.club_id === "string" && body.club_id.trim() ? body.club_id : null,
+    team_ids: teamIds,
+  };
+}
+
+export async function fetchAccountFavorites(): Promise<AccountFavorites> {
+  const body = await siteRequest<{ club_id?: string | null; team_ids?: unknown }>("/me");
+  return favoritesFrom(body);
+}
+
+export async function saveAccountFavorites(clubId: string | null, teamIds: number[]): Promise<AccountFavorites> {
+  const body = await siteRequest<{ club_id?: string | null; team_ids?: unknown }>("/me/favorites", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ club_id: clubId, team_ids: teamIds }),
+  });
+  return favoritesFrom(body);
 }
 
 export async function postIngest<T>(path: string, body: unknown): Promise<T> {
