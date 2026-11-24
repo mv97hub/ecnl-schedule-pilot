@@ -85,22 +85,48 @@ export function appleClientSecret(privateKeyPem: string, teamId: string, keyId: 
   return `${unsigned}.${base64url(signature)}`;
 }
 
+function jwkMatches(alg: "RS256" | "ES256", key: JsonWebKey): boolean {
+  return alg === "RS256" ? key.kty === "RSA" : key.kty === "EC";
+}
+
+function signatureMatches(alg: "RS256" | "ES256", jwk: JsonWebKey, signingInput: string, signature: Buffer): boolean {
+  try {
+    const key = createPublicKey({ key: jwk, format: "jwk" });
+    const verifier = createVerify(alg === "RS256" ? "RSA-SHA256" : "SHA256");
+    verifier.update(signingInput);
+    verifier.end();
+    const encoded = alg === "RS256" ? signature : rawToDer(signature);
+    return verifier.verify(key, encoded);
+  } catch {
+    return false;
+  }
+}
+
 export async function readAppleIdentity(idToken: string, clientId: string): Promise<AppleIdentity> {
   const parts = idToken.split(".");
   if (parts.length !== 3) throw new Error("Apple did not return an account");
-  const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as { alg?: string; kid?: string };
-  if (header.alg !== "ES256" || !header.kid) throw new Error("Apple did not return an account");
+  let header: { alg?: string; kid?: string };
+  try {
+    header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as { alg?: string; kid?: string };
+  } catch {
+    throw new Error("Apple did not return an account");
+  }
+  // The client secret above is ES256. Apple signs the identity token with RS256.
+  const alg = header.alg === "RS256" || header.alg === "ES256" ? header.alg : null;
+  if (!alg || !header.kid) throw new Error("Apple did not return an account");
   const response = await fetch("https://appleid.apple.com/auth/keys", { cache: "no-store" });
   if (!response.ok) throw new Error("Apple signing keys are unavailable");
   const body = (await response.json()) as { keys?: JsonWebKey[] };
-  const jwk = (body.keys ?? []).find((key) => key.kid === header.kid);
-  if (!jwk) throw new Error("Apple did not return an account");
-  const verifier = createVerify("SHA256");
-  verifier.update(`${parts[0]}.${parts[1]}`);
-  verifier.end();
-  const verified = verifier.verify(createPublicKey({ key: jwk, format: "jwk" }), rawToDer(Buffer.from(parts[2], "base64url")));
-  if (!verified) throw new Error("Apple did not return an account");
-  const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as AppleClaims;
+  const jwk = (body.keys ?? []).find((key) => key.kid === header.kid && jwkMatches(alg, key));
+  if (!jwk || !signatureMatches(alg, jwk, `${parts[0]}.${parts[1]}`, Buffer.from(parts[2], "base64url"))) {
+    throw new Error("Apple did not return an account");
+  }
+  let claims: AppleClaims;
+  try {
+    claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as AppleClaims;
+  } catch {
+    throw new Error("Apple did not return an account");
+  }
   const audience = claims.aud;
   const audienceMatches = audience === clientId || (Array.isArray(audience) && audience.includes(clientId));
   if (claims.iss !== "https://appleid.apple.com" || !audienceMatches) throw new Error("Apple did not return an account");

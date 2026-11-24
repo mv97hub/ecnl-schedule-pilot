@@ -22,6 +22,42 @@ import {
 const GOOGLE_ENV = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "AUTH_INTERNAL_SECRET"] as const;
 const APPLE_ENV = ["APPLE_CLIENT_ID", "APPLE_TEAM_ID", "APPLE_KEY_ID", "APPLE_PRIVATE_KEY", "AUTH_INTERNAL_SECRET"] as const;
 
+export class AppleAuthError extends Error {
+  readonly appleError: string | null;
+  readonly detail: string | null;
+
+  constructor(message: string, appleError: string | null, detail: string | null = null) {
+    super(message);
+    this.name = "AppleAuthError";
+    this.appleError = appleError;
+    this.detail = detail;
+  }
+}
+
+function appleLogValue(value: string | null, kind: "code" | "text"): string | null {
+  if (!value) return null;
+  const text = value.replace(/[\r\n]/g, " ").trim();
+  if (!text || /-----BEGIN|eyJ[A-Za-z0-9_-]{8,}/i.test(text)) return null;
+  if (kind === "code") return /^[a-z][a-z0-9_]{0,39}$/.test(text) ? text : null;
+  if (text.length > 200 || /\bcode=|[A-Za-z0-9+/_=-]{40,}/i.test(text)) return null;
+  return text;
+}
+
+/** Failure log for the next Apple attempt. Names only: never secrets, tokens, or the authorization code. */
+export function logAppleFailure(event: "start" | "callback", path: string, appleError: string | null, detail: string | null = null): void {
+  const missingEnv = APPLE_ENV.filter((name) => !process.env[name]?.trim());
+  console.error(
+    JSON.stringify({
+      source: "apple-auth",
+      event,
+      path,
+      appleError: appleLogValue(appleError, "code"),
+      detail: appleLogValue(detail, "text"),
+      missingEnv,
+    }),
+  );
+}
+
 export type ProviderIdentity = {
   provider: "google" | "apple";
   subject: string;
@@ -39,6 +75,7 @@ function statesMatch(expected: string, provided: string): boolean {
 
 export function beginProvider(request: NextRequest, provider: "google" | "apple"): Response {
   const missing = missingEnv(provider === "google" ? [...GOOGLE_ENV] : [...APPLE_ENV]);
+  if (provider === "apple" && missing) logAppleFailure("start", request.nextUrl.pathname, null, missing);
   if (missing) return Response.json({ detail: missing }, { status: 500 });
   const state = randomBytes(16).toString("hex");
   const next = safeNext(request.nextUrl.searchParams.get("next"));
@@ -109,6 +146,7 @@ async function openSession(identity: ProviderIdentity): Promise<{ token: string 
 export async function finishProvider(request: NextRequest, identity: ProviderIdentity, returnedState: string | null): Promise<Response> {
   const packed = unpackState(request.cookies.get(STATE_COOKIE)?.value);
   if (!returnedState || !packed || !statesMatch(packed.state, returnedState)) {
+    if (identity.provider === "apple") logAppleFailure("callback", request.nextUrl.pathname, null, "state_mismatch");
     return signInError("Sign-in failed. Start again from Profile.");
   }
   try {
@@ -119,6 +157,7 @@ export async function finishProvider(request: NextRequest, identity: ProviderIde
     return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Sign-in failed.";
+    if (identity.provider === "apple") logAppleFailure("callback", request.nextUrl.pathname, null, message);
     return signInError(message);
   }
 }
@@ -193,8 +232,16 @@ export async function appleIdentity(code: string, userField: FormDataEntryValue 
     }),
     cache: "no-store",
   });
-  const tokenBody = (await tokenResponse.json().catch(() => ({}))) as { id_token?: string };
-  if (!tokenResponse.ok || !tokenBody.id_token) throw new Error("Apple did not return an account");
+  const tokenBody = (await tokenResponse.json().catch(() => ({}))) as {
+    id_token?: unknown;
+    error?: unknown;
+    error_description?: unknown;
+  };
+  if (!tokenResponse.ok || typeof tokenBody.id_token !== "string" || !tokenBody.id_token) {
+    const appleError = typeof tokenBody.error === "string" ? tokenBody.error : null;
+    const description = typeof tokenBody.error_description === "string" ? tokenBody.error_description : null;
+    throw new AppleAuthError("Apple did not return an account", appleError, description ?? "token_rejected");
+  }
   const identity = await readAppleIdentity(tokenBody.id_token, clientId);
   return {
     provider: "apple",
