@@ -5,11 +5,11 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { parseLeagueGender, useLeagueGender } from "@/components/GenderProvider";
+import { GenderPills } from "@/components/GenderPills";
 import { ProjectedBoard } from "@/components/ProjectedBoard";
 import { ResultMark } from "@/components/ResultMark";
 import { fetchStandings, fetchTeams } from "@/lib/api";
-import { PLAYOFF_SPOTS, TIERS, ageGroupsFor, type LeagueGender } from "@/lib/leagues";
+import { PLAYOFF_SPOTS, TIERS, ageGroupsFor, parseLeagueGender, type LeagueGender } from "@/lib/leagues";
 import { rememberedSquad, shortConference } from "@/lib/selection";
 import type { StandingRow, StandingsMode, Team } from "@/lib/types";
 
@@ -112,7 +112,8 @@ function resolveFilters(params: URLSearchParams, teams: Team[], gender: LeagueGe
 export function StandingsBoard() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { gender, ready: genderReady, setGender, claimGenderChange, restoreGenderChange } = useLeagueGender();
+  const [gender, setGender] = useState<LeagueGender>(() => parseLeagueGender(searchParams.get("gender")) ?? "boys");
+  const [genderReady, setGenderReady] = useState(false);
   const ages = ageGroupsFor(gender);
   const [leagueTeams, setLeagueTeams] = useState<Team[]>([]);
   const [loadedGender, setLoadedGender] = useState<LeagueGender | null>(null);
@@ -121,9 +122,37 @@ export function StandingsBoard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const seenGender = useRef<LeagueGender | null>(null);
+  const userSwitchRef = useRef(false);
+  const urlGenderRef = useRef<LeagueGender | null | undefined>(undefined);
   const navId = useRef(0);
   const teamsReady = genderReady && loadedGender === gender;
   const roster = useMemo(() => (teamsReady ? leagueTeams : []), [teamsReady, leagueTeams]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = parseLeagueGender(params.get("gender"));
+    if (fromUrl) setGender(fromUrl);
+    else if (!params.has("conference")) {
+      const memory = rememberedSquad();
+      if (memory) setGender(memory.gender);
+    }
+    setGenderReady(true);
+  }, []);
+
+  const urlGender = parseLeagueGender(searchParams.get("gender"));
+  useEffect(() => {
+    if (!genderReady) return;
+    if (urlGenderRef.current === undefined) {
+      urlGenderRef.current = urlGender;
+      return;
+    }
+    if (urlGenderRef.current === urlGender) return;
+    urlGenderRef.current = urlGender;
+    if (urlGender && urlGender !== gender) {
+      userSwitchRef.current = false;
+      setGender(urlGender);
+    }
+  }, [urlGender, genderReady, gender]);
 
   useEffect(() => {
     if (!genderReady) return;
@@ -149,31 +178,12 @@ export function StandingsBoard() {
     const previousGender = seenGender.current;
     const genderChanged = previousGender != null && previousGender !== gender;
     seenGender.current = gender;
-    const claimed = claimGenderChange(gender);
-    const userSwitched = genderChanged && claimed === "user";
+    const userSwitched = genderChanged && userSwitchRef.current;
+    userSwitchRef.current = false;
     const claimState = { settled: false };
     const read = readQuery(searchParams);
 
-    if (!userSwitched && read.gender && read.gender !== gender && searchParams.has("conference") && searchParams.has("gender")) {
-      claimState.settled = true;
-      setApplied({
-        conference: read.conference,
-        tier: read.tier,
-        ageGroup: read.ageGroup,
-        mode: read.mode,
-        view: read.view,
-        gender: read.gender,
-        team: read.team,
-      });
-      setLoading(read.view !== "projected");
-      setGender(read.gender, "adopt");
-      return () => {
-        if (!claimState.settled) {
-          seenGender.current = previousGender;
-          if (claimed) restoreGenderChange(claimed, gender);
-        }
-      };
-    }
+    if (!userSwitched && read.gender && read.gender !== gender) return;
 
     const resolved = resolveFilters(searchParams, roster, gender, userSwitched);
     if (!resolved) {
@@ -200,13 +210,13 @@ export function StandingsBoard() {
     }
 
     return () => {
-      if (attempt.request !== 0 && !attempt.committed) {
-        navId.current += 1;
+      if (!claimState.settled || (attempt.request !== 0 && !attempt.committed)) {
+        if (attempt.request !== 0 && !attempt.committed) navId.current += 1;
         seenGender.current = previousGender;
-        if (claimed) restoreGenderChange(claimed, gender);
+        if (userSwitched) userSwitchRef.current = true;
       }
     };
-  }, [teamsReady, gender, roster, searchParams, claimGenderChange, restoreGenderChange, setGender, router]);
+  }, [teamsReady, gender, roster, searchParams, router]);
 
   useEffect(() => {
     if (!applied?.conference || applied.view === "projected") return;
@@ -242,6 +252,16 @@ export function StandingsBoard() {
     team: read.team,
   };
   const projected = view.view === "projected";
+
+  function chooseGender(next: LeagueGender) {
+    if (next === gender) return;
+    userSwitchRef.current = true;
+    setApplied(null);
+    setRows([]);
+    setLoading(true);
+    setError(null);
+    setGender(next);
+  }
 
   function update(patch: Partial<StandingsFilters>) {
     const current = applied ?? view;
@@ -288,7 +308,13 @@ export function StandingsBoard() {
           })}
         </div>
 
-        <div className={`mt-4 grid gap-3 ${projected ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}>
+        <div className={`mt-4 grid gap-3 sm:grid-cols-2 ${projected ? "lg:grid-cols-4" : "lg:grid-cols-5"}`}>
+          <div className="text-sm font-medium text-slate-700">
+            <span className="block">League</span>
+            <div className="mt-1">
+              <GenderPills gender={gender} onChange={chooseGender} disabled={!genderReady} />
+            </div>
+          </div>
           <label className="text-sm font-medium text-slate-700">
             Tier
             <select
@@ -440,7 +466,7 @@ export function StandingsBoard() {
                       <td className="px-4 py-4">
                         {view.team != null && row.team_id != null && row.team_id !== view.team ? (
                           <Link
-                            href={`/head-to-head?teamA=${view.team}&teamB=${row.team_id}${gender === "girls" ? "&gender=girls" : ""}`}
+                            href={`/head-to-head?teamA=${view.team}&teamB=${row.team_id}${view.gender === "girls" ? "&gender=girls" : ""}`}
                             className="text-xs font-medium text-navy underline-offset-4 hover:underline"
                           >
                             Compare

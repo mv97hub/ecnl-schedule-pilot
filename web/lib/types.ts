@@ -8,6 +8,7 @@ export type Team = {
   city: string;
   state: string;
   tier?: string;
+  gender?: "boys" | "girls";
 };
 
 export type Opponent = {
