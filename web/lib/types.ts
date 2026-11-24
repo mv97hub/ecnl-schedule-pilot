@@ -382,6 +382,7 @@ export type MyRating = {
   comment: string | null;
   author_name: string | null;
   updated_at: string;
+  edited?: boolean;
 };
 
 export type LocationGame = {
@@ -411,6 +412,7 @@ export type LocationTip = {
   my_vote: TipVote | null;
   created_at: string;
   map_url: string;
+  edited?: boolean;
 };
 
 export type LocationAggregate = {

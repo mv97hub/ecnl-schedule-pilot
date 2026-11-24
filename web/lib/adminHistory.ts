@@ -1,3 +1,5 @@
+import { ADMIN_SHELL_STYLE, adminShell } from "@/lib/adminLayout";
+
 export type HistoryRow = {
   id: number;
   created_at: string;
@@ -50,6 +52,13 @@ function formatValues(value: Record<string, unknown> | null): string {
   return JSON.stringify(value, null, 2);
 }
 
+function writtenComment(value: Record<string, unknown> | null): string | null {
+  if (!value) return null;
+  if (typeof value.comment === "string" && value.comment) return value.comment;
+  if (typeof value.review_text === "string" && value.review_text) return value.review_text;
+  return null;
+}
+
 function selected(current: string, value: string): string {
   return current === value ? " selected" : "";
 }
@@ -66,13 +75,19 @@ export function historyPage(rows: HistoryRow[], filters: { kind: string; venue: 
     ? rows
         .map((row) => {
           const email = row.email ? escapeHtml(row.email) : "No email";
-          const subject = row.kind === "rating" ? `rating ${row.rating_id ?? ""}` : `tip ${row.tip_id ?? ""}`;
+          const subject = row.kind === "rating" ? `rating ${row.rating_id ?? ""}` : row.kind === "vote" ? `vote on tip ${row.tip_id ?? ""}` : `tip ${row.tip_id ?? ""}`;
+          const previousComment = writtenComment(row.previous);
+          const nextComment = writtenComment(row.new);
+          const previousLine = previousComment ? `<p class="description">Previous comment: ${escapeHtml(previousComment)}</p>` : "";
+          const nextLine = nextComment ? `<p class="description">New comment: ${escapeHtml(nextComment)}</p>` : "";
           return `<article class="issue">
 <p class="meta">${escapeHtml(formatWhen(row.created_at))} · <span class="kind">${escapeHtml(row.kind)}</span> · ${escapeHtml(row.action)} · ${escapeHtml(subject.trim())}</p>
 <p class="description">${escapeHtml(row.display_name)}</p>
 <p class="email">${email} · user ${row.user_id}</p>
 <p class="description">${escapeHtml(row.venue_name)}</p>
 <p class="meta">${escapeHtml(row.venue_key)}</p>
+${previousLine}
+${nextLine}
 <p class="meta">Previous</p>
 <pre class="change">${escapeHtml(formatValues(row.previous))}</pre>
 <p class="meta">New</p>
@@ -81,15 +96,13 @@ export function historyPage(rows: HistoryRow[], filters: { kind: string; venue: 
         })
         .join("")
     : `<p class="empty">No history rows.</p>`;
-  const body = `<div class="bar">
+  const body = adminShell(
+    "history",
+    `<div class="bar">
 <h1>Location history</h1>
 <form method="post" action="/api/auth/logout"><button class="ghost" type="submit">Sign out</button></form>
 </div>
 <p class="lede">Newest first. Email is the address copied when the rating, tip, or vote was saved.</p>
-<nav class="tabs">
-<a class="tab" href="/admin">Issue reports</a>
-<a class="tab" href="/admin/history" aria-current="page">History</a>
-</nav>
 <form class="filters" method="get" action="/admin/history">
 <label class="field">Kind
 <select name="kind">
@@ -108,7 +121,8 @@ export function historyPage(rows: HistoryRow[], filters: { kind: string; venue: 
 <button class="primary" type="submit">Filter</button>
 </form>
 ${banner}
-${cards}`;
+${cards}`,
+  );
   return pageWithStyle(body);
 }
 
@@ -125,7 +139,7 @@ function pageWithStyle(body: string): string {
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
 body { margin: 0; background: #FAF8F3; color: #14284B; font: 16px/1.45 "Segoe UI", system-ui, sans-serif; }
-main { max-width: 760px; margin: 0 auto; padding: 32px 20px 64px; }
+main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 64px; }
 h1 { font-size: 28px; line-height: 1.2; margin: 0; }
 .bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 button, .tab { font: inherit; font-weight: 700; border-radius: 12px; min-height: 44px; }
@@ -143,6 +157,7 @@ button { cursor: pointer; }
 .lede { color: #51565F; }
 .empty { margin: 0; }
 ${EXTRA_STYLE}
+${ADMIN_SHELL_STYLE}
 </style>
 </head>
 <body>

@@ -283,7 +283,7 @@ def delete_account(db: Session, user: AppUser) -> None:
     )
     votes = list(db.scalars(select(VenueTipVote).where(VenueTipVote.author_key == author_key)).all())
     for vote in votes:
-        if vote.recommendation_id in own_tip_ids:
+        if vote.recommendation_id in own_tip_ids or vote.hidden_at is not None:
             continue
         tip = db.get(VenueRecommendation, vote.recommendation_id)
         if tip is None:

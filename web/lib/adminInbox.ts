@@ -1,6 +1,7 @@
-import { connection } from "next/server";
+import { connection, type NextRequest } from "next/server";
 
-import { publicUrl } from "@/lib/siteAuth";
+import { ADMIN_SHELL_STYLE, adminShell } from "@/lib/adminLayout";
+import { ADMIN_EMAILS, publicUrl, safeNext, sessionToken } from "@/lib/siteAuth";
 
 export type IssueRow = {
   id: number;
@@ -18,7 +19,7 @@ const PAGE_STYLE = `
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
 body { margin: 0; background: #FAF8F3; color: #14284B; font: 16px/1.45 "Segoe UI", system-ui, sans-serif; }
-main { max-width: 760px; margin: 0 auto; padding: 32px 20px 64px; }
+main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 64px; }
 h1 { font-size: 28px; line-height: 1.2; margin: 0; }
 .bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 button, .tab { font: inherit; font-weight: 700; border-radius: 12px; min-height: 44px; }
@@ -41,6 +42,7 @@ input[type="checkbox"] { width: 22px; height: 22px; margin-top: 2px; accent-colo
 .error { color: #8C2F2F; font-weight: 700; }
 .lede { color: #51565F; }
 .empty { margin: 0; }
+${ADMIN_SHELL_STYLE}
 `.trim();
 
 function escapeHtml(value: string): string {
@@ -125,19 +127,41 @@ export function inboxPage(issues: IssueRow[], filter: "open" | "done", updateFai
     : `<p class="empty">${filter === "done" ? "No finished reports." : "No open reports."}</p>`;
   return page(
     "Issue reports",
-    `<div class="bar">
+    adminShell(
+      "issues",
+      `<div class="bar">
 <h1>Issue reports</h1>
 <form method="post" action="/api/auth/logout"><button class="ghost" type="submit">Sign out</button></form>
 </div>
 <p class="lede">Newest open reports are listed first. Check a report to mark it done.</p>
-<nav class="tabs">
+<nav class="tabs" aria-label="Issue status">
 <a class="tab" href="/admin"${openCurrent}>Open</a>
 <a class="tab" href="/admin?status=done"${doneCurrent}>Done</a>
-<a class="tab" href="/admin/history">History</a>
 </nav>
 ${banner}
 ${rows}`,
+    ),
   );
+}
+
+export async function openAdmin(request: NextRequest, here: string): Promise<{ token: string } | Response> {
+  await connection();
+  const token = sessionToken(request);
+  if (!token) return redirectTo(`/profile?next=${encodeURIComponent(here)}`, [], request);
+  let me: Response;
+  try {
+    me = await fetch(`${await apiOrigin()}/auth/me`, {
+      headers: { accept: "application/json", authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+  } catch {
+    return redirectTo(`/profile?next=${encodeURIComponent(here)}&error=${encodeURIComponent("Sign-in is unavailable.")}`, [], request);
+  }
+  if (me.status === 401) return redirectTo(`/profile?next=${encodeURIComponent(here)}`, [], request);
+  if (!me.ok) return redirectTo("/", [], request);
+  const user = (await me.json()) as { email?: string | null };
+  if (!ADMIN_EMAILS.has((user.email || "").trim().toLowerCase())) return redirectTo("/", [], request);
+  return { token };
 }
 
 export function htmlResponse(html: string, status = 200): Response {
@@ -152,9 +176,14 @@ export function htmlResponse(html: string, status = 200): Response {
   });
 }
 
-export function redirectTo(path: string, cookies: string[] = []): Response {
+export function redirectTo(path: string, cookies: string[] = [], request?: NextRequest): Response {
+  const host = request?.nextUrl.host ?? "";
+  const location =
+    host.startsWith("127.0.0.1:") || host.startsWith("localhost:")
+      ? new URL(safeNext(path), `${request?.nextUrl.protocol}//${host}`).toString()
+      : publicUrl(path).toString();
   const headers = new Headers();
-  headers.set("location", publicUrl(path).toString());
+  headers.set("location", location);
   headers.set("cache-control", "private, no-store");
   headers.set("x-robots-tag", "noindex");
   headers.set("x-frame-options", "DENY");

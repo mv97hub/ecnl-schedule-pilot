@@ -223,17 +223,65 @@ def ensure_capture_columns() -> None:
         )
 
 
+def _constraint_definition(connection, table: str, name: str) -> str | None:
+    row = connection.execute(
+        text(
+            """
+            SELECT pg_get_constraintdef(constraint_row.oid)
+            FROM pg_constraint AS constraint_row
+            JOIN pg_class AS table_row ON table_row.oid = constraint_row.conrelid
+            JOIN pg_namespace AS namespace_row ON namespace_row.oid = table_row.relnamespace
+            WHERE namespace_row.nspname = 'public'
+              AND table_row.relname = :table
+              AND constraint_row.conname = :name
+            """
+        ),
+        {"table": table, "name": name},
+    ).first()
+    return None if row is None else str(row[0])
+
+
+def _add_timestamp(connection, table: str, column: str, *, nullable: bool) -> None:
+    if not _table_exists(connection, table) or _column_exists(connection, table, column):
+        return
+    if nullable:
+        connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} timestamp with time zone"))
+        return
+    connection.execute(
+        text(f"ALTER TABLE {table} ADD COLUMN {column} timestamp with time zone NOT NULL DEFAULT now()")
+    )
+
+
 def ensure_location_columns() -> None:
-    """Add tip downvote counts on databases created before votes. New tables come from create_all."""
+    """Add tip votes and contribution-review columns. New tables come from create_all."""
 
     with engine.begin() as connection:
-        if not _table_exists(connection, "venue_recommendation"):
+        if _table_exists(connection, "venue_recommendation"):
+            if not _column_exists(connection, "venue_recommendation", "downvotes"):
+                connection.execute(
+                    text("ALTER TABLE venue_recommendation ADD COLUMN downvotes integer NOT NULL DEFAULT 0")
+                )
+            _add_check(connection, "venue_recommendation", "ck_venue_recommendation_downvotes", "downvotes >= 0")
+        for table in ("venue_rating", "venue_recommendation", "venue_tip_vote"):
+            _add_timestamp(connection, table, "hidden_at", nullable=True)
+            _add_timestamp(connection, table, "flagged_at", nullable=True)
+        for table in ("venue_rating", "venue_recommendation"):
+            _add_timestamp(connection, table, "edited_at", nullable=True)
+        _add_timestamp(connection, "venue_tip_vote", "updated_at", nullable=False)
+        if not _table_exists(connection, "location_write_event"):
             return
-        if not _column_exists(connection, "venue_recommendation", "downvotes"):
-            connection.execute(
-                text("ALTER TABLE venue_recommendation ADD COLUMN downvotes integer NOT NULL DEFAULT 0")
+        name = "ck_location_write_event_action"
+        definition = _constraint_definition(connection, "location_write_event", name)
+        if definition is not None and "hide" not in definition:
+            connection.execute(text(f"ALTER TABLE location_write_event DROP CONSTRAINT {name}"))
+            definition = None
+        if definition is None:
+            _add_check(
+                connection,
+                "location_write_event",
+                name,
+                "action IN ('create', 'update', 'hide', 'restore', 'edit')",
             )
-        _add_check(connection, "venue_recommendation", "ck_venue_recommendation_downvotes", "downvotes >= 0")
 
 
 def ensure_source_columns() -> None:

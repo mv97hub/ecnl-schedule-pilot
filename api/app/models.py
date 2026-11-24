@@ -433,6 +433,9 @@ class VenueRating(Base):
     surface_vote: Mapped[str | None] = mapped_column(String(8), nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
+    hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    flagged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class VenueRecommendation(Base):
@@ -465,6 +468,9 @@ class VenueRecommendation(Base):
     upvotes: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     downvotes: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
+    hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    flagged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AppUser(Base):
@@ -569,7 +575,10 @@ class LocationWriteEvent(Base):
     __tablename__ = "location_write_event"
     __table_args__ = (
         CheckConstraint("kind IN ('rating', 'tip', 'vote')", name="ck_location_write_event_kind"),
-        CheckConstraint("action IN ('create', 'update')", name="ck_location_write_event_action"),
+        CheckConstraint(
+            "action IN ('create', 'update', 'hide', 'restore', 'edit')",
+            name="ck_location_write_event_action",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -602,6 +611,9 @@ class VenueTipVote(Base):
     )
     author_key: Mapped[str] = mapped_column(String(80), nullable=False)
     choice: Mapped[str] = mapped_column(String(8), nullable=False)
+    hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    flagged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
 
 
 class Issue(Base):
