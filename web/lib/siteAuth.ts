@@ -54,6 +54,11 @@ export async function apiOrigin(): Promise<string> {
   return (configured || "http://127.0.0.1:8000").replace(/\/$/, "");
 }
 
+/** A browser redirect on the public site. Never use the request host: on Render that is 0.0.0.0 and $PORT. */
+export function publicUrl(path: string): URL {
+  return new URL(safeNext(path), SITE_ORIGIN);
+}
+
 export function safeNext(value: string | null | undefined): string {
   if (!value) return "/profile";
   if (!value.startsWith("/") || value.startsWith("//")) return "/profile";

@@ -12,6 +12,7 @@ import {
   clearStateCookie,
   missingEnv,
   packState,
+  publicUrl,
   safeNext,
   sessionCookie,
   stateCookie,
@@ -69,8 +70,8 @@ function appleStartUrl(state: string): string {
   return url.toString();
 }
 
-export function signInError(request: NextRequest, message: string): NextResponse {
-  const url = new URL("/profile", request.url);
+export function signInError(message: string): NextResponse {
+  const url = publicUrl("/profile");
   url.searchParams.set("error", message.slice(0, 180));
   const response = NextResponse.redirect(url, 303);
   response.cookies.set(STATE_COOKIE, "", clearStateCookie);
@@ -108,17 +109,17 @@ async function openSession(identity: ProviderIdentity): Promise<{ token: string 
 export async function finishProvider(request: NextRequest, identity: ProviderIdentity, returnedState: string | null): Promise<Response> {
   const packed = unpackState(request.cookies.get(STATE_COOKIE)?.value);
   if (!returnedState || !packed || !statesMatch(packed.state, returnedState)) {
-    return signInError(request, "Sign-in failed. Start again from Profile.");
+    return signInError("Sign-in failed. Start again from Profile.");
   }
   try {
     const opened = await openSession(identity);
-    const response = NextResponse.redirect(new URL(packed.next, request.url), 303);
+    const response = NextResponse.redirect(publicUrl(packed.next), 303);
     response.cookies.set(SESSION_COOKIE, opened.token, sessionCookie);
     response.cookies.set(STATE_COOKIE, "", clearStateCookie);
     return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Sign-in failed.";
-    return signInError(request, message);
+    return signInError(message);
   }
 }
 

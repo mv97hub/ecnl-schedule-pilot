@@ -1,5 +1,7 @@
 import { connection } from "next/server";
 
+import { publicUrl } from "@/lib/siteAuth";
+
 export type IssueRow = {
   id: number;
   created_at: string;
@@ -151,7 +153,7 @@ export function htmlResponse(html: string, status = 200): Response {
 
 export function redirectTo(path: string, cookies: string[] = []): Response {
   const headers = new Headers();
-  headers.set("location", path);
+  headers.set("location", publicUrl(path).toString());
   headers.set("cache-control", "private, no-store");
   headers.set("x-robots-tag", "noindex");
   headers.set("x-frame-options", "DENY");

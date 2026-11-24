@@ -7,7 +7,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   const form = await request.formData();
   const code = form.get("code");
   if (form.get("error") || typeof code !== "string" || !code) {
-    return signInError(request, "Sign-in failed. Start again from Profile.");
+    return signInError("Sign-in failed. Start again from Profile.");
   }
   try {
     const identity = await appleIdentity(code, form.get("user"));
@@ -15,6 +15,6 @@ export async function POST(request: NextRequest): Promise<Response> {
     return await finishProvider(request, identity, typeof state === "string" ? state : null);
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : "Sign-in failed.";
-    return signInError(request, message);
+    return signInError(message);
   }
 }
