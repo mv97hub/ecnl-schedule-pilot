@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { FavoritesEditor } from "@/components/FavoritesEditor";
+import { ProviderSignIn } from "@/components/ProviderSignIn";
 import { clearHomeAddress, readHomeAddress, saveHomeAddress, US_STATES, type HomeAddress } from "@/lib/homeAddress";
 import { providerLabel, useAccount } from "@/lib/useAccount";
 
@@ -126,13 +127,8 @@ export function ProfileForm() {
           <section id="sign-in" className="mt-6 max-w-xl rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Sign in">
             <h2 className="text-lg font-semibold text-navy">Sign in</h2>
             <p className="mt-1 text-sm text-stone-500">Google or Apple is used for location ratings and tips. The home address is not saved on the account.</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <a href={`/api/auth/google${nextQuery}`} className="rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy">
-                Continue with Google
-              </a>
-              <a href={`/api/auth/apple${nextQuery}`} className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink">
-                Sign in with Apple
-              </a>
+            <div className="mt-4">
+              <ProviderSignIn nextQuery={nextQuery} />
             </div>
           </section>
         )}
