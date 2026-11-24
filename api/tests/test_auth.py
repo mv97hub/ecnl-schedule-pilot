@@ -54,6 +54,16 @@ class AccountTests(unittest.TestCase):
 
     def _cleanup(self) -> None:
         with engine.begin() as connection:
+            if connection.execute(text("SELECT to_regclass('public.location_write_event')")).scalar() is not None:
+                connection.execute(
+                    text(
+                        """
+                        DELETE FROM location_write_event
+                        WHERE email LIKE '%@probe-auth.test'
+                           OR venue_name = 'Probe Auth Park'
+                        """
+                    )
+                )
             if connection.execute(text("SELECT to_regclass('public.venue_tip_vote')")).scalar() is not None:
                 connection.execute(text("DELETE FROM venue_tip_vote WHERE author_key LIKE 'user:%' OR author_key = 'probe-auth-browser'"))
             if connection.execute(text("SELECT to_regclass('public.venue_recommendation')")).scalar() is not None:

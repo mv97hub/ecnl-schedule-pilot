@@ -12,6 +12,7 @@ from app.routers.auth import router as auth_router
 from app.routers.clubs import router as clubs_router
 from app.routers.data_refresh import router as data_refresh_router
 from app.routers.head_to_head import router as head_to_head_router
+from app.routers.history import router as history_router
 from app.routers.ingest import router as ingest_router
 from app.routers.issues import router as issues_router
 from app.routers.mobile import router as mobile_router
@@ -51,6 +52,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(history_router)
 app.include_router(issues_router)
 app.include_router(data_refresh_router)
 app.include_router(teams_router)

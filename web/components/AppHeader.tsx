@@ -17,17 +17,22 @@ export function AppHeader() {
   );
 }
 
+function scheduleHref(query: string): string {
+  if (!query) return "/?board=schedule";
+  return `/${query}&board=schedule`;
+}
+
 function AppHeaderPath() {
   const path = usePathname();
   const params = useSearchParams();
-  return <AppHeaderBar path={path} query={selectionQuery(params)} />;
+  return <AppHeaderBar path={path} query={selectionQuery(params)} scheduleBoard={params.get("board") === "schedule" || params.has("team")} />;
 }
 
-function AppHeaderBar({ path, query }: { path: string; query: string }) {
+function AppHeaderBar({ path, query, scheduleBoard = false }: { path: string; query: string; scheduleBoard?: boolean }) {
   const { gender, setGender } = useLeagueGender();
   const account = useAccount();
   const accountLabel = account?.display_name || "Sign in";
-  const schedules = path === "/";
+  const schedules = path === "/" && (scheduleBoard || account === null);
   const clubs = path.startsWith("/clubs");
   const standings = path === "/standings" || (path.startsWith("/standings/") && !path.startsWith("/projected"));
   const projected = path === "/projected" || path.startsWith("/projected/");
@@ -57,7 +62,7 @@ function AppHeaderBar({ path, query }: { path: string; query: string }) {
         </div>
         <nav className="flex min-w-0 max-w-full flex-wrap items-center gap-1 text-sm" aria-label="Primary">
           <Link
-            href={`/${query}`}
+            href={scheduleHref(query)}
             aria-current={schedules ? "page" : undefined}
             className={`rounded-full px-3 py-1.5 ${schedules ? "bg-gold text-navy" : "text-bone/80 hover:bg-white/10"}`}
           >

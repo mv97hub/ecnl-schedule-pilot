@@ -1,11 +1,11 @@
 import { Suspense } from "react";
 
-import { Dashboard } from "@/components/Dashboard";
+import { HomeGate } from "@/components/HomeGate";
 
 export default function Home() {
   return (
     <Suspense fallback={null}>
-      <Dashboard />
+      <HomeGate />
     </Suspense>
   );
 }

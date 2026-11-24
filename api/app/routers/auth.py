@@ -15,6 +15,7 @@ from app.auth import (
     require_user,
 )
 from app.database import get_session
+from app.favorites import read_favorites, replace_favorites
 from app.models import AppUser
 
 router = APIRouter(tags=["auth"])
@@ -39,6 +40,32 @@ class UserOut(BaseModel):
 class SessionOut(BaseModel):
     token: str
     user: UserOut
+
+
+class MeOut(BaseModel):
+    id: int
+    display_name: str
+    email: str | None
+    providers: list[str]
+    club_id: str | None
+    team_ids: list[int]
+
+
+class FavoritesIn(BaseModel):
+    club_id: str | None = None
+    team_ids: list[int] = Field(default_factory=list)
+
+
+def _me_out(db: Session, user: AppUser) -> MeOut:
+    club_id, team_ids = read_favorites(db, int(user.id))
+    return MeOut(
+        id=int(user.id),
+        display_name=user.display_name,
+        email=user.email,
+        providers=providers_for(db, int(user.id)),
+        club_id=club_id,
+        team_ids=team_ids,
+    )
 
 
 def _user_out(db: Session, user: AppUser) -> UserOut:
@@ -85,6 +112,26 @@ def end_session(
     if token:
         logout(session, token)
     return {"ok": True}
+
+
+@router.get("/me", response_model=MeOut)
+def read_me(
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+) -> MeOut:
+    user = require_user(session, token)
+    return _me_out(session, user)
+
+
+@router.put("/me/favorites", response_model=MeOut)
+def save_favorites(
+    body: FavoritesIn,
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+) -> MeOut:
+    user = require_user(session, token)
+    replace_favorites(session, int(user.id), body.club_id, body.team_ids)
+    return _me_out(session, user)
 
 
 @router.delete("/auth/account")

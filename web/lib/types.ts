@@ -467,3 +467,59 @@ export type HeadToHeadReport = {
   };
   scouting_report: ScoutingReport;
 };
+
+export type MobileGame = {
+  id: number;
+  starts_at: string;
+  opponent: Opponent;
+  side: "home" | "away";
+  venue_name: string;
+  city: string;
+  state: string;
+  field_name: string | null;
+  timezone: string;
+  status: GameStatus;
+  home_score: number | null;
+  away_score: number | null;
+  team_result: TeamResult;
+  latitude: number | null;
+  longitude: number | null;
+};
+
+export type MobileTeamCard = {
+  id: number;
+  name: string;
+  age_group: string;
+  gender: "boys" | "girls";
+  tier: string;
+  conference: string;
+  logo_url: string | null;
+  club_id: number | null;
+  rank: number | null;
+  ppg: number;
+  record: ClubRecord;
+  conference_record: ClubRecord;
+  next_game: MobileGame | null;
+  last_result: MobileGame | null;
+};
+
+export type MobileClub = {
+  id: number | string;
+  name: string;
+  logo_url: string | null;
+  record: ClubRecord;
+  conference_record: ClubRecord;
+  squads: ClubSquad[];
+  past_10_days: WeekendScorecard[];
+  next_10_days: NextWeekend | null;
+};
+
+export type MobileDashboard = {
+  teams: MobileTeamCard[];
+  club: MobileClub | null;
+};
+
+export type AccountFavorites = {
+  club_id: string | null;
+  team_ids: number[];
+};

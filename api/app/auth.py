@@ -19,7 +19,7 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import AppSession, AppUser, AuthIdentity, VenueRating, VenueRecommendation, VenueTipVote
+from app.models import AppSession, AppUser, AuthIdentity, UserFavorite, VenueRating, VenueRecommendation, VenueTipVote
 
 ADMIN_EMAILS = frozenset({"myuranv97@gmail.com", "premiergamedayhq@gmail.com"})
 SESSION_DAYS = 30
@@ -256,7 +256,10 @@ def logout(db: Session, raw: str) -> None:
 
 
 def delete_account(db: Session, user: AppUser) -> None:
-    """Remove the person, their sign-ins, sessions, ratings, tips, and votes."""
+    """Remove the person, their sign-ins, sessions, favorites, ratings, tips, and votes.
+
+    Location history rows stay. They already hold the email and display name from the write.
+    """
 
     user_id = str(user.id)
     author_key = f"user:{user.id}"
@@ -283,6 +286,7 @@ def delete_account(db: Session, user: AppUser) -> None:
         db.execute(delete(VenueRecommendation).where(VenueRecommendation.id.in_(own_tip_ids)))
     db.execute(delete(VenueTipVote).where(VenueTipVote.author_key == author_key))
     db.execute(delete(VenueRating).where(or_(VenueRating.user_id == user_id, VenueRating.author_key == author_key)))
+    db.execute(delete(UserFavorite).where(UserFavorite.user_id == user.id))
     db.execute(delete(AppSession).where(AppSession.user_id == user.id))
     db.execute(delete(AuthIdentity).where(AuthIdentity.user_id == user.id))
     db.delete(user)

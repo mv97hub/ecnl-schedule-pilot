@@ -4,7 +4,7 @@ from datetime import date as DateValue
 from datetime import UTC, datetime
 from datetime import time as TimeValue
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlmodel import Field, SQLModel
 
@@ -509,6 +509,51 @@ class AppSession(Base):
     client: Mapped[str] = mapped_column(String(16), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
+
+
+class UserFavorite(Base):
+    """One club or one team saved on an account. Slot 1 (position 1) is the default team."""
+
+    __tablename__ = "user_favorite"
+    __table_args__ = (
+        UniqueConstraint("user_id", "kind", "ref", name="uq_user_favorite_ref"),
+        UniqueConstraint("user_id", "kind", "position", name="uq_user_favorite_position"),
+        CheckConstraint("kind IN ('club', 'team')", name="ck_user_favorite_kind"),
+        CheckConstraint(
+            "(kind = 'club' AND position = 0) OR (kind = 'team' AND position BETWEEN 1 AND 4)",
+            name="ck_user_favorite_position",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)
+    ref: Mapped[str] = mapped_column(String(200), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class LocationWriteEvent(Base):
+    """A permanent copy of one location rating, tip, or vote. Rows stay after the account is deleted."""
+
+    __tablename__ = "location_write_event"
+    __table_args__ = (
+        CheckConstraint("kind IN ('rating', 'tip', 'vote')", name="ck_location_write_event_kind"),
+        CheckConstraint("action IN ('create', 'update')", name="ck_location_write_event_action"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    email: Mapped[str | None] = mapped_column(String(254), nullable=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    venue_key: Mapped[str] = mapped_column(String(300), nullable=False, index=True)
+    venue_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    rating_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tip_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)
+    previous_values: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    new_values: Mapped[dict] = mapped_column(JSON, nullable=False)
 
 
 class VenueTipVote(Base):
