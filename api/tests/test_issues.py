@@ -1,9 +1,8 @@
-"""Public issue reports and the admin session that marks them done."""
+"""Public issue reports and the signed-in admin inbox."""
 
 from __future__ import annotations
 
 import os
-import secrets
 import sys
 import unittest
 from pathlib import Path
@@ -31,27 +30,54 @@ def _report(description: str, **extra: object) -> dict[str, object]:
     return body
 
 
+SECRET = "probe-issue-secret"
+
+
+def _sign_in(client: TestClient, subject: str, email: str) -> str:
+    os.environ["AUTH_INTERNAL_SECRET"] = SECRET
+    opened = client.post(
+        "/auth/session",
+        headers={"X-Internal-Auth": SECRET},
+        json={
+            "provider": "google",
+            "subject": subject,
+            "email": email,
+            "email_verified": True,
+            "display_name": "Probe Admin",
+            "client": "web",
+        },
+    )
+    assert opened.status_code == 200, opened.text
+    return opened.json()["token"]
+
+
 class IssueReportTests(unittest.TestCase):
     def setUp(self) -> None:
         Base.metadata.create_all(engine)
         SQLModel.metadata.create_all(engine)
         reset_issue_rate_limit()
-        self._saved_password = os.environ.pop("ADMIN_PASSWORD", None)
+        os.environ["AUTH_INTERNAL_SECRET"] = SECRET
         self._cleanup()
 
     def tearDown(self) -> None:
         self._cleanup()
         reset_issue_rate_limit()
-        if self._saved_password is None:
-            os.environ.pop("ADMIN_PASSWORD", None)
-        else:
-            os.environ["ADMIN_PASSWORD"] = self._saved_password
 
     def _cleanup(self) -> None:
         with engine.begin() as connection:
-            if connection.execute(text("SELECT to_regclass('public.issue')")).scalar() is None:
-                return
-            connection.execute(text("DELETE FROM issue WHERE description LIKE 'Probe issue%'"))
+            if connection.execute(text("SELECT to_regclass('public.issue')")).scalar() is not None:
+                connection.execute(text("DELETE FROM issue WHERE description LIKE 'Probe issue%'"))
+            if connection.execute(text("SELECT to_regclass('public.auth_identity')")).scalar() is not None:
+                connection.execute(
+                    text(
+                        """
+                        DELETE FROM app_user
+                        WHERE id IN (
+                            SELECT user_id FROM auth_identity WHERE provider_subject LIKE 'probe-issue-%'
+                        )
+                        """
+                    )
+                )
 
     def test_create_issue(self) -> None:
         with TestClient(app) as client:
@@ -98,33 +124,39 @@ class IssueReportTests(unittest.TestCase):
             still_blocked = client.post("/issues", json=_report("Probe issue rate still blocked"))
             self.assertEqual(still_blocked.status_code, 429)
 
-    def test_login_fails_when_admin_password_missing(self) -> None:
-        self.assertIsNone(os.environ.get("ADMIN_PASSWORD"))
+    def test_inbox_requires_an_allowed_account(self) -> None:
         with TestClient(app) as client:
-            response = client.post("/admin/login", json={"password": "anything"})
-            self.assertEqual(response.status_code, 401)
-            self.assertEqual(response.json()["detail"], "Login failed")
-            self.assertNotIn("admin_session", response.cookies)
-            set_cookie = response.headers.get("set-cookie", "")
-            self.assertNotIn("admin_session", set_cookie)
+            self.assertEqual(client.post("/admin/login", json={"password": "anything"}).status_code, 404)
             self.assertEqual(client.get("/admin/issues").status_code, 401)
             self.assertEqual(client.patch("/admin/issues/1", json={"done": True}).status_code, 401)
 
-            os.environ["ADMIN_PASSWORD"] = "   "
-            blank = client.post("/admin/login", json={"password": "anything"})
-            self.assertEqual(blank.status_code, 401)
-            self.assertNotIn("admin_session", blank.cookies)
+            other = _sign_in(client, "probe-issue-other", "someone@example.com")
+            denied = client.get("/admin/issues", headers={"Authorization": f"Bearer {other}"})
+            self.assertEqual(denied.status_code, 403)
+
+            saved = os.environ.pop("AUTH_INTERNAL_SECRET")
+            try:
+                missing = client.post(
+                    "/auth/session",
+                    headers={"X-Internal-Auth": "anything"},
+                    json={
+                        "provider": "google",
+                        "subject": "probe-issue-missing",
+                        "email": "missing@example.com",
+                        "email_verified": True,
+                        "display_name": "Missing",
+                        "client": "web",
+                    },
+                )
+                self.assertEqual(missing.status_code, 503)
+                self.assertEqual(missing.json()["detail"], "AUTH_INTERNAL_SECRET is not set")
+            finally:
+                os.environ["AUTH_INTERNAL_SECRET"] = saved
 
     def test_status_checkbox_sets_and_clears_completed_at(self) -> None:
-        secret = secrets.token_urlsafe(18)
-        os.environ["ADMIN_PASSWORD"] = secret
         with TestClient(app) as client:
             denied = client.patch("/admin/issues/1", json={"done": True})
             self.assertEqual(denied.status_code, 401)
-
-            wrong = client.post("/admin/login", json={"password": secret + "no"})
-            self.assertEqual(wrong.status_code, 401)
-            self.assertNotIn("admin_session", wrong.cookies)
 
             first = client.post("/issues", json=_report("Probe issue older"))
             second = client.post("/issues", json=_report("Probe issue newer", category="other", email="coach@example.com"))
@@ -133,36 +165,30 @@ class IssueReportTests(unittest.TestCase):
             first_id = first.json()["id"]
             second_id = second.json()["id"]
 
-            signed_in = client.post("/admin/login", json={"password": secret})
-            self.assertEqual(signed_in.status_code, 200)
-            cookie = signed_in.headers.get("set-cookie", "")
-            self.assertIn("admin_session=", cookie)
-            self.assertIn("HttpOnly", cookie)
-            self.assertIn("Path=/admin", cookie)
-            self.assertNotIn(secret, cookie)
-
-            open_rows = client.get("/admin/issues").json()
+            token = _sign_in(client, "probe-issue-admin", "myuranv97@gmail.com")
+            headers = {"Authorization": f"Bearer {token}"}
+            open_rows = client.get("/admin/issues", headers=headers).json()
             self.assertEqual([row["id"] for row in open_rows], [second_id, first_id])
             self.assertTrue(all(row["status"] == "open" and row["completed_at"] is None for row in open_rows))
 
-            marked = client.patch(f"/admin/issues/{second_id}", json={"done": True})
+            marked = client.patch(f"/admin/issues/{second_id}", json={"done": True}, headers=headers)
             self.assertEqual(marked.status_code, 200)
             self.assertEqual(marked.json()["status"], "done")
             self.assertIsNotNone(marked.json()["completed_at"])
 
-            still_open = client.get("/admin/issues").json()
+            still_open = client.get("/admin/issues", headers=headers).json()
             self.assertEqual([row["id"] for row in still_open], [first_id])
-            done_rows = client.get("/admin/issues?status=done").json()
+            done_rows = client.get("/admin/issues?status=done", headers=headers).json()
             self.assertEqual([row["id"] for row in done_rows], [second_id])
             self.assertEqual(done_rows[0]["status"], "done")
             self.assertIsNotNone(done_rows[0]["completed_at"])
 
-            reopened = client.patch(f"/admin/issues/{second_id}", json={"done": False})
+            reopened = client.patch(f"/admin/issues/{second_id}", json={"done": False}, headers=headers)
             self.assertEqual(reopened.status_code, 200)
             self.assertEqual(reopened.json()["status"], "open")
             self.assertIsNone(reopened.json()["completed_at"])
-            self.assertEqual(client.get("/admin/issues?status=done").json(), [])
-            self.assertEqual(client.get("/admin/issues").json()[0]["id"], second_id)
+            self.assertEqual(client.get("/admin/issues?status=done", headers=headers).json(), [])
+            self.assertEqual(client.get("/admin/issues", headers=headers).json()[0]["id"], second_id)
 
-            client.post("/admin/logout")
-            self.assertEqual(client.get("/admin/issues").status_code, 401)
+            client.post("/auth/logout", headers=headers)
+            self.assertEqual(client.get("/admin/issues", headers=headers).status_code, 401)

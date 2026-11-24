@@ -1,4 +1,4 @@
-import { connection, type NextRequest } from "next/server";
+import { connection } from "next/server";
 
 export type IssueRow = {
   id: number;
@@ -69,21 +69,6 @@ ${body}
 </html>`;
 }
 
-export function loginPage(failed: boolean): string {
-  const message = failed ? `<p class="error">Sign-in failed.</p>` : "";
-  return page(
-    "Sign in",
-    `<h1>Issue reports</h1>
-${message}
-<form method="post" action="/admin/login" class="card">
-<label class="field">Password
-<input type="password" name="password" autocomplete="current-password" required>
-</label>
-<button class="primary" type="submit">Sign in</button>
-</form>`,
-  );
-}
-
 function formatWhen(iso: string | null): string {
   if (!iso) return "";
   const date = new Date(iso);
@@ -140,7 +125,7 @@ export function inboxPage(issues: IssueRow[], filter: "open" | "done", updateFai
     "Issue reports",
     `<div class="bar">
 <h1>Issue reports</h1>
-<form method="post" action="/admin/logout"><button class="ghost" type="submit">Log out</button></form>
+<form method="post" action="/api/auth/logout"><button class="ghost" type="submit">Sign out</button></form>
 </div>
 <p class="lede">Newest open reports are listed first. Check a report to mark it done.</p>
 <nav class="tabs">
@@ -174,25 +159,10 @@ export function redirectTo(path: string, cookies: string[] = []): Response {
   return new Response(null, { status: 303, headers });
 }
 
-export function readSetCookies(upstream: Response): string[] {
-  if (typeof upstream.headers.getSetCookie === "function") {
-    const cookies = upstream.headers.getSetCookie();
-    if (cookies.length > 0) return cookies;
-  }
-  const single = upstream.headers.get("set-cookie");
-  return single ? [single] : [];
-}
-
 export async function apiOrigin(): Promise<string> {
   await connection();
   const configured = process.env.NEXT_PUBLIC_API_URL?.trim();
   return (configured || "http://127.0.0.1:8000").replace(/\/$/, "");
-}
-
-export function forwardedProto(request: NextRequest): string {
-  const header = request.headers.get("x-forwarded-proto");
-  if (header) return header.split(",")[0].trim();
-  return request.nextUrl.protocol.replace(":", "");
 }
 
 export function isIssueRow(value: unknown): value is IssueRow {

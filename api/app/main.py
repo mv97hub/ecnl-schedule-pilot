@@ -8,6 +8,7 @@ from sqlmodel import SQLModel
 from app.database import engine, ensure_capture_columns, ensure_location_columns, ensure_result_columns, ensure_source_columns
 from app.locations import router as locations_router
 from app.models import Base
+from app.routers.auth import router as auth_router
 from app.routers.clubs import router as clubs_router
 from app.routers.data_refresh import router as data_refresh_router
 from app.routers.head_to_head import router as head_to_head_router
@@ -49,6 +50,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 app.include_router(issues_router)
 app.include_router(data_refresh_router)
 app.include_router(teams_router)

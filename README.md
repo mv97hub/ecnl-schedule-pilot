@@ -22,11 +22,11 @@ The header switches Boys and Girls. The choice is stored in `sessionStorage` und
 | Locations Guide | `/locations` | A club filter, then that club's home fields, Club Ratings, and family tips. Details are in [Locations Guide](#locations-guide). |
 | Field | `/locations/{venue_key}` | One complex: scorecard, rating form, family tips, then upcoming and recent games. |
 | Add a family tip | `/locations/tip` | A dropdown of the club's fields (`?club=`), then the tip form. |
-| Profile | `/profile` | A home address saved in `sessionStorage` for this browser tab. It is not written to the database. |
-| Privacy | `/privacy` | Privacy policy for the Premier Gameday HQ app. Favorites stay on the device. The app has no account and does not send personal data to the server. Contact premiergamedayhq@gmail.com. |
+| Profile | `/profile` | Google or Apple sign-in, plus a home address saved in `sessionStorage` for this browser tab. The address is not written to the account. |
+| Privacy | `/privacy` | Privacy policy for the Premier Gameday HQ app. Favorites stay on the device. The app has no account and does not send personal data to the server. The website section covers the session cookie and location ratings. Contact premiergamedayhq@gmail.com. |
 | Support | `/support` | How to use Premier Gameday HQ without an account. Email premiergamedayhq@gmail.com, or send a report from the page. |
 | Share image | `/api/og/h2h` | A 1200×630 image for a head-to-head link. It calls the API `/head-to-head` route. |
-| Issue reports | `/admin` | Private inbox for reports sent from the app and from `/support`. Preferences has Report an Issue. The support form posts `category`, `description`, and an optional `email`, with `screen` `web-support` and `app_version` `web`. No account. The phone waits 60 seconds after a successful send, and a failed send keeps the draft. The same five-reports-per-IP-per-hour limit applies. The page is not linked from the header, the footer, or any public page, and it sends `noindex`. Sign-in compares the password to `ADMIN_PASSWORD` on the API. |
+| Issue reports | `/admin` | Private inbox for reports sent from the app and from `/support`. Preferences has Report an Issue. The support form posts `category`, `description`, and an optional `email`, with `screen` `web-support` and `app_version` `web`. The phone waits 60 seconds after a successful send, and a failed send keeps the draft. The same five-reports-per-IP-per-hour limit applies. The page is not linked from the header, the footer, or any public page, and it sends `noindex`. It opens only for a signed-in `myuranv97@gmail.com` or `premiergamedayhq@gmail.com`. Anyone else stays on the public site. |
 
 The browser calls `NEXT_PUBLIC_API_URL`, or `http://127.0.0.1:8000` when that variable is unset. The Open Graph route uses the same variable, or `http://localhost:8000`.
 
@@ -46,7 +46,7 @@ Add a family tip sits next to the Family tips heading and opens `/locations/tip?
 
 The field page scorecard does not grow a second block for tips. Under the Scorecard heading, one line shows the overall rating, or `No family ratings yet`, the tip count, and the average of the tip stars when there is at least one tip. Family tips, including that page's add-a-tip form, are above Upcoming games and Recent games. Each of those lists is at most eight games. Category tabs on the field page use the full names: Hotel, Team Food and Dining, Between-Game Hangout, Activity, and Sideline and Parking Tip.
 
-There is no account. The browser stores `ecnl-profile-key` in `localStorage` and sends it as `X-Profile-Key` (at most 80 characters). A second rating from the same key updates the same `venue_rating` row. `user_id` stays empty. The display name is `ecnl-author-name` in `localStorage`. A tip with no display name is stored as `ECNL Family`.
+Ratings, tips, and tip votes require a signed-in website account. The website finishes Google or Apple sign-in, asks the API for a session, and stores the raw token in an httpOnly Secure SameSite=Lax cookie on premiergamedayhq.com. The browser does not send that cookie to the API host. The website server sends `Authorization: Bearer`. `user_id` stores the account id and `author_key` is `user:{id}`, so one account has one rating per complex and one vote per tip. The name on a tip is the account display name. Email is not shown on the location page. Rows already stored under a browser `author_key` stay visible and are not rewritten. Signed-out visitors can still read every location. The home address on Profile stays in `sessionStorage`.
 
 The club page Venue Guide link goes to `/locations?club=` for that club. The field rows under it still open Google Maps. A Venue Guide link on a team schedule opens `/locations/{venue_key}` for that one complex.
 
@@ -66,10 +66,14 @@ The club page Venue Guide link goes to `/locations?club=` for that club. The fie
 | GET | `/clubs/{club_key}` | One club: squads, record, home venues, and recent weekends. An unknown key is 404, including a bare AthleteOne id when that club is split. |
 | GET | `/locations` | Every published complex. Optional `search`, `state`, `home_lat`, and `home_lng`. The locations page does not call this route. It calls `/locations/club`. |
 | GET | `/locations/club` | Required `club` (the public id). Home complexes, the Club Ratings `aggregate`, and `tips` for those fields. Unknown club is 404. Optional `home_lat` and `home_lng` fill `drive_minutes`. |
-| GET | `/locations/detail` | `venue_key`, or venue name plus city and state. Optional `category` is one of the five tip categories. Optional `home`, `home_lat`, and `home_lng`. Optional `X-Profile-Key` fills `my_rating`. 404 when that complex has no games, ratings, or tips. |
-| POST | `/locations/rate` | Requires `X-Profile-Key`. Scores are integers 1–5 for field quality, referees, parent vibe, parking, and amenities. `surface_vote` is `GRASS`, `TURF`, `MIXED`, or omitted. One row per `venue_key` and profile key. A later post from that key updates the row. |
-| POST | `/locations/recommendations` | Requires `X-Profile-Key`. `category` is `HOTEL`, `RESTAURANT`, `COFFEE_GAP`, `ACTIVITY`, or `SIDELINE_TIP`. `rating` is 1–5. `tags` must be in `TIP_TAGS` in `api/app/locations.py`. The route builds `venue_key` from the venue name, city, and state. |
-| POST | `/locations/recommendations/{recommendation_id}/upvote` | Adds one to `upvotes`. An unknown id is 404. No profile key. |
+| GET | `/locations/detail` | `venue_key`, or venue name plus city and state. Optional `category` is one of the five tip categories. Optional `home`, `home_lat`, and `home_lng`. Optional `Authorization: Bearer` or `X-Profile-Key` fills `my_rating` and `my_vote`. The response shape is unchanged. 404 when that complex has no games, ratings, or tips. |
+| POST | `/locations/rate` | Requires `Authorization: Bearer`. A missing token is 401. Scores are integers 1–5 for field quality, referees, parent vibe, parking, and amenities. `surface_vote` is `GRASS`, `TURF`, `MIXED`, or omitted. One row per `venue_key` and account. A later post from that account updates the row. The display name comes from the account. |
+| POST | `/locations/recommendations` | Requires `Authorization: Bearer`. `category` is `HOTEL`, `RESTAURANT`, `COFFEE_GAP`, `ACTIVITY`, or `SIDELINE_TIP`. `rating` is 1–5. `tags` must be in `TIP_TAGS` in `api/app/locations.py`. The route builds `venue_key` from the venue name, city, and state. The display name comes from the account. |
+| POST | `/locations/recommendations/{recommendation_id}/vote` | Requires `Authorization: Bearer`. Body `{"choice": "up"}` or `{"choice": "down"}`. One vote per account. The same choice again changes nothing. An unknown id is 404. |
+| POST | `/auth/session` | Called by the website with header `X-Internal-Auth` set to `AUTH_INTERNAL_SECRET`. Body is the provider, subject, email, whether that email is verified, display name, and client (`web`, `ios`, or `android`). Returns a raw session token once. If `AUTH_INTERNAL_SECRET` is missing, the response is 503 and names that variable. |
+| GET | `/auth/me` | Requires `Authorization: Bearer`. Returns the display name, email, and providers. |
+| POST | `/auth/logout` | Deletes the bearer session. |
+| DELETE | `/auth/account` | Deletes the user, identities, sessions, and that person’s ratings, tips, and votes. |
 | GET | `/head-to-head` | Compares `team_a_id` and `team_b_id`. They must differ and share a gender. `conference_only` limits the games used. |
 | GET | `/data-refresh` | `last_successful_finish` for the newest successful `data_refresh` row whose `job` is `schedule`. People and reference runs are not included. |
 | POST | `/ingest/ics` | Fetches a public calendar and upserts `ingest_team` / `ingest_game`. |
@@ -78,10 +82,8 @@ The club page Venue Guide link goes to `/locations?club=` for that club. The fie
 | POST | `/ingest/scores` | Upserts scores on ingest games and copies matching scores onto published `game` rows. |
 | POST | `/ingest/standings` | Parses a pasted table into `conference_standing`. The rows it writes use gender `boys`. |
 | POST | `/issues` | Public. No auth. Creates one row in `issue`. `category` is `data`, `app`, or `other`. `description` is required and not blank. `email` is optional. `app_version` and `screen` are required. At most five reports per IP address per hour. |
-| POST | `/admin/login` | Body `{"password": "..."}`. Compares it to the `ADMIN_PASSWORD` environment variable. If that variable is unset or blank, login fails with 401. Success sets an httpOnly `admin_session` cookie on path `/admin` for four hours. The cookie is a signed expiry, not the password. |
-| POST | `/admin/logout` | Clears the `admin_session` cookie. |
-| GET | `/admin/issues` | Requires the session cookie. `status` is `open` (default, newest first) or `done`. |
-| PATCH | `/admin/issues/{id}` | Requires the session cookie. Body `{"done": true}` sets `status` to `done` and `completed_at`. `{"done": false}` sets `status` to `open` and clears `completed_at`. |
+| GET | `/admin/issues` | Requires `Authorization: Bearer` for `myuranv97@gmail.com` or `premiergamedayhq@gmail.com`. Anyone else is 403. No token is 401. `status` is `open` (default, newest first) or `done`. |
+| PATCH | `/admin/issues/{id}` | Same account requirement. Body `{"done": true}` sets `status` to `done` and `completed_at`. `{"done": false}` sets `status` to `open` and clears `completed_at`. |
 
 A paste dialog in the dashboard posts to `/ingest/raw-text`, `/ingest/scores`, and `/ingest/standings`.
 
@@ -89,7 +91,9 @@ A paste dialog in the dashboard posts to `/ingest/raw-text`, `/ingest/scores`, a
 
 PostgreSQL 16. `docker-compose.yml` runs `postgres:16`, publishes port 5432, and reads `.env`. The API does not use `DATABASE_URL`. `api/app/config.py` builds `postgresql+psycopg://...` from `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`, and `POSTGRES_DB`. If all five are set in the process environment, those values win. If any one is missing, the same five keys are read from the `.env` file at the repository root.
 
-`issue` stores in-app reports only. Columns are `id`, `created_at`, `category`, `description`, `email` (nullable), `app_version`, `screen`, `status` (`open` or `done`, default `open`), and `completed_at` (nullable). Set `ADMIN_PASSWORD` on the API process. The web app never reads that variable. Login fails closed when it is missing.
+`issue` stores in-app reports only. Columns are `id`, `created_at`, `category`, `description`, `email` (nullable), `app_version`, `screen`, `status` (`open` or `done`, default `open`), and `completed_at` (nullable).
+
+Accounts live in `app_user`, `auth_identity`, and `app_session`. `app_session` stores a hash of the token, never the raw token. Set `AUTH_INTERNAL_SECRET` on the API and on the website. The website also needs `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, and `APPLE_PRIVATE_KEY`. Sign-in fails clearly when a required value is missing. Redirects are `https://premiergamedayhq.com/api/auth/google/callback` and `https://premiergamedayhq.com/api/auth/apple/callback`.
 
 ## Code layout
 
@@ -107,7 +111,8 @@ api/
   app/predictions.py       Predicted conference table
   app/head_to_head.py      Matchup comparison
   app/clubs.py             Club search, club page, and home venues
-  app/issues.py            Issue validation, per-IP limit, and the admin session cookie
+  app/auth.py              Accounts, hashed sessions, and the shared internal secret
+  app/issues.py            Issue validation and the per-IP limit
   app/locations.py         Complex keys, ratings, tips, and the club field directory
   app/logos.py             Club logo lookup for a team
   app/ingestion/           Parse and upsert pasted or fetched club schedules
@@ -141,7 +146,8 @@ Tests, all under `api/tests/`:
 | `test_locations.py` | One complex per field number, one rating per profile, tips, and the pooled club directory. |
 | `test_predictions.py` | Predicted points from opponent points per game, and `/standings/predicted`. |
 | `test_mobile.py` | Enriched `/teams` rows and `GET /mobile/dashboard`. |
-| `test_issues.py` | Creating a report, the per-IP limit, login when `ADMIN_PASSWORD` is missing, and the done checkbox. |
+| `test_issues.py` | Creating a report, the per-IP limit, the admin allow list, and the done checkbox. |
+| `test_auth.py` | Session tokens, linking a verified email, Apple private relay, and deleting an account. |
 
 `web/README.md` is the Next.js template text. It does not describe this project.
 
@@ -291,9 +297,9 @@ These are written by the locations routes, not by the refresh jobs. `venue_key` 
 | `venue_rating` | One browser profile's stars for one complex. A second submit from the same profile updates the row. | `id`. Unique on `venue_key`, `author_key`. Score and surface checks above. | `POST /locations/rate`. |
 | `venue_recommendation` | One family tip for one complex: hotel, food, hangout, activity, or sideline and parking. | `id`. Category, rating, and upvote checks above. | `POST /locations/recommendations`. Upvotes use `POST /locations/recommendations/{id}/upvote`. |
 
-`venue_rating` columns: `venue_key`, `venue_name`, `city`, `state`, `author_key`, `user_id` (left null), `author_name`, `field_quality`, `referees`, `parent_vibe`, `parking_access`, `amenities`, `surface_vote`, `comment`, `updated_at`.
+`venue_rating` columns: `venue_key`, `venue_name`, `city`, `state`, `author_key`, `user_id` (the account id for a signed-in rating; older rows stay null), `author_name`, `field_quality`, `referees`, `parent_vibe`, `parking_access`, `amenities`, `surface_vote`, `comment`, `updated_at`.
 
-`venue_recommendation` columns: `venue_key`, `venue_name`, `city`, `state`, `category`, `title`, `rating`, `review_text`, `tags` (comma-separated, or null), `author_name` (default `ECNL Family`), `author_key`, `user_id` (left null), `upvotes` (default 0), `created_at`.
+`venue_recommendation` columns: `venue_key`, `venue_name`, `city`, `state`, `category`, `title`, `rating`, `review_text`, `tags` (comma-separated, or null), `author_name` (the account display name; older rows keep the name they were saved with), `author_key`, `user_id` (the account id for a signed-in tip; older rows stay null), `upvotes` (default 0), `created_at`.
 
 ### Ingest tables
 

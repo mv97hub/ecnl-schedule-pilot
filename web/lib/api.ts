@@ -1,5 +1,4 @@
 import type { LeagueGender } from "@/lib/leagues";
-import { profileKey } from "@/lib/profileKey";
 import type { ClubDetail, ClubListItem, ClubLocations, HeadToHeadReport, LocationCard, LocationDetail, LocationTip, PredictedStandings, ScheduleFilter, ScheduleResponse, StandingRow, StandingsMode, Team } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
@@ -83,22 +82,22 @@ export function fetchStandings(
   return request<StandingRow[]>(`/standings?${params.toString()}`);
 }
 
-function profileHeaders(): HeadersInit {
-  return { "X-Profile-Key": profileKey() };
+async function siteRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`/backend${path}`, { cache: "no-store", ...init });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as { detail?: unknown };
+    const detail = typeof payload.detail === "string" ? payload.detail : response.statusText;
+    throw new Error(detail || `API ${response.status}`);
+  }
+  return response.json() as Promise<T>;
 }
 
 async function sendJson<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  return siteRequest<T>(path, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Profile-Key": profileKey() },
+    headers: { "Content-Type": "application/json", accept: "application/json" },
     body: JSON.stringify(body),
   });
-  const payload = (await response.json().catch(() => ({}))) as { detail?: unknown };
-  if (!response.ok) {
-    const detail = typeof payload.detail === "string" ? payload.detail : response.statusText;
-    throw new Error(detail);
-  }
-  return payload as T;
 }
 
 export function fetchClubLocations(
@@ -110,7 +109,7 @@ export function fetchClubLocations(
     params.set("home_lat", String(home.latitude));
     params.set("home_lng", String(home.longitude));
   }
-  return request<ClubLocations>(`/locations/club?${params.toString()}`, { headers: profileHeaders() });
+  return siteRequest<ClubLocations>(`/locations/club?${params.toString()}`);
 }
 
 export function fetchLocations(home?: { latitude: number | null; longitude: number | null } | null): Promise<LocationCard[]> {
@@ -133,7 +132,7 @@ export function fetchLocationDetail(
     params.set("home_lat", String(home.latitude));
     params.set("home_lng", String(home.longitude));
   }
-  return request<LocationDetail>(`/locations/detail?${params.toString()}`, { headers: profileHeaders() });
+  return siteRequest<LocationDetail>(`/locations/detail?${params.toString()}`);
 }
 
 export function postRating(body: unknown): Promise<{ ratings_count: number }> {

@@ -6,6 +6,7 @@ import { Suspense } from "react";
 
 import { useLeagueGender } from "@/components/GenderProvider";
 import { selectionQuery } from "@/lib/selection";
+import { useAccount } from "@/lib/useAccount";
 
 export function AppHeader() {
   // usePathname and useSearchParams suspend while prerendering an unknown dynamic segment such as /clubs/[id].
@@ -24,6 +25,8 @@ function AppHeaderPath() {
 
 function AppHeaderBar({ path, query }: { path: string; query: string }) {
   const { gender, setGender } = useLeagueGender();
+  const account = useAccount();
+  const accountLabel = account?.display_name || "Sign in";
   const schedules = path === "/";
   const clubs = path.startsWith("/clubs");
   const standings = path === "/standings" || (path.startsWith("/standings/") && !path.startsWith("/projected"));
@@ -98,9 +101,9 @@ function AppHeaderBar({ path, query }: { path: string; query: string }) {
           <Link
             href="/profile"
             aria-current={profile ? "page" : undefined}
-            className={`rounded-full px-3 py-1.5 ${profile ? "bg-gold text-navy" : "text-bone/80 hover:bg-white/10"}`}
+            className={`max-w-40 truncate rounded-full px-3 py-1.5 ${profile ? "bg-gold text-navy" : "text-bone/80 hover:bg-white/10"}`}
           >
-            Profile
+            {accountLabel}
           </Link>
         </nav>
       </div>

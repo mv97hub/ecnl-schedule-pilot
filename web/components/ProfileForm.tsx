@@ -1,8 +1,10 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { clearHomeAddress, readHomeAddress, saveHomeAddress, US_STATES, type HomeAddress } from "@/lib/homeAddress";
+import { providerLabel, useAccount } from "@/lib/useAccount";
 
 type Draft = {
   street: string;
@@ -27,6 +29,11 @@ function draftFrom(address: HomeAddress): Draft {
 }
 
 export function ProfileForm() {
+  const params = useSearchParams();
+  const next = params.get("next");
+  const signInError = params.get("error");
+  const account = useAccount();
+  const nextQuery = next ? `?next=${encodeURIComponent(next)}` : "";
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [saved, setSaved] = useState<HomeAddress | null>(null);
   const [editing, setEditing] = useState(true);
@@ -72,11 +79,62 @@ export function ProfileForm() {
     setEditing(true);
   }
 
+  async function signOut() {
+    await fetch("/api/auth/logout", { method: "POST", headers: { accept: "application/json" } });
+    // A full load drops the signed-in name in the header after the cookie is cleared.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- the header reads the session only on a full load
+    window.location.assign("/profile");
+  }
+
+  async function deleteAccount() {
+    if (!window.confirm("Delete this account, including its ratings, tips, and votes?")) return;
+    const response = await fetch("/api/auth/account", { method: "DELETE" });
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { detail?: unknown };
+      window.alert(typeof body.detail === "string" ? body.detail : "Could not delete the account.");
+      return;
+    }
+    // A full load drops the signed-in name in the header after the account is gone.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- the header reads the session only on a full load
+    window.location.assign("/profile");
+  }
+
   return (
     <div className="min-h-full bg-bone">
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <h1 className="text-3xl font-semibold tracking-tight text-navy">Profile</h1>
         <p className="mt-1 text-sm text-stone-500">A home address for this visit. It stays in this browser session only.</p>
+        {signInError ? <p className="mt-4 text-sm text-ink">{signInError}</p> : null}
+        {account === undefined ? (
+          <p className="mt-6 text-sm text-stone-500">Loading account</p>
+        ) : account ? (
+          <section className="mt-6 max-w-xl rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Account">
+            <h2 className="text-lg font-semibold text-navy">{account.display_name}</h2>
+            <p className="mt-2 text-sm text-ink">{account.email || "No email from the provider"}</p>
+            <p className="mt-1 text-sm text-stone-500">{providerLabel(account.providers) || "Signed in"}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button type="button" onClick={() => void signOut()} className="rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy">
+                Sign out
+              </button>
+              <button type="button" onClick={() => void deleteAccount()} className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink">
+                Delete account
+              </button>
+            </div>
+          </section>
+        ) : (
+          <section className="mt-6 max-w-xl rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Sign in">
+            <h2 className="text-lg font-semibold text-navy">Sign in</h2>
+            <p className="mt-1 text-sm text-stone-500">Google or Apple is used for location ratings and tips. The home address is not saved on the account.</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <a href={`/api/auth/google${nextQuery}`} className="rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy">
+                Continue with Google
+              </a>
+              <a href={`/api/auth/apple${nextQuery}`} className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink">
+                Sign in with Apple
+              </a>
+            </div>
+          </section>
+        )}
         {ready && !editing && saved ? (
           <section className="mt-6 max-w-xl rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Saved home address">
             <h2 className="text-lg font-semibold text-navy">Home address</h2>

@@ -1,26 +1,14 @@
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth import require_admin, require_bearer
 from app.database import get_session
-from app.issues import (
-    SESSION_COOKIE,
-    SESSION_MAX_AGE,
-    SESSION_PATH,
-    admin_password,
-    claim_issue_slot,
-    clean_issue,
-    client_ip,
-    cookie_secure,
-    issue_session,
-    passwords_match,
-    require_admin,
-    utc_now,
-)
+from app.issues import claim_issue_slot, clean_issue, client_ip, utc_now
 from app.models import Issue
 
 router = APIRouter()
@@ -48,28 +36,8 @@ class IssueCreate(BaseModel):
     screen: str
 
 
-class AdminLogin(BaseModel):
-    password: str
-
-
 class IssueStatusUpdate(BaseModel):
     done: bool
-
-
-def _set_session_cookie(response: Response, request: Request, token: str) -> None:
-    response.set_cookie(
-        key=SESSION_COOKIE,
-        value=token,
-        max_age=SESSION_MAX_AGE,
-        httponly=True,
-        samesite="lax",
-        secure=cookie_secure(request),
-        path=SESSION_PATH,
-    )
-
-
-def _clear_session_cookie(response: Response, request: Request) -> None:
-    response.delete_cookie(key=SESSION_COOKIE, path=SESSION_PATH, httponly=True, samesite="lax", secure=cookie_secure(request))
 
 
 @router.post("/issues", response_model=IssueOut, status_code=201)
@@ -97,28 +65,13 @@ def create_issue(body: IssueCreate, request: Request, session: Annotated[Session
     return row
 
 
-@router.post("/admin/login")
-def login(body: AdminLogin, request: Request, response: Response) -> dict[str, bool]:
-    secret = admin_password()
-    if not passwords_match(body.password, secret):
-        raise HTTPException(status_code=401, detail="Login failed")
-    _set_session_cookie(response, request, issue_session(secret))
-    return {"ok": True}
-
-
-@router.post("/admin/logout")
-def logout(request: Request, response: Response) -> dict[str, bool]:
-    _clear_session_cookie(response, request)
-    return {"ok": True}
-
-
 @router.get("/admin/issues", response_model=list[IssueOut])
 def list_issues(
-    request: Request,
     session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
     status: Literal["open", "done"] = "open",
 ) -> list[Issue]:
-    require_admin(request)
+    require_admin(session, token)
     statement = select(Issue).where(Issue.status == status)
     if status == "done":
         statement = statement.order_by(Issue.completed_at.desc(), Issue.id.desc())
@@ -131,10 +84,10 @@ def list_issues(
 def update_issue(
     issue_id: int,
     body: IssueStatusUpdate,
-    request: Request,
     session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
 ) -> Issue:
-    require_admin(request)
+    require_admin(session, token)
     row = session.get(Issue, issue_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Report not found")

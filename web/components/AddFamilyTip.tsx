@@ -6,8 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { fetchClubLocations, postRecommendation } from "@/lib/api";
-import { profileKey, readAuthorName, saveAuthorName } from "@/lib/profileKey";
 import type { LocationCard, TipCategory } from "@/lib/types";
+import { signInHref, useAccount } from "@/lib/useAccount";
 
 const CATEGORIES: { id: TipCategory; label: string }[] = [
   { id: "HOTEL", label: "Hotel" },
@@ -44,14 +44,12 @@ export function AddFamilyTip() {
   const [title, setTitle] = useState("");
   const [tipStars, setTipStars] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
-  const [authorName, setAuthorName] = useState("");
   const [review, setReview] = useState("");
+  const account = useAccount();
   const [tipError, setTipError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setAuthorName(readAuthorName());
-    profileKey();
     if (!clubId) return;
     let active = true;
     setLoading(true);
@@ -93,11 +91,6 @@ export function AddFamilyTip() {
     });
   }
 
-  function updateName(value: string) {
-    setAuthorName(value);
-    saveAuthorName(value);
-  }
-
   function toggleTag(tag: string) {
     setTags((current) => (current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag]));
   }
@@ -120,7 +113,6 @@ export function AddFamilyTip() {
         rating: tipStars,
         review_text: review.trim(),
         tags,
-        author_name: authorName.trim() || null,
       });
       router.push(backHref);
     } catch (err: unknown) {
@@ -144,6 +136,18 @@ export function AddFamilyTip() {
           </div>
         ) : error ? (
           <p className="mt-6 text-sm text-ink">{error}</p>
+        ) : account === null ? (
+          <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+            <h2 className="text-lg font-semibold text-navy">Add a tip</h2>
+            <Link
+              href={signInHref(clubId ? `/locations/tip?club=${encodeURIComponent(clubId)}` : "/locations/tip")}
+              className="mt-4 inline-flex rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy"
+            >
+              Sign in to add a tip
+            </Link>
+          </section>
+        ) : account === undefined ? (
+          <p className="mt-6 text-sm text-stone-500">Loading</p>
         ) : (
           <form
             className="mt-6 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm"
@@ -220,16 +224,6 @@ export function AddFamilyTip() {
                 ))}
               </div>
             </fieldset>
-            <label htmlFor="club-tip-name" className="mt-3 block text-[10px] font-medium uppercase tracking-wide text-stone-400">
-              Display name
-              <input
-                id="club-tip-name"
-                value={authorName}
-                onChange={(event) => updateName(event.target.value)}
-                placeholder="Remembered in this browser"
-                className={fieldClass}
-              />
-            </label>
             <label htmlFor="club-tip-review" className="mt-3 block text-[10px] font-medium uppercase tracking-wide text-stone-400">
               Review
               <textarea

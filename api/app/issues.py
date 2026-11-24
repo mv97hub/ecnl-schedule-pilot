@@ -1,14 +1,11 @@
-"""Issue reports: validation, per-IP limit, and the admin session cookie.
+"""Issue reports: validation and the per-IP limit.
 
-The session cookie is an expiry and an HMAC. It does not contain the password.
-Login fails closed when ADMIN_PASSWORD is unset or blank.
+The inbox uses the same website account as the rest of the site. Only
+myuranv97@gmail.com and premiergamedayhq@gmail.com can open it.
 """
 
 from __future__ import annotations
 
-import hashlib
-import hmac
-import os
 import re
 import threading
 import time
@@ -19,9 +16,6 @@ from fastapi import HTTPException, Request
 CATEGORIES = ("data", "app", "other")
 ISSUE_LIMIT = 5
 ISSUE_WINDOW_SECONDS = 60 * 60
-SESSION_MAX_AGE = 4 * 60 * 60
-SESSION_COOKIE = "admin_session"
-SESSION_PATH = "/admin"
 DESCRIPTION_LIMIT = 4000
 EMAIL_LIMIT = 254
 VERSION_LIMIT = 40
@@ -30,44 +24,6 @@ SCREEN_LIMIT = 80
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _LOCK = threading.Lock()
 _HITS: dict[str, list[float]] = {}
-
-
-def admin_password() -> str:
-    return os.environ.get("ADMIN_PASSWORD", "").strip()
-
-
-def passwords_match(provided: str, secret: str) -> bool:
-    if not secret:
-        return False
-    left = hashlib.sha256(provided.encode()).digest()
-    right = hashlib.sha256(secret.encode()).digest()
-    return hmac.compare_digest(left, right)
-
-
-def issue_session(secret: str, now: float | None = None) -> str:
-    expiry = int((time.time() if now is None else now) + SESSION_MAX_AGE)
-    payload = str(expiry)
-    signature = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    return f"{payload}.{signature}"
-
-
-def session_is_valid(token: str | None, secret: str, now: float | None = None) -> bool:
-    if not secret or not token:
-        return False
-    payload, separator, signature = token.partition(".")
-    if not separator or not payload.isdigit() or not signature:
-        return False
-    expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, signature):
-        return False
-    current = time.time() if now is None else now
-    return int(payload) > current
-
-
-def cookie_secure(request: Request) -> bool:
-    forwarded = request.headers.get("x-forwarded-proto", "")
-    proto = forwarded.split(",")[0].strip().lower() if forwarded else request.url.scheme
-    return proto == "https"
 
 
 def client_ip(request: Request) -> str:
@@ -135,14 +91,6 @@ def clean_issue(payload: object) -> dict[str, str | None]:
         "app_version": app_version.strip(),
         "screen": screen.strip(),
     }
-
-
-def require_admin(request: Request) -> str:
-    secret = admin_password()
-    token = request.cookies.get(SESSION_COOKIE)
-    if not session_is_valid(token, secret):
-        raise HTTPException(status_code=401, detail="Sign in required")
-    return secret
 
 
 def utc_now() -> datetime:

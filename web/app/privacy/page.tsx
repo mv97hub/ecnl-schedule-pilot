@@ -29,7 +29,17 @@ export default function PrivacyPage() {
         A field can open in the Maps app on the device. Premier Gameday HQ does not collect where you are. Ratings, tips, and voting are not part of the app.
       </p>
       <p>
-        The schedule website on this domain has its own pages. Its locations guide is separate from Premier Gameday HQ and is not part of the app.
+        The schedule website on this domain has its own pages. Its locations guide is separate from Premier Gameday HQ and is not part of the app. The app still has no account.
+      </p>
+      <p>
+        On the website, you can sign in with Google or Apple. Google or Apple supplies your name and email. The website stores a session cookie. Location ratings and tips are stored with the account. Your email is not shown on the location page.
+      </p>
+      <p>
+        You can delete the account on Profile, or by emailing{" "}
+        <a href={`mailto:${SUPPORT_EMAIL}`} className="font-medium text-navy underline underline-offset-4">
+          {SUPPORT_EMAIL}
+        </a>
+        .
       </p>
       <p>
         Contact{" "}

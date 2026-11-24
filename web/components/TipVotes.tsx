@@ -1,6 +1,7 @@
 "use client";
 
 import { ThumbsDown, ThumbsUp } from "lucide-react";
+import Link from "next/link";
 
 import type { TipVote } from "@/lib/types";
 
@@ -16,15 +17,17 @@ export function TipVotes({
   tip,
   pending,
   onVote,
+  signInHref,
 }: {
   tip: { id: number; upvotes: number; downvotes: number; my_vote: TipVote | null };
   pending: boolean;
   onVote: (choice: TipVote) => void;
+  signInHref?: string | null;
 }) {
   return (
     <span className="inline-flex items-center gap-1" data-tip-score={tipScore(tip)}>
-      <VoteButton choice="up" count={tip.upvotes} pressed={tip.my_vote === "up"} pending={pending} onVote={onVote} />
-      <VoteButton choice="down" count={tip.downvotes} pressed={tip.my_vote === "down"} pending={pending} onVote={onVote} />
+      <VoteButton choice="up" count={tip.upvotes} pressed={tip.my_vote === "up"} pending={pending} onVote={onVote} signInHref={signInHref} />
+      <VoteButton choice="down" count={tip.downvotes} pressed={tip.my_vote === "down"} pending={pending} onVote={onVote} signInHref={signInHref} />
     </span>
   );
 }
@@ -35,15 +38,31 @@ function VoteButton({
   pressed,
   pending,
   onVote,
+  signInHref,
 }: {
   choice: TipVote;
   count: number;
   pressed: boolean;
   pending: boolean;
   onVote: (choice: TipVote) => void;
+  signInHref?: string | null;
 }) {
   const Icon = choice === "up" ? ThumbsUp : ThumbsDown;
   const label = choice === "up" ? "Thumbs up" : "Thumbs down";
+  if (signInHref) {
+    return (
+      <Link
+        href={signInHref}
+        aria-label={`Sign in to vote, ${label}, ${count}`}
+        data-vote={choice}
+        data-count={count}
+        className="inline-flex items-center gap-1 rounded-full border border-stone-300 bg-white px-2 py-1 text-xs font-medium text-ink"
+      >
+        <Icon className="size-3.5" />
+        {count}
+      </Link>
+    );
+  }
   return (
     <button
       type="button"

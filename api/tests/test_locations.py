@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import unittest
 from datetime import UTC, datetime, timedelta
@@ -21,6 +22,7 @@ from app.models import Base, Club, ScheduleGame, ScheduleTeam, VenueRating, Venu
 
 PROFILE = "probe-location-same"
 OTHER = "probe-location-other"
+SECRET = "probe-location-secret"
 
 
 def _rating(venue_name: str, field_quality: int, comment: str, surface: str) -> dict[str, object]:
@@ -39,10 +41,30 @@ def _rating(venue_name: str, field_quality: int, comment: str, surface: str) -> 
     }
 
 
+def _sign_in(client: TestClient, subject: str, email: str, name: str = "Probe Family") -> tuple[dict[str, str], int]:
+    os.environ["AUTH_INTERNAL_SECRET"] = SECRET
+    opened = client.post(
+        "/auth/session",
+        headers={"X-Internal-Auth": SECRET},
+        json={
+            "provider": "google",
+            "subject": subject,
+            "email": email,
+            "email_verified": True,
+            "display_name": name,
+            "client": "web",
+        },
+    )
+    assert opened.status_code == 200, opened.text
+    body = opened.json()
+    return {"Authorization": f"Bearer {body['token']}"}, int(body["user"]["id"])
+
+
 class LocationGuideTests(unittest.TestCase):
     def setUp(self) -> None:
         Base.metadata.create_all(engine)
         SQLModel.metadata.create_all(engine)
+        os.environ["AUTH_INTERNAL_SECRET"] = SECRET
         self._cleanup()
 
     def tearDown(self) -> None:
@@ -88,6 +110,17 @@ class LocationGuideTests(unittest.TestCase):
                 connection.execute(text("DELETE FROM team WHERE name LIKE 'Probe Location %'"))
             if connection.execute(text("SELECT to_regclass('public.club')")).scalar() is not None:
                 connection.execute(text("DELETE FROM club WHERE id IN (8803301, 8803302) OR name LIKE 'Probe Location %'"))
+            if connection.execute(text("SELECT to_regclass('public.auth_identity')")).scalar() is not None:
+                connection.execute(
+                    text(
+                        """
+                        DELETE FROM app_user
+                        WHERE id IN (
+                            SELECT user_id FROM auth_identity WHERE provider_subject LIKE 'probe-location-%'
+                        )
+                        """
+                    )
+                )
 
     def test_api_starts(self) -> None:
         with TestClient(app) as client:
@@ -100,12 +133,22 @@ class LocationGuideTests(unittest.TestCase):
 
     def test_second_rating_updates_the_same_profile(self) -> None:
         with TestClient(app) as client:
-            first = client.post("/locations/rate", json=_rating("Davis Park - Field 1", 4, "First", "GRASS"), headers={"X-Profile-Key": PROFILE})
+            refused = client.post(
+                "/locations/rate",
+                json=_rating("Davis Park - Field 1", 4, "First", "GRASS"),
+                headers={"X-Profile-Key": PROFILE},
+            )
+            self.assertEqual(refused.status_code, 401, refused.text)
+
+            first_headers, user_id = _sign_in(client, PROFILE, "probe-location-a@probe-location.test", "First Family")
+            again_headers, same_id = _sign_in(client, PROFILE, "probe-location-a@probe-location.test", "First Family")
+            self.assertEqual(same_id, user_id)
+            first = client.post("/locations/rate", json=_rating("Davis Park - Field 1", 4, "First", "GRASS"), headers=first_headers)
             self.assertEqual(first.status_code, 200, first.text)
             second = client.post(
                 "/locations/rate",
                 json=_rating("Davis Park - Field 2", 2, "Updated", "TURF"),
-                headers={"X-Profile-Key": PROFILE},
+                headers=again_headers,
             )
             self.assertEqual(second.status_code, 200, second.text)
             body = second.json()
@@ -117,22 +160,31 @@ class LocationGuideTests(unittest.TestCase):
                 body["venue_key"],
                 make_venue_key("Davis Park - Field 1", "Probeville", "FL"),
             )
+            author_key = f"user:{user_id}"
             with Session(engine) as session:
-                rows = list(session.scalars(select(VenueRating).where(VenueRating.author_key == PROFILE)).all())
+                rows = list(session.scalars(select(VenueRating).where(VenueRating.author_key == author_key)).all())
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0].field_quality, 2)
             self.assertEqual(rows[0].comment, "Updated")
             self.assertEqual(rows[0].venue_name, "Davis Park")
-            self.assertIsNone(rows[0].user_id)
+            self.assertEqual(rows[0].user_id, str(user_id))
+            self.assertEqual(rows[0].author_name, "First Family")
 
-            other = client.post("/locations/rate", json=_rating("Davis Park - Field 1", 5, "Other family", "GRASS"), headers={"X-Profile-Key": OTHER})
+            other_headers, other_id = _sign_in(client, OTHER, "probe-location-b@probe-location.test", "Second Family")
+            other = client.post(
+                "/locations/rate",
+                json=_rating("Davis Park - Field 1", 5, "Other family", "GRASS"),
+                headers=other_headers,
+            )
             self.assertEqual(other.status_code, 200, other.text)
             self.assertEqual(other.json()["ratings_count"], 2)
             with Session(engine) as session:
                 count = session.scalar(
-                    select(func.count()).select_from(VenueRating).where(VenueRating.author_key.in_([PROFILE, OTHER]))
+                    select(func.count())
+                    .select_from(VenueRating)
+                    .where(VenueRating.author_key.in_([author_key, f"user:{other_id}"]))
                 )
-                kept = session.scalar(select(VenueRating).where(VenueRating.author_key == PROFILE))
+                kept = session.scalar(select(VenueRating).where(VenueRating.author_key == author_key))
             self.assertEqual(count, 2)
             self.assertIsNotNone(kept)
             assert kept is not None
@@ -233,6 +285,8 @@ class LocationGuideTests(unittest.TestCase):
 
     def test_tip_vote_is_one_per_profile_and_can_change(self) -> None:
         with TestClient(app) as client:
+            author, author_id = _sign_in(client, "probe-location-tip", "probe-location-tip@probe-location.test", "Tip Family")
+            voter, _voter_id = _sign_in(client, "probe-location-other-vote", "probe-location-vote@probe-location.test", "Vote Family")
             created = client.post(
                 "/locations/recommendations",
                 json={
@@ -244,12 +298,13 @@ class LocationGuideTests(unittest.TestCase):
                     "rating": 4,
                     "review_text": "Free breakfast and a short drive.",
                     "tags": ["Free Breakfast", "Within 10 minutes of Fields"],
+                    "author_name": "Typed Name",
                 },
-                headers={"X-Profile-Key": "probe-location-tip"},
+                headers=author,
             )
             self.assertEqual(created.status_code, 200, created.text)
             tip = created.json()
-            self.assertEqual(tip["author_name"], "ECNL Family")
+            self.assertEqual(tip["author_name"], "Tip Family")
             self.assertTrue(tip["created_at"])
             self.assertEqual(tip["upvotes"], 0)
             self.assertEqual(tip["downvotes"], 0)
@@ -267,38 +322,38 @@ class LocationGuideTests(unittest.TestCase):
                     "rating": 5,
                     "review_text": "Quick slices between games.",
                 },
-                headers={"X-Profile-Key": "probe-location-tip"},
+                headers=author,
             )
             self.assertEqual(other.status_code, 200, other.text)
             second = other.json()
 
             missing = client.post(f"/locations/recommendations/{tip['id']}/vote", json={"choice": "up"})
-            self.assertEqual(missing.status_code, 400, missing.text)
+            self.assertEqual(missing.status_code, 401, missing.text)
 
-            def vote(tip_id: int, choice: str, profile: str):
+            def vote(tip_id: int, choice: str, headers: dict[str, str]):
                 return client.post(
                     f"/locations/recommendations/{tip_id}/vote",
                     json={"choice": choice},
-                    headers={"X-Profile-Key": profile},
+                    headers=headers,
                 )
 
-            voted = vote(tip["id"], "up", "probe-location-tip")
+            voted = vote(tip["id"], "up", author)
             self.assertEqual(voted.status_code, 200, voted.text)
             self.assertEqual(voted.json()["upvotes"], 1)
             self.assertEqual(voted.json()["downvotes"], 0)
             self.assertEqual(voted.json()["my_vote"], "up")
-            again = vote(tip["id"], "up", "probe-location-tip")
+            again = vote(tip["id"], "up", author)
             self.assertEqual(again.json()["upvotes"], 1)
             self.assertEqual(again.json()["downvotes"], 0)
-            changed = vote(tip["id"], "down", "probe-location-tip")
+            changed = vote(tip["id"], "down", author)
             self.assertEqual(changed.json()["upvotes"], 0)
             self.assertEqual(changed.json()["downvotes"], 1)
             self.assertEqual(changed.json()["my_vote"], "down")
-            other_profile = vote(tip["id"], "up", "probe-location-other-vote")
+            other_profile = vote(tip["id"], "up", voter)
             self.assertEqual(other_profile.json()["upvotes"], 1)
             self.assertEqual(other_profile.json()["downvotes"], 1)
             self.assertEqual(other_profile.json()["my_vote"], "up")
-            popular = vote(second["id"], "up", "probe-location-other-vote")
+            popular = vote(second["id"], "up", voter)
             self.assertEqual(popular.json()["upvotes"], 1)
             self.assertEqual(popular.json()["downvotes"], 0)
 
@@ -307,7 +362,8 @@ class LocationGuideTests(unittest.TestCase):
                 votes = session.scalars(select(VenueTipVote).where(VenueTipVote.recommendation_id == tip["id"])).all()
             self.assertIsNotNone(row)
             assert row is not None
-            self.assertIsNone(row.user_id)
+            self.assertEqual(row.user_id, str(author_id))
+            self.assertEqual(row.author_key, f"user:{author_id}")
             self.assertEqual(row.upvotes, 1)
             self.assertEqual(row.downvotes, 1)
             self.assertEqual(sorted(item.choice for item in votes), ["down", "up"])
@@ -315,7 +371,7 @@ class LocationGuideTests(unittest.TestCase):
             detail = client.get(
                 "/locations/detail",
                 params={"venue_key": tip["venue_key"]},
-                headers={"X-Profile-Key": "probe-location-tip"},
+                headers=author,
             )
             self.assertEqual(detail.status_code, 200, detail.text)
             ordered_ids = [item["id"] for item in detail.json()["recommendations"]]
@@ -379,6 +435,8 @@ class LocationGuideTests(unittest.TestCase):
             session.commit()
 
         with TestClient(app) as client:
+            home_headers, _home_id = _sign_in(client, PROFILE, "probe-location-a@probe-location.test", "First Family")
+            other_headers, _other_id = _sign_in(client, OTHER, "probe-location-b@probe-location.test", "Second Family")
             davis = _rating("Davis Park - Field 1", 4, "Main field", "GRASS")
             davis_again = _rating("Davis Park - Field 2", 2, "Other family", "TURF")
             annex = _rating("Annex Grounds", 2, "Annex", "TURF")
@@ -386,9 +444,9 @@ class LocationGuideTests(unittest.TestCase):
             annex["parent_vibe"] = 1
             annex["parking_access"] = 4
             annex["amenities"] = 3
-            self.assertEqual(client.post("/locations/rate", json=davis, headers={"X-Profile-Key": PROFILE}).status_code, 200)
-            self.assertEqual(client.post("/locations/rate", json=davis_again, headers={"X-Profile-Key": OTHER}).status_code, 200)
-            self.assertEqual(client.post("/locations/rate", json=annex, headers={"X-Profile-Key": PROFILE}).status_code, 200)
+            self.assertEqual(client.post("/locations/rate", json=davis, headers=home_headers).status_code, 200)
+            self.assertEqual(client.post("/locations/rate", json=davis_again, headers=other_headers).status_code, 200)
+            self.assertEqual(client.post("/locations/rate", json=annex, headers=home_headers).status_code, 200)
 
             def tip(venue: str, city: str, state: str, title: str) -> None:
                 created = client.post(
@@ -403,7 +461,7 @@ class LocationGuideTests(unittest.TestCase):
                         "review_text": f"Stay near {title}.",
                         "tags": ["Close to Fields"],
                     },
-                    headers={"X-Profile-Key": PROFILE},
+                    headers=home_headers,
                 )
                 self.assertEqual(created.status_code, 200, created.text)
 
@@ -445,16 +503,16 @@ class LocationGuideTests(unittest.TestCase):
             up = client.post(
                 f"/locations/recommendations/{davis_tip['id']}/vote",
                 json={"choice": "up"},
-                headers={"X-Profile-Key": PROFILE},
+                headers=home_headers,
             )
             down = client.post(
                 f"/locations/recommendations/{annex_tip['id']}/vote",
                 json={"choice": "down"},
-                headers={"X-Profile-Key": PROFILE},
+                headers=home_headers,
             )
             self.assertEqual(up.status_code, 200, up.text)
             self.assertEqual(down.status_code, 200, down.text)
-            ranked = client.get("/locations/club", params={"club": "8803301"}, headers={"X-Profile-Key": PROFILE})
+            ranked = client.get("/locations/club", params={"club": "8803301"}, headers=home_headers)
             self.assertEqual(ranked.status_code, 200, ranked.text)
             ordered = ranked.json()["tips"]
             self.assertEqual([row["title"] for row in ordered], ["Davis Inn", "Annex Inn"])

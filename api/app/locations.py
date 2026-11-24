@@ -2,8 +2,8 @@
 
 One complex is one place. Field numbers are stripped with the same split the
 schedule already uses, then the cleaned name, lowercase city, and state form
-`venue_key`. There is no account: the browser sends `X-Profile-Key`, and
-`user_id` stays empty.
+`venue_key`. Ratings, tips, and votes require a signed-in account. Older rows
+that still use a browser `author_key` stay readable and are not rewritten.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.auth import author_for, bearer_token, require_bearer, require_user, user_from_token
 from app.clubs import club_location_source
 from app.database import get_session
 from app.ingestion.normalizer import split_venue
@@ -463,10 +464,14 @@ def _profile_key(x_profile_key: Annotated[str | None, Header()] = None) -> str |
     return text
 
 
-def _require_profile_key(author_key: Annotated[str | None, Depends(_profile_key)]) -> str:
-    if not author_key:
-        raise HTTPException(status_code=400, detail="X-Profile-Key is required")
-    return author_key
+def _reader_key(session: Session, token: str | None, profile_key: str | None) -> str | None:
+    """The signed-in account wins. A browser key still finds an older anonymous row."""
+
+    if token:
+        user = user_from_token(session, token)
+        if user is not None:
+            return f"user:{user.id}"
+    return profile_key
 
 
 def _state_code(state: str) -> str:
@@ -679,12 +684,14 @@ def _key_place(venue_key: str) -> tuple[str, str] | None:
 def list_club_locations(
     session: Annotated[Session, Depends(get_session)],
     author_key: Annotated[str | None, Depends(_profile_key)],
+    token: Annotated[str | None, Depends(bearer_token)],
     club: str = Query(description="Club id, or the split id used on the club page"),
     home_lat: float | None = None,
     home_lng: float | None = None,
 ) -> ClubLocationsOut:
     """Home complexes for one club, with scores and tips pooled across those fields."""
 
+    author_key = _reader_key(session, token, author_key)
     source = club_location_source(session, club)
     if source is None:
         raise HTTPException(status_code=404, detail="Club not found")
@@ -744,6 +751,7 @@ def _resolve_key(
 def location_detail(
     session: Annotated[Session, Depends(get_session)],
     author_key: Annotated[str | None, Depends(_profile_key)],
+    token: Annotated[str | None, Depends(bearer_token)],
     venue_key: str | None = None,
     venue_name: str | None = None,
     city: str | None = None,
@@ -753,6 +761,7 @@ def location_detail(
     home_lat: float | None = None,
     home_lng: float | None = None,
 ) -> LocationDetailOut:
+    author_key = _reader_key(session, token, author_key)
     if category is not None and category not in CATEGORIES:
         raise HTTPException(status_code=400, detail="category is not a tip category")
     origin_lat, origin_lng = _home_pair(home_lat, home_lng)
@@ -826,16 +835,15 @@ def _averages_out(session: Session, venue_key: str, venue_name: str, city: str, 
 def rate_location(
     payload: RateIn,
     session: Annotated[Session, Depends(get_session)],
-    author_key: Annotated[str, Depends(_require_profile_key)],
+    token: Annotated[str, Depends(require_bearer)],
 ) -> AveragesOut:
+    user = require_user(session, token)
+    user_id, author_key, author_name = author_for(user)
     venue_key, venue_name, city, state = _place_from_body(payload.venue_name, payload.city, payload.state)
     existing = session.scalar(
         select(VenueRating).where(VenueRating.venue_key == venue_key, VenueRating.author_key == author_key)
     )
     comment = _blank(payload.comment)
-    author_name = _blank(payload.author_name)
-    if author_name:
-        author_name = author_name[:80]
     if existing is None:
         existing = VenueRating(
             venue_key=venue_key,
@@ -843,7 +851,7 @@ def rate_location(
             city=city,
             state=state,
             author_key=author_key,
-            user_id=None,
+            user_id=user_id,
             author_name=author_name,
             field_quality=payload.field_quality,
             referees=payload.referees,
@@ -859,7 +867,7 @@ def rate_location(
         existing.venue_name = venue_name
         existing.city = city
         existing.state = state
-        existing.user_id = None
+        existing.user_id = user_id
         existing.author_name = author_name
         existing.field_quality = payload.field_quality
         existing.referees = payload.referees
@@ -877,14 +885,15 @@ def rate_location(
 def add_recommendation(
     payload: RecommendationIn,
     session: Annotated[Session, Depends(get_session)],
-    author_key: Annotated[str, Depends(_require_profile_key)],
+    token: Annotated[str, Depends(require_bearer)],
 ) -> RecommendationOut:
+    user = require_user(session, token)
+    user_id, author_key, author_name = author_for(user)
     venue_key, venue_name, city, state = _place_from_body(payload.venue_name, payload.city, payload.state)
     title = " ".join(payload.title.split())
     review = payload.review_text.strip()
     if not title or not review:
         raise HTTPException(status_code=400, detail="title and review_text are required")
-    author_name = _blank(payload.author_name) or "ECNL Family"
     row = VenueRecommendation(
         venue_key=venue_key,
         venue_name=venue_name,
@@ -895,9 +904,9 @@ def add_recommendation(
         rating=payload.rating,
         review_text=review,
         tags=_normalize_tags(payload.tags),
-        author_name=author_name[:80],
+        author_name=author_name,
         author_key=author_key,
-        user_id=None,
+        user_id=user_id,
         upvotes=0,
         downvotes=0,
         created_at=datetime.now(UTC),
@@ -926,10 +935,12 @@ def vote_recommendation(
     recommendation_id: int,
     payload: VoteIn,
     session: Annotated[Session, Depends(get_session)],
-    author_key: Annotated[str, Depends(_require_profile_key)],
+    token: Annotated[str, Depends(require_bearer)],
 ) -> RecommendationOut:
-    """One vote per browser profile. The same choice again changes nothing; the other choice moves the counts."""
+    """One vote per account. The same choice again changes nothing; the other choice moves the counts."""
 
+    user = require_user(session, token)
+    _user_id, author_key, _author_name = author_for(user)
     row = session.scalar(
         select(VenueRecommendation).where(VenueRecommendation.id == recommendation_id).with_for_update()
     )
