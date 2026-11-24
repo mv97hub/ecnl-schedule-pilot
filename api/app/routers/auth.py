@@ -17,6 +17,14 @@ from app.auth import (
 from app.database import get_session
 from app.favorites import read_favorites, replace_favorites
 from app.models import AppUser
+from app.profile import (
+    clear_calendar,
+    clear_home_address,
+    read_calendars,
+    read_home_address,
+    save_calendar,
+    save_home_address,
+)
 
 router = APIRouter(tags=["auth"])
 
@@ -54,6 +62,35 @@ class MeOut(BaseModel):
 class FavoritesIn(BaseModel):
     club_id: str | None = None
     team_ids: list[int] = Field(default_factory=list)
+
+
+class HomeAddressIn(BaseModel):
+    street: str = Field(default="", max_length=200)
+    unit: str = Field(default="", max_length=80)
+    city: str = Field(default="", max_length=120)
+    state: str = Field(default="", max_length=8)
+    postal_code: str = Field(default="", max_length=32)
+
+
+class CalendarIn(BaseModel):
+    team_id: int
+    source: str = Field(min_length=1, max_length=32)
+    url: str = Field(min_length=1, max_length=2000)
+
+
+def _auth_me_body(db: Session, user: AppUser) -> dict[str, object]:
+    """The existing account fields, plus `home_address` only when one is saved."""
+
+    body: dict[str, object] = {
+        "id": int(user.id),
+        "display_name": user.display_name,
+        "email": user.email,
+        "providers": providers_for(db, int(user.id)),
+    }
+    address = read_home_address(db, int(user.id))
+    if address is not None:
+        body["home_address"] = address
+    return body
 
 
 def _me_out(db: Session, user: AppUser) -> MeOut:
@@ -95,13 +132,13 @@ def create_session(
     return SessionOut(token=raw, user=_user_out(session, user))
 
 
-@router.get("/auth/me", response_model=UserOut)
+@router.get("/auth/me")
 def current_user(
     session: Annotated[Session, Depends(get_session)],
     token: Annotated[str, Depends(require_bearer)],
-) -> UserOut:
+) -> dict[str, object]:
     user = require_user(session, token)
-    return _user_out(session, user)
+    return _auth_me_body(session, user)
 
 
 @router.post("/auth/logout")
@@ -132,6 +169,65 @@ def save_favorites(
     user = require_user(session, token)
     replace_favorites(session, int(user.id), body.club_id, body.team_ids)
     return _me_out(session, user)
+
+
+@router.put("/me/home-address")
+def put_home_address(
+    body: HomeAddressIn,
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+) -> dict[str, object]:
+    user = require_user(session, token)
+    save_home_address(
+        session,
+        int(user.id),
+        street=body.street,
+        unit=body.unit,
+        city=body.city,
+        state=body.state,
+        postal_code=body.postal_code,
+    )
+    return _auth_me_body(session, user)
+
+
+@router.delete("/me/home-address")
+def delete_home_address(
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+) -> dict[str, bool]:
+    user = require_user(session, token)
+    clear_home_address(session, int(user.id))
+    return {"ok": True}
+
+
+@router.get("/me/calendars")
+def list_calendars(
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+) -> dict[str, object]:
+    user = require_user(session, token)
+    return {"calendars": read_calendars(session, int(user.id))}
+
+
+@router.put("/me/calendars")
+def put_calendar(
+    body: CalendarIn,
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+) -> dict[str, object]:
+    user = require_user(session, token)
+    return save_calendar(session, int(user.id), team_id=body.team_id, source=body.source, url=body.url)
+
+
+@router.delete("/me/calendars/{team_id}")
+def delete_calendar(
+    team_id: int,
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+) -> dict[str, bool]:
+    user = require_user(session, token)
+    clear_calendar(session, int(user.id), team_id)
+    return {"ok": True}
 
 
 @router.delete("/auth/account")

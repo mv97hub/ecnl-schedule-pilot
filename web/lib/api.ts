@@ -185,6 +185,82 @@ export async function saveAccountFavorites(clubId: string | null, teamIds: numbe
   return favoritesFrom(body);
 }
 
+export type AccountHomeAddress = {
+  street: string;
+  unit: string;
+  city: string;
+  state: string;
+  postal_code: string;
+};
+
+export type AccountCalendar = {
+  team_id: number;
+  source: "playmetrics" | "teamsnap";
+  url: string;
+};
+
+function accountHomeFrom(value: unknown): AccountHomeAddress | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.street !== "string" || typeof row.city !== "string" || typeof row.state !== "string" || typeof row.postal_code !== "string") {
+    return null;
+  }
+  return {
+    street: row.street,
+    unit: typeof row.unit === "string" ? row.unit : "",
+    city: row.city,
+    state: row.state,
+    postal_code: row.postal_code,
+  };
+}
+
+export async function fetchAccountHomeAddress(): Promise<AccountHomeAddress | null> {
+  const response = await fetch("/api/auth/me", { cache: "no-store" });
+  const body = (await response.json().catch(() => ({}))) as { signed_in?: boolean; home_address?: unknown };
+  if (!response.ok || !body.signed_in) return null;
+  return accountHomeFrom(body.home_address);
+}
+
+export async function saveAccountHomeAddress(address: AccountHomeAddress): Promise<AccountHomeAddress> {
+  const body = await siteRequest<{ home_address?: unknown }>("/me/home-address", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", accept: "application/json" },
+    body: JSON.stringify(address),
+  });
+  const saved = accountHomeFrom(body.home_address);
+  if (!saved) throw new Error("Could not save the home address.");
+  return saved;
+}
+
+export async function clearAccountHomeAddress(): Promise<void> {
+  await siteRequest("/me/home-address", { method: "DELETE", headers: { accept: "application/json" } });
+}
+
+export async function fetchAccountCalendars(): Promise<AccountCalendar[]> {
+  const body = await siteRequest<{ calendars?: unknown }>("/me/calendars");
+  if (!Array.isArray(body.calendars)) return [];
+  return body.calendars.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const row = item as Record<string, unknown>;
+    if (!Number.isInteger(row.team_id) || (row.source !== "playmetrics" && row.source !== "teamsnap") || typeof row.url !== "string") {
+      return [];
+    }
+    return [{ team_id: row.team_id as number, source: row.source, url: row.url }];
+  });
+}
+
+export function saveAccountCalendar(link: AccountCalendar): Promise<AccountCalendar> {
+  return siteRequest("/me/calendars", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", accept: "application/json" },
+    body: JSON.stringify(link),
+  });
+}
+
+export async function clearAccountCalendar(teamId: number): Promise<void> {
+  await siteRequest(`/me/calendars/${teamId}`, { method: "DELETE", headers: { accept: "application/json" } });
+}
+
 export async function postIngest<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     method: "POST",

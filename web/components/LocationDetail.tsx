@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { TipVotes, sortTips } from "@/components/TipVotes";
 import { fetchLocationDetail, postRating, postRecommendation, voteRecommendation } from "@/lib/api";
 import { easternStamp } from "@/lib/format";
-import { readHomeAddress, type HomeAddress } from "@/lib/homeAddress";
+import type { HomeAddress } from "@/lib/homeAddress";
 import type { LocationDetail, LocationGame, SurfaceVote, TipCategory, TipVote } from "@/lib/types";
 import { signInHref, useAccount } from "@/lib/useAccount";
 
@@ -188,7 +188,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
   const account = useAccount();
   const returnHref = signInHref(path || `/locations/${encodeURIComponent(venueKey)}`);
   const [detail, setDetail] = useState<LocationDetail | null>(null);
-  const [home, setHome] = useState<HomeAddress | null>(null);
+  const home: HomeAddress | null = null;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState("all");
@@ -208,8 +208,6 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
   const [pendingVote, setPendingVote] = useState<number | null>(null);
 
   useEffect(() => {
-    const savedHome = readHomeAddress();
-    setHome(savedHome);
     if (!venueKey) {
       setError("That complex link is missing a venue.");
       setLoading(false);
@@ -217,7 +215,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
     }
     let active = true;
     setLoading(true);
-    fetchLocationDetail(venueKey, savedHome)
+    fetchLocationDetail(venueKey, home)
       .then((next) => {
         if (!active) return;
         setDetail(next);
@@ -246,7 +244,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
     return () => {
       active = false;
     };
-  }, [venueKey]);
+  }, [home, venueKey]);
 
   const visibleTips = useMemo(() => {
     const tips = sortTips(detail?.recommendations ?? []);

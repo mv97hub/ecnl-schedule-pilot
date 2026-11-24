@@ -188,14 +188,14 @@ export function FavoritesEditor({ signedIn }: { signedIn: boolean }) {
   const byId = new Map(savedTeams.map((team) => [team.id, team]));
 
   return (
-    <section className="mt-6 max-w-xl rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Club and teams">
+    <section className="max-w-xl rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm" aria-label="Club and teams">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="text-lg font-semibold text-navy">Club and teams</h2>
         <p className="text-sm font-medium text-stone-500">
           {teamIds.length} of {MAX_TEAMS}
         </p>
       </div>
-      <p className="mt-1 text-sm text-stone-500">One club and up to four teams. Slot 1 is the default team. The home address stays in this browser.</p>
+      <p className="mt-1 text-sm text-stone-500">One club and up to four teams. Slot 1 is the default team.</p>
 
       <div className="mt-4">
         <h3 className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Club</h3>

@@ -34,6 +34,7 @@ export default function PrivacyPage() {
       <p>
         On the website, you can sign in with Google or Apple. Google or Apple supplies your name and email. The website stores a session cookie. Location ratings and tips are stored with the account. Your email is not shown on the location page.
       </p>
+      <p>A home address you save is stored on the account. It is not public. A PlayMetrics or TeamSnap calendar link for a favorite team is stored on the account. It is not public.</p>
       <p>The two admin accounts can see the email on the location history page.</p>
       <p>
         You can delete the account on Profile, or by emailing{" "}
