@@ -436,6 +436,9 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                   </label>
                   <label htmlFor="rating-note" className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
                     Note
+                    {detail.my_rating?.edited ? (
+                      <span className="ml-2 text-[10px] font-medium normal-case tracking-normal text-stone-400">Edited</span>
+                    ) : null}
                     <textarea
                       id="rating-note"
                       value={comment}
@@ -514,7 +517,10 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                           ))}
                         </ul>
                       ) : null}
-                      <p className="mt-2 text-sm text-ink">{tip.review_text}</p>
+                      <p className="mt-2 text-sm text-ink">
+                        {tip.review_text}
+                        {tip.edited ? <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-stone-400">Edited</span> : null}
+                      </p>
                       <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-stone-500">
                         <span>{tip.author_name}</span>
                         <span data-tip-added={tip.created_at}>{formatPosted(tip.created_at)}</span>

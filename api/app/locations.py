@@ -285,21 +285,23 @@ def _ratings_for_keys(session: Session, keys: set[str]) -> dict[str, list[VenueR
     grouped: dict[str, list[VenueRating]] = defaultdict(list)
     if not keys:
         return grouped
-    for row in session.scalars(select(VenueRating).where(VenueRating.venue_key.in_(keys))):
+    for row in session.scalars(
+        select(VenueRating).where(VenueRating.venue_key.in_(keys), VenueRating.hidden_at.is_(None))
+    ):
         grouped[row.venue_key].append(row)
     return grouped
 
 
 def _ratings_by_key(session: Session) -> dict[str, list[VenueRating]]:
     grouped: dict[str, list[VenueRating]] = defaultdict(list)
-    for row in session.scalars(select(VenueRating)).all():
+    for row in session.scalars(select(VenueRating).where(VenueRating.hidden_at.is_(None))).all():
         grouped[row.venue_key].append(row)
     return grouped
 
 
 def _recommendation_counts(session: Session, keys: set[str] | None = None) -> dict[str, int]:
     counts: dict[str, int] = defaultdict(int)
-    statement = select(VenueRecommendation.venue_key)
+    statement = select(VenueRecommendation.venue_key).where(VenueRecommendation.hidden_at.is_(None))
     if keys is not None:
         if not keys:
             return counts
@@ -340,6 +342,7 @@ class RatingMine(BaseModel):
     comment: str | None
     author_name: str | None
     updated_at: datetime
+    edited: bool = False
 
 
 class AveragesOut(BaseModel):
@@ -400,6 +403,7 @@ class RecommendationOut(BaseModel):
     my_vote: VoteChoice | None
     created_at: datetime
     map_url: str
+    edited: bool = False
 
 
 class ClubTipOut(RecommendationOut):
@@ -541,6 +545,7 @@ def _mine(rows: list[VenueRating], author_key: str | None) -> RatingMine | None:
                 comment=row.comment,
                 author_name=row.author_name,
                 updated_at=_utc(row.updated_at),
+                edited=row.edited_at is not None,
             )
     return None
 
@@ -577,6 +582,7 @@ def _recommendation_out(row: VenueRecommendation, my_vote: str | None = None) ->
         my_vote=my_vote if my_vote in ("up", "down") else None,
         created_at=_utc(row.created_at),
         map_url=_maps_search(_place(row.title, row.city, row.state)),
+        edited=row.edited_at is not None,
     )
 
 
@@ -714,7 +720,7 @@ def list_club_locations(
     if seen:
         statement = (
             select(VenueRecommendation)
-            .where(VenueRecommendation.venue_key.in_(seen))
+            .where(VenueRecommendation.venue_key.in_(seen), VenueRecommendation.hidden_at.is_(None))
             .order_by(*_tip_order())
         )
         rows = list(session.scalars(statement).all())
@@ -773,9 +779,17 @@ def location_detail(
     else:
         grouped = _complexes(session, now, city=place[0], state=place[1])
     bucket = grouped.get(key)
-    ratings = list(session.scalars(select(VenueRating).where(VenueRating.venue_key == key)).all())
+    ratings = list(
+        session.scalars(
+            select(VenueRating).where(VenueRating.venue_key == key, VenueRating.hidden_at.is_(None))
+        ).all()
+    )
     if bucket is None and not ratings:
-        stored = session.scalars(select(VenueRecommendation).where(VenueRecommendation.venue_key == key).limit(1)).first()
+        stored = session.scalars(
+            select(VenueRecommendation)
+            .where(VenueRecommendation.venue_key == key, VenueRecommendation.hidden_at.is_(None))
+            .limit(1)
+        ).first()
         if stored is None:
             raise HTTPException(status_code=404, detail="Complex not found")
         bucket = ComplexBucket(key)
@@ -788,7 +802,10 @@ def location_detail(
         bucket.cities[ratings[0].city] += 1
         bucket.states[ratings[0].state] += 1
 
-    statement = select(VenueRecommendation).where(VenueRecommendation.venue_key == key)
+    statement = select(VenueRecommendation).where(
+        VenueRecommendation.venue_key == key,
+        VenueRecommendation.hidden_at.is_(None),
+    )
     if category:
         statement = statement.where(VenueRecommendation.category == category)
     statement = statement.order_by(*_tip_order())
@@ -868,7 +885,11 @@ def _record_write(
 
 
 def _averages_out(session: Session, venue_key: str, venue_name: str, city: str, state: str) -> AveragesOut:
-    rows = list(session.scalars(select(VenueRating).where(VenueRating.venue_key == venue_key)).all())
+    rows = list(
+        session.scalars(
+            select(VenueRating).where(VenueRating.venue_key == venue_key, VenueRating.hidden_at.is_(None))
+        ).all()
+    )
     summary = _summarize(rows)
     return AveragesOut(
         venue_key=venue_key,
@@ -934,6 +955,8 @@ def rate_location(
         existing.parking_access = payload.parking_access
         existing.amenities = payload.amenities
         existing.surface_vote = payload.surface_vote
+        if existing.comment != comment:
+            existing.edited_at = None
         existing.comment = comment
         existing.updated_at = datetime.now(UTC)
     session.flush()
@@ -1039,15 +1062,23 @@ def vote_recommendation(
     )
     previous: dict[str, object] | None = None
     action = "create"
+    now = datetime.now(UTC)
     if existing is None:
-        existing = VenueTipVote(recommendation_id=row.id, author_key=author_key, choice=payload.choice)
+        existing = VenueTipVote(
+            recommendation_id=row.id,
+            author_key=author_key,
+            choice=payload.choice,
+            updated_at=now,
+        )
         session.add(existing)
         _apply_vote(row, None, payload.choice)
     else:
         previous = {"choice": existing.choice}
         action = "update"
-        _apply_vote(row, existing.choice, payload.choice)
+        if existing.hidden_at is None:
+            _apply_vote(row, existing.choice, payload.choice)
         existing.choice = payload.choice
+        existing.updated_at = now
     session.flush()
     _record_write(
         session,

@@ -397,7 +397,10 @@ function Tips({ tips, clubId }: { tips: ClubLocationTip[]; clubId: string }) {
                   ))}
                 </ul>
               ) : null}
-              <p className="mt-2 text-sm text-ink">{tip.review_text}</p>
+              <p className="mt-2 text-sm text-ink">
+                {tip.review_text}
+                {tip.edited ? <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-stone-400">Edited</span> : null}
+              </p>
               <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-stone-500">
                 <span>{tip.author_name}</span>
                 <span data-tip-added={tip.created_at}>{easternStamp(tip.created_at)?.dateLabel}</span>
