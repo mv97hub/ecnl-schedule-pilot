@@ -17,6 +17,12 @@ import { useSession } from "@/store/session";
 import { colors, resultColor } from "@/theme";
 import type { CommonGame, CommonOpponent, CountRecord, DirectMatch, FormGame, SplitRecord, TeamTape } from "@/lib/types";
 
+/** Club name plus squad, for example "Florida Kraze Krush U15". */
+function squadLabel(name: string, ageGroup: string | null | undefined): string {
+  const age = ageGroup?.trim();
+  return age ? `${name} ${age}` : name;
+}
+
 function isPng(bytes: Uint8Array): boolean {
   return bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
 }
@@ -113,13 +119,13 @@ export default function MatchupScreen() {
           </View>
         </View>
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
-          <Slot name={left?.name ?? "Your team"} logo={left?.logo_url} onPress={() => setSlot("a")} onClub={clubA == null ? undefined : () => openClub(clubA)} />
+          <Slot name={left?.name ?? "Your team"} ageGroup={left?.age_group} logo={left?.logo_url} onPress={() => setSlot("a")} onClub={clubA == null ? undefined : () => openClub(clubA)} />
           <Text style={{ color: colors.white, fontWeight: "800", marginTop: 22 }}>vs</Text>
-          <Slot name={right?.name ?? "Opponent"} logo={right?.logo_url} onPress={() => setSlot("b")} onClub={clubB == null ? undefined : () => openClub(clubB)} />
+          <Slot name={right?.name ?? "Opponent"} ageGroup={right?.age_group} logo={right?.logo_url} onPress={() => setSlot("b")} onClub={clubB == null ? undefined : () => openClub(clubB)} />
         </View>
         {report.data && left && right ? (
           <View style={{ gap: 8 }}>
-            <Text style={{ color: colors.white, fontSize: 26, fontWeight: "800" }}>{verdictSentence(report.data.scouting_report, left.name, right.name)}</Text>
+            <Text style={{ color: colors.white, fontSize: 26, fontWeight: "800" }}>{verdictSentence(report.data.scouting_report, squadLabel(left.name, left.age_group), squadLabel(right.name, right.age_group))}</Text>
             <EdgeMeter value={report.data.scouting_report.edge_meter} favored={report.data.scouting_report.favored_team} />
             <Text style={{ alignSelf: "flex-start", backgroundColor: colors.gold, color: colors.navy, fontWeight: "800", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, overflow: "hidden" }}>
               {report.data.scouting_report.projected_tempo}
@@ -147,10 +153,16 @@ export default function MatchupScreen() {
             />
             {view === "stats" && left && right ? <StatsTable left={left} right={right} /> : null}
             {view === "direct" && left ? (
-              <DirectMeetings games={report.data.direct_matches.games} summary={report.data.direct_matches.summary} leftId={left.team_id} leftName={left.name} rightName={right?.name ?? "Opponent"} />
+              <DirectMeetings
+                games={report.data.direct_matches.games}
+                summary={report.data.direct_matches.summary}
+                leftId={left.team_id}
+                leftName={squadLabel(left.name, left.age_group)}
+                rightName={squadLabel(right?.name ?? "Opponent", right?.age_group)}
+              />
             ) : null}
             {view === "common" && left && right ? (
-              <CommonOpponents rows={report.data.common_opponents} leftName={left.name} rightName={right.name} />
+              <CommonOpponents rows={report.data.common_opponents} leftName={squadLabel(left.name, left.age_group)} rightName={squadLabel(right.name, right.age_group)} />
             ) : null}
           </>
         ) : null}
@@ -169,12 +181,14 @@ export default function MatchupScreen() {
   );
 }
 
-function Slot({ name, logo, onPress, onClub }: { name: string; logo?: string | null; onPress: () => void; onClub?: () => void }) {
+function Slot({ name, ageGroup, logo, onPress, onClub }: { name: string; ageGroup?: string | null; logo?: string | null; onPress: () => void; onClub?: () => void }) {
+  const age = ageGroup?.trim();
   return (
     <View style={{ flex: 1, alignItems: "center" }}>
-      <Hit label={`Change ${name}`} onPress={onPress} style={{ alignSelf: "stretch", alignItems: "center", gap: 6 }}>
+      <Hit label={`Change ${squadLabel(name, age)}`} onPress={onPress} style={{ alignSelf: "stretch", alignItems: "center", gap: 6 }}>
         <Crest uri={logo} name={name} size={56} />
         <Text style={{ color: colors.white, fontWeight: "800", textAlign: "center" }} numberOfLines={2}>{name}</Text>
+        {age ? <Text style={{ color: colors.white, fontSize: 13, fontWeight: "700", textAlign: "center" }}>{age}</Text> : null}
       </Hit>
       {onClub ? (
         <Hit label={`Open ${name} club`} onPress={onClub} style={{ alignSelf: "stretch", alignItems: "center" }}>
@@ -320,11 +334,17 @@ function StatsTable({ left, right }: { left: TeamTape; right: TeamTape }) {
   ];
   return (
     <Card>
-      <View accessibilityLabel={`${left.name} on the left, ${right.name} on the right`} style={{ gap: 2 }}>
+      <View accessibilityLabel={`${squadLabel(left.name, left.age_group)} on the left, ${squadLabel(right.name, right.age_group)} on the right`} style={{ gap: 2 }}>
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, paddingBottom: 6 }}>
-          <Text style={{ flex: 1, color: colors.navy, fontWeight: "800", textAlign: "left" }} numberOfLines={3}>{left.name}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.navy, fontWeight: "800", textAlign: "left" }} numberOfLines={3}>{left.name}</Text>
+            {left.age_group.trim() ? <Text style={{ color: colors.secondary, fontSize: 13, fontWeight: "700", textAlign: "left" }}>{left.age_group.trim()}</Text> : null}
+          </View>
           <View style={{ width: 92 }} />
-          <Text style={{ flex: 1, color: colors.navy, fontWeight: "800", textAlign: "right" }} numberOfLines={3}>{right.name}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.navy, fontWeight: "800", textAlign: "right" }} numberOfLines={3}>{right.name}</Text>
+            {right.age_group.trim() ? <Text style={{ color: colors.secondary, fontSize: 13, fontWeight: "700", textAlign: "right" }}>{right.age_group.trim()}</Text> : null}
+          </View>
         </View>
         {rows.map((row) => (
           <View key={row.label} style={{ flexDirection: "row", alignItems: "center", gap: 8, borderTopWidth: 1, borderTopColor: colors.line, paddingVertical: 6 }}>
@@ -402,11 +422,11 @@ function CommonOpponents({ rows, leftName, rightName }: { rows: CommonOpponent[]
           <Text style={{ color: colors.ink, fontWeight: "800" }}>{opponent.name}</Text>
           <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={{ color: colors.secondary, fontSize: 12 }} numberOfLines={1}>{leftName}</Text>
+              <Text style={{ color: colors.secondary, fontSize: 12 }} numberOfLines={2}>{leftName}</Text>
               <Text style={{ color: colors.ink, fontWeight: "700" }}>{sideResults(opponent.team_a_games)}</Text>
             </View>
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={{ color: colors.secondary, fontSize: 12 }} numberOfLines={1}>{rightName}</Text>
+              <Text style={{ color: colors.secondary, fontSize: 12 }} numberOfLines={2}>{rightName}</Text>
               <Text style={{ color: colors.ink, fontWeight: "700" }}>{sideResults(opponent.team_b_games)}</Text>
             </View>
           </View>
