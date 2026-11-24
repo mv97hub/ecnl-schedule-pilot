@@ -22,21 +22,26 @@ function scheduleHref(query: string): string {
   return `/${query}&board=schedule`;
 }
 
+function standingsHref(query: string, view: string | null): string {
+  if (view !== "current" && view !== "projected") return `/standings${query}`;
+  if (!query) return `/standings?view=${view}`;
+  return `/standings${query}&view=${view}`;
+}
+
 function AppHeaderPath() {
   const path = usePathname();
   const params = useSearchParams();
-  return <AppHeaderBar path={path} query={selectionQuery(params)} scheduleBoard={params.get("board") === "schedule" || params.has("team")} />;
+  return <AppHeaderBar path={path} query={selectionQuery(params)} view={params.get("view")} scheduleBoard={params.get("board") === "schedule" || params.has("team")} />;
 }
 
-function AppHeaderBar({ path, query, scheduleBoard = false }: { path: string; query: string; scheduleBoard?: boolean }) {
+function AppHeaderBar({ path, query, view = null, scheduleBoard = false }: { path: string; query: string; view?: string | null; scheduleBoard?: boolean }) {
   const { gender, setGender } = useLeagueGender();
   const account = useAccount();
   const accountLabel = account === undefined ? null : account ? account.display_name.trim() || "Account" : "Sign in";
   const home = path === "/" && !scheduleBoard && account != null;
   const schedules = path === "/" && (scheduleBoard || account === null);
   const clubs = path.startsWith("/clubs");
-  const standings = path === "/standings" || (path.startsWith("/standings/") && !path.startsWith("/projected"));
-  const projected = path === "/projected" || path.startsWith("/projected/");
+  const standings = path === "/standings" || path.startsWith("/standings/");
   const headToHead = path.startsWith("/head-to-head");
   const locations = path.startsWith("/locations");
   const profile = path.startsWith("/profile");
@@ -85,18 +90,11 @@ function AppHeaderBar({ path, query, scheduleBoard = false }: { path: string; qu
               Clubs
             </Link>
             <Link
-              href={`/standings${query}`}
+              href={standingsHref(query, view)}
               aria-current={standings ? "page" : undefined}
               className={`rounded-full px-3 py-1.5 ${standings ? "bg-gold text-navy" : "text-bone/80 hover:bg-white/10"}`}
             >
               Conference Standings
-            </Link>
-            <Link
-              href={`/projected${query}`}
-              aria-current={projected ? "page" : undefined}
-              className={`rounded-full px-3 py-1.5 ${projected ? "bg-gold text-navy" : "text-bone/80 hover:bg-white/10"}`}
-            >
-              Projected
             </Link>
             <Link
               href="/head-to-head"
