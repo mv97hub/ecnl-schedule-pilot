@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import require_admin, require_bearer
 from app.database import get_session
-from app.models import LocationWriteEvent
+from app.models import LocationWriteEvent, VenueRating, VenueRecommendation, VenueTipVote
 
 router = APIRouter(tags=["history"])
 
@@ -86,4 +86,73 @@ def list_history(
     if email_text:
         statement = statement.where(LocationWriteEvent.email.ilike(_like(email_text), escape="\\"))
     statement = statement.order_by(LocationWriteEvent.created_at.desc(), LocationWriteEvent.id.desc())
+    return [_out(row) for row in session.scalars(statement).all()]
+
+
+def _voter_id(author_key: str) -> int | None:
+    prefix = "user:"
+    if not author_key.startswith(prefix):
+        return None
+    text_id = author_key[len(prefix) :]
+    if not text_id.isdigit():
+        return None
+    return int(text_id)
+
+
+def _vote_event_matches(row: LocationWriteEvent, vote_id: int, choice: str, voter_id: int | None) -> bool:
+    """One vote's rows. Newer rows store vote_id. Older rows match the voter, then the choice."""
+
+    stored_ids: list[object] = []
+    for payload in (row.previous_values, row.new_values):
+        if isinstance(payload, dict) and "vote_id" in payload:
+            stored_ids.append(payload.get("vote_id"))
+    if stored_ids:
+        return vote_id in stored_ids
+    if row.action in ("create", "update") and voter_id is not None:
+        return row.user_id == voter_id
+    new = row.new_values if isinstance(row.new_values, dict) else {}
+    return new.get("choice") == choice
+
+
+@router.get("/admin/contributions/{kind}/{item_id}/history", response_model=list[HistoryOut])
+def contribution_history(
+    kind: str,
+    item_id: int,
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+) -> list[HistoryOut]:
+    """First submission, later edits, hides, and restores for one rating, tip, or vote. Oldest first."""
+
+    require_admin(session, token)
+    chosen = kind.strip().lower()
+    if chosen not in KINDS:
+        raise HTTPException(status_code=400, detail="kind must be rating, tip, or vote")
+    if chosen == "rating":
+        if session.get(VenueRating, item_id) is None:
+            raise HTTPException(status_code=404, detail="Contribution not found")
+        statement = select(LocationWriteEvent).where(
+            LocationWriteEvent.kind == "rating",
+            LocationWriteEvent.rating_id == item_id,
+        )
+    elif chosen == "tip":
+        if session.get(VenueRecommendation, item_id) is None:
+            raise HTTPException(status_code=404, detail="Contribution not found")
+        statement = select(LocationWriteEvent).where(
+            LocationWriteEvent.kind == "tip",
+            LocationWriteEvent.tip_id == item_id,
+        )
+    else:
+        vote = session.get(VenueTipVote, item_id)
+        if vote is None:
+            raise HTTPException(status_code=404, detail="Contribution not found")
+        voter_id = _voter_id(vote.author_key)
+        rows = list(
+            session.scalars(
+                select(LocationWriteEvent)
+                .where(LocationWriteEvent.kind == "vote", LocationWriteEvent.tip_id == vote.recommendation_id)
+                .order_by(LocationWriteEvent.created_at.asc(), LocationWriteEvent.id.asc())
+            ).all()
+        )
+        return [_out(row) for row in rows if _vote_event_matches(row, int(vote.id), vote.choice, voter_id)]
+    statement = statement.order_by(LocationWriteEvent.created_at.asc(), LocationWriteEvent.id.asc())
     return [_out(row) for row in session.scalars(statement).all()]

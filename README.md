@@ -23,10 +23,10 @@ Boys and Girls are chosen on the page that needs one division. Team Schedules an
 | Field | `/locations/{venue_key}` | One complex: scorecard, rating form, family tips, then upcoming and recent games. |
 | Add a family tip | `/locations/tip` | A dropdown of the club's fields (`?club=`), then the tip form. |
 | Profile | `/profile` | Google or Apple sign-in. Signed out, this page is only the sign-in card. Signed in, a side menu opens Favorites (`/profile/favorites`), Home address (`/profile/address`), and Team calendar (`/profile/calendar`). On a phone the menu stacks above the page. One club and up to four teams are saved on the account. Slot 1 is the default team. The home address is saved on the account. Each favorite team can store one PlayMetrics or TeamSnap calendar link. Those links are not fetched. |
-| Privacy | `/privacy` | Privacy policy for the Premier Gameday HQ app. Favorites stay on the device. The app has no account and does not send personal data to the server. The website section covers the session cookie and location ratings. The two admin accounts can see the email on the location history page. Contact premiergamedayhq@gmail.com. |
+| Privacy | `/privacy` | Privacy policy for the Premier Gameday HQ app. Favorites stay on the device. The app has no account and does not send personal data to the server. The website section covers the session cookie and location ratings. The two admin accounts can see account email on the users page and on a contribution’s history. Location pages do not show email or that history. Contact premiergamedayhq@gmail.com. |
 | Support | `/support` | How to use Premier Gameday HQ without an account. Email premiergamedayhq@gmail.com, or send a report from the page. |
 | Share image | `/api/og/h2h` | A 1200×630 image for a head-to-head link. It calls the API `/head-to-head` route. |
-| Issue reports | `/admin` | Private inbox for reports sent from the app and from `/support`. Preferences has Report an Issue. The support form posts `category`, `description`, and an optional `email`, with `screen` `web-support` and `app_version` `web`. The phone waits 60 seconds after a successful send, and a failed send keeps the draft. The same five-reports-per-IP-per-hour limit applies. The page is not linked from the header, the footer, or any public page, and it sends `noindex`. It opens only for a signed-in `myuranv97@gmail.com` or `premiergamedayhq@gmail.com`. Anyone else stays on the public site. `/admin/history` lists location rating, tip, and vote history, newest first, for those same two accounts. |
+| Issue reports | `/admin` | Private inbox for reports sent from the app and from `/support`. Preferences has Report an Issue. The support form posts `category`, `description`, and an optional `email`, with `screen` `web-support` and `app_version` `web`. The phone waits 60 seconds after a successful send, and a failed send keeps the draft. The same five-reports-per-IP-per-hour limit applies. The page is not linked from the header, the footer, or any public page, and it sends `noindex`. It opens only for a signed-in `myuranv97@gmail.com` or `premiergamedayhq@gmail.com`. Anyone else stays on the public site. The same two accounts open Contributions and Users from the side menu. History is not a menu item. Each contribution row has a History control for that rating, tip, or vote. |
 
 The browser calls `NEXT_PUBLIC_API_URL`, or `http://127.0.0.1:8000` when that variable is unset. The Open Graph route uses the same variable, or `http://localhost:8000`.
 
@@ -89,7 +89,9 @@ The club page Venue Guide link goes to `/locations?club=` for that club. The fie
 | POST | `/ingest/scores` | Upserts scores on ingest games and copies matching scores onto published `game` rows. |
 | POST | `/ingest/standings` | Parses a pasted table into `conference_standing`. The rows it writes use gender `boys`. |
 | POST | `/issues` | Public. No auth. Creates one row in `issue`. `category` is `data`, `app`, or `other`. `description` is required and not blank. `email` is optional. `app_version` and `screen` are required. At most five reports per IP address per hour. |
-| GET | `/admin/history` | Requires `Authorization: Bearer` for `myuranv97@gmail.com` or `premiergamedayhq@gmail.com`. Anyone else is 403. No token is 401. Newest first. Optional `kind` (`rating`, `tip`, or `vote`), `venue` (name or key), and `email`. |
+| GET | `/admin/history` | Requires `Authorization: Bearer` for `myuranv97@gmail.com` or `premiergamedayhq@gmail.com`. Anyone else is 403. No token is 401. Newest first. Optional `kind` (`rating`, `tip`, or `vote`), `venue` (name or key), and `email`. The website no longer links this list from the admin menu. | 
+| GET | `/admin/users` | Same two accounts. Anyone else is 403. No token is 401. One row per account, newest `created_at` first, 50 per page. `page` starts at 1. Optional `q` matches display name or email. Each row has the name, email, providers, `created_at`, `last_login_at` (null when the account has no recorded login), favorite club name, favorite team names, and the saved home address. Calendar links and session tokens are not included. |
+| GET | `/admin/contributions/{kind}/{id}/history` | Same two accounts. `kind` is `rating`, `tip`, or `vote`. An unknown row is 404. Oldest first: the first submission, later edits, hides, and restores for that one contribution. A rating’s original comment stays on the create row after an edit. |
 | GET | `/admin/issues` | Requires `Authorization: Bearer` for `myuranv97@gmail.com` or `premiergamedayhq@gmail.com`. Anyone else is 403. No token is 401. `status` is `open` (default, newest first) or `done`. |
 | PATCH | `/admin/issues/{id}` | Same account requirement. Body `{"done": true}` sets `status` to `done` and `completed_at`. `{"done": false}` sets `status` to `open` and clears `completed_at`. |
 
@@ -101,7 +103,7 @@ PostgreSQL 16. `docker-compose.yml` runs `postgres:16`, publishes port 5432, and
 
 `issue` stores in-app reports only. Columns are `id`, `created_at`, `category`, `description`, `email` (nullable), `app_version`, `screen`, `status` (`open` or `done`, default `open`), and `completed_at` (nullable).
 
-Accounts live in `app_user`, `auth_identity`, and `app_session`. `user_favorite` stores one club (`position` 0) and up to four teams (`position` 1 through 4) for an account. `user_home_address` stores one street address for that account. `user_calendar` stores one PlayMetrics or TeamSnap link per favorite team. `app_session` stores a hash of the token, never the raw token. Set `AUTH_INTERNAL_SECRET` on the API and on the website. The website also needs `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, and `APPLE_PRIVATE_KEY`. Sign-in fails clearly when a required value is missing. Redirects are `https://premiergamedayhq.com/api/auth/google/callback` and `https://premiergamedayhq.com/api/auth/apple/callback`.
+Accounts live in `app_user`, `auth_identity`, and `app_session`. `app_user.last_login_at` is set when a session is created. On startup, an empty `last_login_at` is filled once from the newest `app_session.created_at`. An account with no session keeps it empty. `GET /auth/me` and `GET /me` do not include it. `user_favorite` stores one club (`position` 0) and up to four teams (`position` 1 through 4) for an account. `user_home_address` stores one street address for that account. `user_calendar` stores one PlayMetrics or TeamSnap link per favorite team. `app_session` stores a hash of the token, never the raw token. Set `AUTH_INTERNAL_SECRET` on the API and on the website. The website also needs `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, and `APPLE_PRIVATE_KEY`. Sign-in fails clearly when a required value is missing. Redirects are `https://premiergamedayhq.com/api/auth/google/callback` and `https://premiergamedayhq.com/api/auth/apple/callback`.
 
 ## Code layout
 
@@ -133,7 +135,7 @@ api/
   tests/                   unittest modules
   scouting.py              Head-to-head scouting report
 web/
-  app/                     Routes /, /clubs, /standings, /projected, /head-to-head, /locations, /locations/tip, /profile, /profile/favorites, /profile/address, /profile/calendar, /privacy, /support, /admin, /admin/history, /api/og/h2h
+  app/                     Routes /, /clubs, /standings, /projected, /head-to-head, /locations, /locations/tip, /profile, /profile/favorites, /profile/address, /profile/calendar, /privacy, /support, /admin, /admin/contributions, /admin/users, /api/og/h2h
   components/              Schedule, standings, projected, clubs, locations, head-to-head, profile, and ingest UI
   lib/                     API client, gender, conferences, formatting
 docker-compose.yml         Postgres 16
@@ -159,6 +161,7 @@ Tests, all under `api/tests/`:
 | `test_issues.py` | Creating a report, the per-IP limit, the admin allow list, and the done checkbox. |
 | `test_auth.py` | Session tokens, linking a verified email, Apple private relay, and deleting an account. |
 | `test_profile.py` | Saving, reading, and clearing a home address. A rejected calendar link, one link per favorite team, and delete-account removing the address and that user's links. |
+| `test_admin_users.py` | `last_login_at` on a new session, the one-time session backfill, a second users page, and a contribution history list that keeps the original comment. |
 
 `web/README.md` is the Next.js template text. It does not describe this project.
 
@@ -307,7 +310,7 @@ These are written by the locations routes, not by the refresh jobs. `venue_key` 
 | --- | --- | --- | --- |
 | `venue_rating` | One browser profile's stars for one complex. A second submit from the same profile updates the row. | `id`. Unique on `venue_key`, `author_key`. Score and surface checks above. | `POST /locations/rate`. |
 | `venue_recommendation` | One family tip for one complex: hotel, food, hangout, activity, or sideline and parking. | `id`. Category, rating, and upvote checks above. | `POST /locations/recommendations`. Votes use `POST /locations/recommendations/{id}/vote`. |
-| `location_write_event` | One history row for a rating, tip, or vote. It is not rewritten, and it stays after the account is deleted. | `id`. `kind` is `rating`, `tip`, or `vote`. `action` is `create` or `update`. No foreign key to `app_user`, `venue_rating`, or `venue_recommendation`. | The same transaction as the location write. `GET /admin/history` reads it. |
+| `location_write_event` | One history row for a rating, tip, or vote. It is not rewritten, and it stays after the account is deleted. | `id`. `kind` is `rating`, `tip`, or `vote`. `action` is `create`, `update`, `hide`, `restore`, or `edit`. No foreign key to `app_user`, `venue_rating`, or `venue_recommendation`. | The same transaction as the location write or the admin hide, restore, or edit. `GET /admin/history` and `GET /admin/contributions/{kind}/{id}/history` read it. |
 
 `venue_rating` columns: `venue_key`, `venue_name`, `city`, `state`, `author_key`, `user_id` (the account id for a signed-in rating; older rows stay null), `author_name`, `field_quality`, `referees`, `parent_vibe`, `parking_access`, `amenities`, `surface_vote`, `comment`, `updated_at`.
 
@@ -319,7 +322,7 @@ These are written by the locations routes, not by the refresh jobs. `venue_key` 
 
 `user_home_address` columns: `user_id` (primary key, references `app_user.id`, deleted with the account), `street`, `unit`, `city`, `state`, `postal_code`, `latitude`, `longitude`. Latitude and longitude stay null. The row is not public and is not written into location history.
 
-`user_calendar` columns: `user_id` (references `app_user.id`, deleted with the account), `team_id` (references `team.id`, deleted with that team), `source` (`playmetrics` or `teamsnap`), `url`. Unique on user plus team. The url is a secret link for that signed-in user. Removing the team from favorites deletes the row. The feed is not fetched, and the url is not shown on public pages, location pages, or admin history.
+`user_calendar` columns: `user_id` (references `app_user.id`, deleted with the account), `team_id` (references `team.id`, deleted with that team), `source` (`playmetrics` or `teamsnap`), `url`. Unique on user plus team. The url is a secret link for that signed-in user. Removing the team from favorites deletes the row. The feed is not fetched, and the url is not shown on public pages, location pages, admin history, or the admin users list.
 
 ### Ingest tables
 

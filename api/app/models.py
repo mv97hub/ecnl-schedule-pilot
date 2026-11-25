@@ -482,6 +482,7 @@ class AppUser(Base):
     display_name: Mapped[str] = mapped_column(String(80), nullable=False)
     email: Mapped[str | None] = mapped_column(String(254), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AuthIdentity(Base):

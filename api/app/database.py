@@ -298,6 +298,33 @@ def ensure_source_columns() -> None:
                 connection.execute(text(f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} ON {table} (source_id)"))
 
 
+def ensure_account_columns() -> None:
+    """Add last_login_at. Copy the newest session time once where that column is still empty."""
+
+    with engine.begin() as connection:
+        if not _table_exists(connection, "app_user"):
+            return
+        if not _column_exists(connection, "app_user", "last_login_at"):
+            connection.execute(text("ALTER TABLE app_user ADD COLUMN last_login_at timestamp with time zone"))
+        if not _table_exists(connection, "app_session"):
+            return
+        connection.execute(
+            text(
+                """
+                UPDATE app_user AS account
+                SET last_login_at = newest.created_at
+                FROM (
+                    SELECT user_id, MAX(created_at) AS created_at
+                    FROM app_session
+                    GROUP BY user_id
+                ) AS newest
+                WHERE account.id = newest.user_id
+                  AND account.last_login_at IS NULL
+                """
+            )
+        )
+
+
 def get_session() -> Generator[Session, None, None]:
     session = SessionLocal()
     try:

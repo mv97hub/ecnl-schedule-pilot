@@ -21,6 +21,21 @@ export type ContributionFilters = {
   hidden: string;
   flagged: string;
   page: number;
+  history: string;
+};
+
+export type ContributionEvent = {
+  id: number;
+  created_at: string;
+  action: string;
+  previous: Record<string, unknown> | null;
+  new: Record<string, unknown>;
+};
+
+export type OpenHistory = {
+  key: string;
+  rows: ContributionEvent[];
+  failed: boolean;
 };
 
 const PAGE_SIZE = 50;
@@ -40,7 +55,10 @@ th { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: 
 details summary { cursor: pointer; font-weight: 700; }
 textarea { min-height: 72px; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.row-actions button, .pager a, .pager span.ghost { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; text-decoration: none; }
+.row-actions button, .row-actions a, .pager a, .pager span.ghost { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; text-decoration: none; }
+details.history { margin-top: 8px; }
+details.history ul { margin: 8px 0 0; padding-left: 18px; }
+details.history li { margin: 0 0 8px; }
 .pager { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 16px 0; }
 .pager span.ghost[aria-disabled="true"] { opacity: 0.45; }
 .kind { text-transform: capitalize; }
@@ -71,6 +89,12 @@ function formatWhen(iso: string): string {
 
 function selected(current: string, value: string): string {
   return current === value ? " selected" : "";
+}
+
+export function isContributionEvent(value: unknown): value is ContributionEvent {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Partial<ContributionEvent>;
+  return typeof row.id === "number" && typeof row.action === "string" && typeof row.created_at === "string" && !!row.new && typeof row.new === "object";
 }
 
 export function isContributionRow(value: unknown): value is ContributionRow {
@@ -145,6 +169,65 @@ ${hiddenFields(filters)}
 </details>`;
 }
 
+function historyHref(filters: ContributionFilters, row: ContributionRow): string {
+  const params = new URLSearchParams();
+  if (filters.kind) params.set("kind", filters.kind);
+  if (filters.venue) params.set("venue", filters.venue);
+  if (filters.email) params.set("email", filters.email);
+  if (filters.hidden) params.set("hidden", filters.hidden);
+  if (filters.flagged) params.set("flagged", filters.flagged);
+  if (filters.page > 1) params.set("page", String(filters.page));
+  params.set("history", `${row.kind}:${row.id}`);
+  return `/admin/contributions?${params.toString()}`;
+}
+
+function writtenComment(value: Record<string, unknown> | null): string | null {
+  if (!value) return null;
+  if (typeof value.comment === "string" && value.comment) return value.comment;
+  if (typeof value.review_text === "string" && value.review_text) return value.review_text;
+  return null;
+}
+
+function actionLabel(action: string): string {
+  if (action === "create") return "First submission";
+  if (action === "update" || action === "edit") return "Edit";
+  if (action === "hide") return "Hide";
+  if (action === "restore") return "Restore";
+  return action;
+}
+
+function historyList(events: ContributionEvent[]): string {
+  if (!events.length) return `<p class="empty">No history for this contribution.</p>`;
+  return `<ul>${events
+    .map((event) => {
+      const previous = writtenComment(event.previous);
+      const next = writtenComment(event.new);
+      let comment = "";
+      if (event.action === "create" && next) {
+        comment = `<p class="description">Original comment: ${escapeHtml(next)}</p>`;
+      } else if (previous || next) {
+        const previousLine = previous ? `<p class="description">Previous comment: ${escapeHtml(previous)}</p>` : "";
+        const nextLine = next ? `<p class="description">New comment: ${escapeHtml(next)}</p>` : "";
+        comment = `${previousLine}${nextLine}`;
+      }
+      return `<li><p class="meta">${escapeHtml(formatWhen(event.created_at))} · ${escapeHtml(actionLabel(event.action))}</p>${comment}</li>`;
+    })
+    .join("")}</ul>`;
+}
+
+function historyControl(row: ContributionRow, filters: ContributionFilters, history: OpenHistory | null): string {
+  const key = `${row.kind}:${row.id}`;
+  if (!history || history.key !== key) {
+    return `<p class="row-actions"><a class="ghost" href="${historyHref(filters, row)}">History</a></p>`;
+  }
+  const body = history.failed ? `<p class="error">Could not load history.</p>` : historyList(history.rows);
+  return `<details class="history" open>
+<summary>History</summary>
+<p class="row-actions"><a class="ghost" href="${pageHref(filters, filters.page)}">Close</a></p>
+${body}
+</details>`;
+}
+
 function statusForm(row: ContributionRow, filters: ContributionFilters): string {
   const action = row.status === "hidden" ? "restore" : "hide";
   const label = row.status === "hidden" ? "Restore" : "Hide";
@@ -160,6 +243,7 @@ export function contributionsPage(
   filters: ContributionFilters,
   total: number,
   failed: boolean,
+  history: OpenHistory | null = null,
 ): string {
   const banner = failed ? `<p class="error">Could not load contributions.</p>` : "";
   const table = rows.length
@@ -177,7 +261,7 @@ ${rows
 <td>${escapeHtml(row.venue_name)}</td>
 <td><span class="person"><span>${escapeHtml(row.display_name)}</span><span class="email">${email}</span></span></td>
 <td>${escapeHtml(row.score)}</td>
-<td><p class="comment">${escapeHtml(row.comment || "—")}</p>${editForm(row, filters)}</td>
+<td><p class="comment">${escapeHtml(row.comment || "—")}</p>${editForm(row, filters)}${historyControl(row, filters, history)}</td>
 <td>${row.flagged ? "Yes" : "No"}</td>
 <td>${row.status === "hidden" ? "Hidden" : "Visible"}<div class="row-actions">${statusForm(row, filters)}</div></td>
 </tr>`;
