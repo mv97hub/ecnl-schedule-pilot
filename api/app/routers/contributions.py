@@ -353,7 +353,7 @@ def list_contributions(
     flagged: Annotated[str | None, Query(description="flagged, unflagged, or all")] = None,
     page: Annotated[int, Query(ge=1)] = 1,
 ) -> ContributionPage:
-    """One page of current rows. The total is the filtered count, not the page length."""
+    """One page of current rows. History events are not included. The total is the filtered count, not the page length."""
 
     require_admin(session, token)
     chosen = (kind or "").strip().lower()
