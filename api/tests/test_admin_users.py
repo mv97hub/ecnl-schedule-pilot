@@ -1,4 +1,8 @@
-"""Admin users list, last_login_at, and one contribution's history."""
+"""Admin users list, last_login_at, and one contribution's history.
+
+The contributions table returns the current row only. History events stay on
+the single-row history request, which still keeps the original comment.
+"""
 
 from __future__ import annotations
 
@@ -384,6 +388,39 @@ class AdminUserTests(unittest.TestCase):
             self.assertEqual(hidden.status_code, 200, hidden.text)
             restored = client.post(f"/admin/contributions/rating/{rating_id}/restore", headers=admin)
             self.assertEqual(restored.status_code, 200, restored.text)
+
+            table = client.get(
+                "/admin/contributions",
+                params={"email": "note@probe-users.test", "kind": "rating", "venue": VENUE},
+                headers=admin,
+            )
+            self.assertEqual(table.status_code, 200, table.text)
+            page = table.json()
+            self.assertEqual(set(page), {"page", "total", "rows"})
+            self.assertNotIn("history", page)
+            self.assertNotIn("Original family note", table.text)
+            self.assertGreaterEqual(len(page["rows"]), 1)
+            current = next(row for row in page["rows"] if row["id"] == rating_id)
+            self.assertEqual(
+                set(current),
+                {
+                    "kind",
+                    "id",
+                    "at",
+                    "venue_key",
+                    "venue_name",
+                    "display_name",
+                    "email",
+                    "score",
+                    "comment",
+                    "flagged",
+                    "status",
+                },
+            )
+            self.assertEqual(current["comment"], "Rewritten family note")
+            self.assertNotIn("events", current)
+            self.assertNotIn("previous", current)
+            self.assertNotIn("action", current)
 
             self.assertEqual(client.get(f"/admin/contributions/rating/{rating_id}/history").status_code, 401)
             self.assertEqual(client.get(f"/admin/contributions/rating/{rating_id}/history", headers=stranger).status_code, 403)

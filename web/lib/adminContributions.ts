@@ -21,21 +21,17 @@ export type ContributionFilters = {
   hidden: string;
   flagged: string;
   page: number;
-  history: string;
 };
 
 export type ContributionEvent = {
   id: number;
   created_at: string;
   action: string;
+  email?: string | null;
+  display_name?: string;
+  venue_name?: string;
   previous: Record<string, unknown> | null;
   new: Record<string, unknown>;
-};
-
-export type OpenHistory = {
-  key: string;
-  rows: ContributionEvent[];
-  failed: boolean;
 };
 
 const PAGE_SIZE = 50;
@@ -56,9 +52,13 @@ details summary { cursor: pointer; font-weight: 700; }
 textarea { min-height: 72px; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .row-actions button, .row-actions a, .pager a, .pager span.ghost { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; text-decoration: none; }
-details.history { margin-top: 8px; }
-details.history ul { margin: 8px 0 0; padding-left: 18px; }
-details.history li { margin: 0 0 8px; }
+dialog.history-popup { border: 0; border-radius: 16px; padding: 20px 20px 24px; width: min(560px, calc(100vw - 32px)); max-height: min(640px, calc(100vh - 32px)); overflow: auto; background: #fff; color: #14284B; box-shadow: 0 16px 48px rgba(20, 40, 75, 0.18); }
+dialog.history-popup::backdrop { background: rgba(20, 40, 75, 0.45); }
+dialog.history-popup h2 { font-size: 22px; line-height: 1.2; margin: 0; }
+.popup-bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+#history-subject { margin: 8px 0 0; }
+#history-body ul, .history-events ul { margin: 12px 0 0; padding-left: 18px; }
+#history-body li, .history-events li { margin: 0 0 12px; }
 .pager { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 16px 0; }
 .pager span.ghost[aria-disabled="true"] { opacity: 0.45; }
 .kind { text-transform: capitalize; }
@@ -169,16 +169,8 @@ ${hiddenFields(filters)}
 </details>`;
 }
 
-function historyHref(filters: ContributionFilters, row: ContributionRow): string {
-  const params = new URLSearchParams();
-  if (filters.kind) params.set("kind", filters.kind);
-  if (filters.venue) params.set("venue", filters.venue);
-  if (filters.email) params.set("email", filters.email);
-  if (filters.hidden) params.set("hidden", filters.hidden);
-  if (filters.flagged) params.set("flagged", filters.flagged);
-  if (filters.page > 1) params.set("page", String(filters.page));
-  params.set("history", `${row.kind}:${row.id}`);
-  return `/admin/contributions?${params.toString()}`;
+function historyHref(row: ContributionRow): string {
+  return `/admin/contributions/${encodeURIComponent(row.kind)}/${row.id}/history`;
 }
 
 function writtenComment(value: Record<string, unknown> | null): string | null {
@@ -196,9 +188,10 @@ function actionLabel(action: string): string {
   return action;
 }
 
-function historyList(events: ContributionEvent[]): string {
-  if (!events.length) return `<p class="empty">No history for this contribution.</p>`;
-  return `<ul>${events
+export function historyFragment(events: ContributionEvent[], failed: boolean): string {
+  if (failed) return `<div class="history-events"><p class="error">Could not load history.</p></div>`;
+  if (!events.length) return `<div class="history-events"><p class="empty">No history for this contribution.</p></div>`;
+  const items = events
     .map((event) => {
       const previous = writtenComment(event.previous);
       const next = writtenComment(event.new);
@@ -210,23 +203,142 @@ function historyList(events: ContributionEvent[]): string {
         const nextLine = next ? `<p class="description">New comment: ${escapeHtml(next)}</p>` : "";
         comment = `${previousLine}${nextLine}`;
       }
-      return `<li><p class="meta">${escapeHtml(formatWhen(event.created_at))} · ${escapeHtml(actionLabel(event.action))}</p>${comment}</li>`;
+      const email = event.email ? `<p class="email">${escapeHtml(event.email)}</p>` : "";
+      return `<li><p class="meta">${escapeHtml(formatWhen(event.created_at))} · ${escapeHtml(actionLabel(event.action))}</p>${comment}${email}</li>`;
     })
-    .join("")}</ul>`;
+    .join("");
+  return `<div class="history-events"><ul>${items}</ul></div>`;
 }
 
-function historyControl(row: ContributionRow, filters: ContributionFilters, history: OpenHistory | null): string {
-  const key = `${row.kind}:${row.id}`;
-  if (!history || history.key !== key) {
-    return `<p class="row-actions"><a class="ghost" href="${historyHref(filters, row)}">History</a></p>`;
-  }
-  const body = history.failed ? `<p class="error">Could not load history.</p>` : historyList(history.rows);
-  return `<details class="history" open>
-<summary>History</summary>
-<p class="row-actions"><a class="ghost" href="${pageHref(filters, filters.page)}">Close</a></p>
+export function contributionHistoryPage(kind: string, events: ContributionEvent[], failed: boolean): string {
+  const label = kind === "tip" ? "Tip" : kind === "vote" ? "Vote" : "Rating";
+  const venue = events.find((event) => typeof event.venue_name === "string" && event.venue_name)?.venue_name ?? "";
+  const venueLine = venue ? `<p class="lede">${escapeHtml(venue)}</p>` : "";
+  const body = adminShell(
+    "contributions",
+    `<div class="bar">
+<h1>${label} history</h1>
+<a class="ghost" href="/admin/contributions">Back</a>
+</div>
+<p class="lede">First submission, edits, hides, and restores for this ${escapeHtml(kind)}.</p>
+${venueLine}
+${historyFragment(events, failed)}`,
+  );
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>${label} history</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #FAF8F3; color: #14284B; font: 16px/1.45 "Segoe UI", system-ui, sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 64px; }
+h1 { font-size: 28px; line-height: 1.2; margin: 0; }
+.bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+a.ghost { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; text-decoration: none; font-weight: 700; border-radius: 12px; background: transparent; color: #14284B; border: 1px solid #E4E0D4; }
+.meta { color: #51565F; font-size: 13px; margin: 0 0 8px; }
+.description { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.email { margin: 8px 0 0; color: #51565F; font-size: 13px; }
+.error { color: #8C2F2F; font-weight: 700; }
+.lede { color: #51565F; }
+.empty { margin: 0; }
+.history-events { background: #fff; border: 1px solid #E4E0D4; border-radius: 16px; padding: 16px; }
+.history-events ul { margin: 0; padding-left: 18px; }
+.history-events li { margin: 0 0 12px; }
+${ADMIN_SHELL_STYLE}
+</style>
+</head>
+<body>
+<main>
 ${body}
-</details>`;
+</main>
+</body>
+</html>`;
 }
+
+function historyControl(row: ContributionRow): string {
+  const subject = `${row.kind[0]?.toUpperCase() ?? ""}${row.kind.slice(1)} · ${row.venue_name}`;
+  return `<p class="row-actions"><a class="ghost" href="${historyHref(row)}" data-history data-subject="${escapeHtml(subject)}">History</a></p>`;
+}
+
+const HISTORY_POPUP = `<dialog class="history-popup" id="history-popup" aria-labelledby="history-title">
+<div class="popup-bar">
+<h2 id="history-title">History</h2>
+<button type="button" class="ghost" data-history-close>Close</button>
+</div>
+<p class="lede" id="history-subject"></p>
+<div id="history-body"></div>
+</dialog>
+<script>
+(function () {
+  var dialog = document.getElementById("history-popup");
+  var body = document.getElementById("history-body");
+  var subject = document.getElementById("history-subject");
+  var request = null;
+
+  function clearPayload() {
+    if (request) {
+      request.abort();
+      request = null;
+    }
+    body.replaceChildren();
+    subject.textContent = "";
+  }
+
+  dialog.addEventListener("close", clearPayload);
+  dialog.addEventListener("click", function (event) {
+    if (event.target === dialog) dialog.close();
+  });
+  document.querySelector("[data-history-close]").addEventListener("click", function () {
+    dialog.close();
+  });
+
+  document.querySelectorAll("a[data-history]").forEach(function (link) {
+    link.addEventListener("click", function (event) {
+      event.preventDefault();
+      if (request) {
+        request.abort();
+        request = null;
+      }
+      body.replaceChildren();
+      subject.textContent = link.getAttribute("data-subject") || "";
+      var loading = document.createElement("p");
+      loading.className = "empty";
+      loading.textContent = "Loading history.";
+      body.appendChild(loading);
+      if (!dialog.open) dialog.showModal();
+      var current = new AbortController();
+      request = current;
+      var href = link.getAttribute("href") || "";
+      var target = href + (href.indexOf("?") === -1 ? "?" : "&") + "fragment=1";
+      fetch(target, { headers: { accept: "text/html" }, cache: "no-store", signal: current.signal })
+        .then(function (response) {
+          if (request !== current || !response.ok || response.redirected) throw new Error("failed");
+          return response.text();
+        })
+        .then(function (html) {
+          if (request !== current) return;
+          request = null;
+          body.innerHTML = html;
+        })
+        .catch(function (error) {
+          if (error && error.name === "AbortError") return;
+          if (request !== current) return;
+          request = null;
+          body.replaceChildren();
+          var message = document.createElement("p");
+          message.className = "error";
+          message.textContent = "Could not load history.";
+          body.appendChild(message);
+        });
+    });
+  });
+})();
+</script>`;
 
 function statusForm(row: ContributionRow, filters: ContributionFilters): string {
   const action = row.status === "hidden" ? "restore" : "hide";
@@ -243,7 +355,6 @@ export function contributionsPage(
   filters: ContributionFilters,
   total: number,
   failed: boolean,
-  history: OpenHistory | null = null,
 ): string {
   const banner = failed ? `<p class="error">Could not load contributions.</p>` : "";
   const table = rows.length
@@ -261,7 +372,7 @@ ${rows
 <td>${escapeHtml(row.venue_name)}</td>
 <td><span class="person"><span>${escapeHtml(row.display_name)}</span><span class="email">${email}</span></span></td>
 <td>${escapeHtml(row.score)}</td>
-<td><p class="comment">${escapeHtml(row.comment || "—")}</p>${editForm(row, filters)}${historyControl(row, filters, history)}</td>
+<td><p class="comment">${escapeHtml(row.comment || "—")}</p>${editForm(row, filters)}${historyControl(row)}</td>
 <td>${row.flagged ? "Yes" : "No"}</td>
 <td>${row.status === "hidden" ? "Hidden" : "Visible"}<div class="row-actions">${statusForm(row, filters)}</div></td>
 </tr>`;
@@ -344,6 +455,7 @@ ${ADMIN_SHELL_STYLE}
 <body>
 <main>
 ${body}
+${HISTORY_POPUP}
 </main>
 </body>
 </html>`;
