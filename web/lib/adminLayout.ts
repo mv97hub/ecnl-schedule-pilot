@@ -1,4 +1,4 @@
-export type AdminSection = "issues" | "contributions" | "history";
+export type AdminSection = "issues" | "contributions" | "users";
 
 export const ADMIN_SHELL_STYLE = `
 .shell { display: flex; flex-direction: column; gap: 24px; align-items: stretch; }
@@ -16,10 +16,10 @@ export const ADMIN_SHELL_STYLE = `
 const LINKS: ReadonlyArray<readonly [AdminSection, string, string]> = [
   ["issues", "/admin", "Issue reports"],
   ["contributions", "/admin/contributions", "Contributions"],
-  ["history", "/admin/history", "History"],
+  ["users", "/admin/users", "Users"],
 ];
 
-export function adminMenu(current: AdminSection): string {
+export function adminMenu(current: AdminSection | null): string {
   const items = LINKS.map(([id, href, label]) => {
     const currentAttr = id === current ? ` aria-current="page"` : "";
     return `<a href="${href}"${currentAttr}>${label}</a>`;
@@ -29,7 +29,7 @@ ${items}
 </nav>`;
 }
 
-export function adminShell(current: AdminSection, content: string): string {
+export function adminShell(current: AdminSection | null, content: string): string {
   return `<div class="shell">
 ${adminMenu(current)}
 <div class="content">

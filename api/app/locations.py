@@ -1073,7 +1073,7 @@ def vote_recommendation(
         session.add(existing)
         _apply_vote(row, None, payload.choice)
     else:
-        previous = {"choice": existing.choice}
+        previous = {"choice": existing.choice, "vote_id": existing.id}
         action = "update"
         if existing.hidden_at is None:
             _apply_vote(row, existing.choice, payload.choice)
@@ -1090,7 +1090,7 @@ def vote_recommendation(
         tip_id=row.id,
         action=action,
         previous=previous,
-        new={"choice": payload.choice},
+        new={"choice": payload.choice, "vote_id": existing.id},
     )
     session.commit()
     session.refresh(row)

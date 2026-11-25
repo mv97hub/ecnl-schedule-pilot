@@ -5,7 +5,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel
 
-from app.database import engine, ensure_capture_columns, ensure_location_columns, ensure_result_columns, ensure_source_columns
+from app.database import (
+    engine,
+    ensure_account_columns,
+    ensure_capture_columns,
+    ensure_location_columns,
+    ensure_result_columns,
+    ensure_source_columns,
+)
 from app.locations import router as locations_router
 from app.models import Base
 from app.routers.auth import router as auth_router
@@ -19,6 +26,7 @@ from app.routers.issues import router as issues_router
 from app.routers.mobile import router as mobile_router
 from app.routers.standings import router as standings_router
 from app.routers.teams import router as teams_router
+from app.routers.users import router as users_router
 
 
 @asynccontextmanager
@@ -29,6 +37,7 @@ async def lifespan(_app: FastAPI):
     ensure_source_columns()
     ensure_capture_columns()
     ensure_location_columns()
+    ensure_account_columns()
     yield
 
 
@@ -53,6 +62,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(users_router)
 app.include_router(history_router)
 app.include_router(contributions_router)
 app.include_router(issues_router)

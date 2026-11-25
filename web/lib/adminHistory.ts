@@ -97,7 +97,7 @@ ${nextLine}
         .join("")
     : `<p class="empty">No history rows.</p>`;
   const body = adminShell(
-    "history",
+    null,
     `<div class="bar">
 <h1>Location history</h1>
 <form method="post" action="/api/auth/logout"><button class="ghost" type="submit">Sign out</button></form>

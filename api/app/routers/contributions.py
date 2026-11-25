@@ -467,8 +467,8 @@ def _set_hidden(session: Session, admin: AppUser, kind: str, item_id: int, hide:
                 rating_id=None,
                 tip_id=tip.id,
                 action=action,
-                previous={"choice": vote.choice, "hidden": already},
-                new={"choice": vote.choice, "hidden": hide},
+                previous={"choice": vote.choice, "hidden": already, "vote_id": vote.id},
+                new={"choice": vote.choice, "hidden": hide, "vote_id": vote.id},
             )
             vote.hidden_at = datetime.now(UTC) if hide else None
             vote.updated_at = datetime.now(UTC)

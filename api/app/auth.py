@@ -240,14 +240,16 @@ def open_identity(
             identity.email_verified = bool(email_verified)
         identity.user_id = user.id
 
+    now = datetime.now(UTC)
+    user.last_login_at = now
     raw = secrets.token_urlsafe(32)
     db.add(
         AppSession(
             user_id=user.id,
             token_hash=token_hash(raw),
             client=client,
-            expires_at=datetime.now(UTC) + timedelta(days=SESSION_DAYS),
-            created_at=datetime.now(UTC),
+            expires_at=now + timedelta(days=SESSION_DAYS),
+            created_at=now,
         )
     )
     try:
