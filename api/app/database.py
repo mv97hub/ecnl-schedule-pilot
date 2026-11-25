@@ -56,6 +56,27 @@ def _constraint_exists(connection, table: str, name: str) -> bool:
     )
 
 
+def _index_exists(connection, table: str, name: str) -> bool:
+    return (
+        connection.execute(
+            text(
+                """
+                SELECT 1
+                FROM pg_class AS index_row
+                JOIN pg_namespace AS namespace_row ON namespace_row.oid = index_row.relnamespace
+                JOIN pg_index AS index_meta ON index_meta.indexrelid = index_row.oid
+                JOIN pg_class AS table_row ON table_row.oid = index_meta.indrelid
+                WHERE namespace_row.nspname = 'public'
+                  AND index_row.relname = :name
+                  AND table_row.relname = :table
+                """
+            ),
+            {"table": table, "name": name},
+        ).first()
+        is not None
+    )
+
+
 def _unique_index_exists(connection, table: str, name: str) -> bool:
     return (
         connection.execute(
@@ -161,7 +182,7 @@ def _add_check(connection, table: str, name: str, expression: str) -> None:
 
 
 def ensure_capture_columns() -> None:
-    """Add AthleteOne columns once. Later cold starts only read the catalog."""
+    """Add AthleteOne columns and ix_team_club_id once. Later cold starts only read the catalog."""
 
     with engine.begin() as connection:
         if _table_exists(connection, "team"):
@@ -169,6 +190,8 @@ def ensure_capture_columns() -> None:
                 connection.execute(text("ALTER TABLE team ADD COLUMN gender varchar(8) NOT NULL DEFAULT 'boys'"))
             if not _column_exists(connection, "team", "club_id"):
                 connection.execute(text("ALTER TABLE team ADD COLUMN club_id integer"))
+            if not _index_exists(connection, "team", "ix_team_club_id"):
+                connection.execute(text("CREATE INDEX IF NOT EXISTS ix_team_club_id ON team (club_id)"))
             _add_check(connection, "team", "ck_team_gender", "gender IN ('boys', 'girls')")
         if _table_exists(connection, "game"):
             for column, clause in _GAME_CAPTURE_COLUMNS:

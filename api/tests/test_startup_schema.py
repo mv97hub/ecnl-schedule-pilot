@@ -127,6 +127,31 @@ class StartupSchemaTests(unittest.TestCase):
             holder.close()
             engine.dispose()
 
+    def test_capture_startup_adds_team_club_id_index(self) -> None:
+        Base.metadata.create_all(engine)
+        SQLModel.metadata.create_all(engine)
+        with engine.begin() as connection:
+            connection.execute(text("DROP INDEX IF EXISTS ix_team_club_id"))
+        ensure_capture_columns()
+        ensure_capture_columns()
+        with engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    """
+                    SELECT index_meta.indisunique, pg_get_indexdef(index_row.oid)
+                    FROM pg_class AS index_row
+                    JOIN pg_namespace AS namespace_row ON namespace_row.oid = index_row.relnamespace
+                    JOIN pg_index AS index_meta ON index_meta.indexrelid = index_row.oid
+                    JOIN pg_class AS table_row ON table_row.oid = index_meta.indrelid
+                    WHERE namespace_row.nspname = 'public'
+                      AND table_row.relname = 'team'
+                      AND index_row.relname = 'ix_team_club_id'
+                    """
+                )
+            ).one()
+        self.assertFalse(row.indisunique)
+        self.assertIn("(club_id)", row[1])
+
 
 if __name__ == "__main__":
     unittest.main()
