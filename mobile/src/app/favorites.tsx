@@ -9,7 +9,7 @@ import { colors } from "@/theme";
 export default function FavoritesScreen() {
   const router = useRouter();
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.bone }} contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 40 }}>
+    <ScrollView keyboardShouldPersistTaps="handled" style={{ flex: 1, backgroundColor: colors.bone }} contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 40 }}>
       <FavoritesEditor onDone={() => router.back()} doneLabel="Done" />
       <View>
         <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 16 }}>

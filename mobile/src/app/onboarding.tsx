@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Keyboard, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { FavoritesEditor } from "@/components/FavoritesEditor";
@@ -21,7 +21,7 @@ export default function Onboarding() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bone }}>
-      <ScrollView contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 40 }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 40 }}>
         <Text style={{ color: colors.navy, fontSize: 34, fontWeight: "800" }}>Premier Gameday HQ</Text>
         <Text style={{ color: colors.ink, fontSize: 18, fontWeight: "700" }}>
           {step === "club" ? "Pick a favorite club. This step is optional." : "Pick up to 4 teams. Slot 1 is the default."}
@@ -30,16 +30,16 @@ export default function Onboarding() {
         {step === "club" ? (
           <View style={{ flexDirection: "row", gap: 8 }}>
             <View style={{ flex: 1 }}>
-              <OutlineButton label="Skip" onPress={() => setStep("teams")} />
+              <OutlineButton label="Skip" onPress={() => { Keyboard.dismiss(); setStep("teams"); }} />
             </View>
             <View style={{ flex: 1 }}>
-              <GoldButton label="Next" onPress={() => setStep("teams")} />
+              <GoldButton label="Next" onPress={() => { Keyboard.dismiss(); setStep("teams"); }} />
             </View>
           </View>
         ) : (
           <View style={{ gap: 8 }}>
-            <OutlineButton label="Back" onPress={() => setStep("club")} />
-            {pickedTeams > 0 ? <GoldButton label="Done" onPress={finish} /> : <OutlineButton label="Skip for now" onPress={finish} />}
+            <OutlineButton label="Back" onPress={() => { Keyboard.dismiss(); setStep("club"); }} />
+            {pickedTeams > 0 ? <GoldButton label="Done" onPress={() => { Keyboard.dismiss(); finish(); }} /> : <OutlineButton label="Skip for now" onPress={() => { Keyboard.dismiss(); finish(); }} />}
           </View>
         )}
         <View>
