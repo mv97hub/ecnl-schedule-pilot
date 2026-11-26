@@ -8,6 +8,19 @@ import type { LeagueGender } from "@/lib/leagues";
 import { MAX_FAVORITE_TEAMS, useFavorites } from "@/store/favorites";
 import { colors } from "@/theme";
 
+/** Same short line as the club squad buttons, for example "B U14 · ECNL-RL". */
+function squadButtonLabel(squad: { gender?: "boys" | "girls"; age_group: string; tier?: string | null }): string {
+  const mark = squad.gender === "girls" ? "G" : squad.gender === "boys" ? "B" : "";
+  const age = squad.age_group.trim();
+  const level = squad.tier?.trim() || "ECNL";
+  const who = [mark, age].filter(Boolean).join(" ");
+  return who ? `${who} · ${level}` : level;
+}
+
+function teamCountLabel(count: number): string {
+  return `${count} ${count === 1 ? "team" : "teams"}`;
+}
+
 function useDebounced(value: string): string {
   const [settled, setSettled] = useState(value);
   useEffect(() => {
@@ -95,12 +108,14 @@ export function FavoritesEditor({
         />
         {clubs.isError ? (
           <Text style={{ color: colors.gold, fontWeight: "700" }}>{requestErrorText(clubs.error)}</Text>
+        ) : clubQueryText.length > 0 && clubs.isFetched && !clubs.isFetching && (clubs.data ?? []).length === 0 ? (
+          <Text style={{ color: colors.white, fontWeight: "700" }}>No clubs found</Text>
         ) : (
           (clubs.data ?? []).slice(0, 8).map((item) => (
             <Hit key={String(item.id)} label={`Choose ${item.name}`} onPress={() => setClub(String(item.id))} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
               <Crest uri={item.logo_url} name={item.name} size={32} />
               <Text style={{ color: colors.white, fontWeight: "700", flex: 1 }}>{item.name}</Text>
-              <Text style={{ color: colors.gold }}>{item.team_count}</Text>
+              <Text style={{ color: colors.gold }}>{teamCountLabel(item.team_count)}</Text>
             </Hit>
           ))
         )}
@@ -121,7 +136,7 @@ export function FavoritesEditor({
         const team = byId.get(id);
         return (
           <View key={id} style={{ backgroundColor: colors.white, borderRadius: 14, borderWidth: 1, borderColor: colors.line, padding: 12, gap: 8 }}>
-            <Text style={{ color: colors.ink, fontWeight: "800" }}>{team ? `${team.name} · ${team.age_group}` : `Team ${id}`}</Text>
+            <Text style={{ color: colors.ink, fontWeight: "800" }}>{team ? squadButtonLabel(team) : `Team ${id}`}</Text>
             <Text style={{ color: colors.secondary }}>{index === 0 ? "Default" : `Slot ${index + 1}`}</Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <View style={{ flex: 1 }}>
@@ -149,7 +164,7 @@ export function FavoritesEditor({
                 <Chip
                   key={squad.id}
                   selected={selected}
-                  label={`${squad.gender === "girls" ? "G" : "B"} ${squad.age_group} ${squad.tier}`}
+                  label={squadButtonLabel(squad)}
                   onPress={() => (selected ? removeTeam(squad.id) : addTeam(squad.id))}
                 />
               );
