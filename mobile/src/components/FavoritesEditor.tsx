@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Text, TextInput, View } from "react-native";
+import { Keyboard, Text, TextInput, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 
 import { Chip, Crest, GoldButton, Hit, OutlineButton } from "@/components/ui";
@@ -19,6 +19,14 @@ function squadButtonLabel(squad: { gender?: "boys" | "girls"; age_group: string;
 
 function teamCountLabel(count: number): string {
   return `${count} ${count === 1 ? "team" : "teams"}`;
+}
+
+/** Select and close the keyboard in the same press. Typed text alone never selects. */
+function press(action: () => void): () => void {
+  return () => {
+    Keyboard.dismiss();
+    action();
+  };
 }
 
 function useDebounced(value: string): string {
@@ -112,7 +120,7 @@ export function FavoritesEditor({
           <Text style={{ color: colors.white, fontWeight: "700" }}>No clubs found</Text>
         ) : (
           (clubs.data ?? []).slice(0, 8).map((item) => (
-            <Hit key={String(item.id)} label={`Choose ${item.name}`} onPress={() => setClub(String(item.id))} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <Hit key={String(item.id)} label={`Choose ${item.name}`} onPress={press(() => setClub(String(item.id)))} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
               <Crest uri={item.logo_url} name={item.name} size={32} />
               <Text style={{ color: colors.white, fontWeight: "700", flex: 1 }}>{item.name}</Text>
               <Text style={{ color: colors.gold }}>{teamCountLabel(item.team_count)}</Text>
@@ -175,8 +183,8 @@ export function FavoritesEditor({
 
       <Text style={{ color: colors.ink, fontWeight: "800" }}>Search the league</Text>
       <View style={{ flexDirection: "row", gap: 8 }}>
-        <Chip label="Boys" selected={gender === "boys"} onPress={() => setGender("boys")} />
-        <Chip label="Girls" selected={gender === "girls"} onPress={() => setGender("girls")} />
+        <Chip label="Boys" selected={gender === "boys"} onPress={press(() => setGender("boys"))} />
+        <Chip label="Girls" selected={gender === "girls"} onPress={press(() => setGender("girls"))} />
       </View>
       <TextInput
         value={teamDraft}
@@ -192,7 +200,7 @@ export function FavoritesEditor({
       {teamSearch.isError ? null : (teamSearch.data ?? []).slice(0, 12).map((team) => {
         const selected = teamIds.includes(team.id);
         return (
-          <Hit key={team.id} label={`${selected ? "Remove" : "Add"} ${team.name}`} onPress={() => (selected ? removeTeam(team.id) : addTeam(team.id))} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <Hit key={team.id} label={`${selected ? "Remove" : "Add"} ${team.name}`} onPress={press(() => (selected ? removeTeam(team.id) : addTeam(team.id)))} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
             <Crest uri={team.logo_url} name={team.name} size={32} />
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.ink, fontWeight: "700" }}>{team.name}</Text>
@@ -208,7 +216,7 @@ export function FavoritesEditor({
       <Text style={{ color: colors.secondary, lineHeight: 20 }}>Stored on this phone. No account needed.</Text>
       </>
       ) : null}
-      {onDone ? <GoldButton label={doneLabel} onPress={onDone} /> : null}
+      {onDone ? <GoldButton label={doneLabel} onPress={press(onDone)} /> : null}
     </View>
   );
 }
