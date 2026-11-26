@@ -225,8 +225,8 @@ function formPoints(team: TeamTape): number {
   return team.last_5_form.reduce((sum, game) => sum + (game.result === "W" ? 3 : game.result === "D" ? 1 : 0), 0);
 }
 
-function winLossDraw(row: { w: number; l: number; d: number }): string {
-  return `${row.w}-${row.l}-${row.d}`;
+function wdlLabel(row: { w: number; d: number; l: number }): string {
+  return `${row.w}-${row.d}-${row.l} W-D-L`;
 }
 
 function meetingDate(iso: string): string {
@@ -296,8 +296,8 @@ function StatsTable({ left, right, leftIdentity, rightIdentity }: { left: TeamTa
     },
     {
       label: "Overall record",
-      left: winLossDraw(left.overall_record),
-      right: winLossDraw(right.overall_record),
+      left: wdlLabel(left.overall_record),
+      right: wdlLabel(right.overall_record),
       lead: recordLead(left.overall_record, right.overall_record),
     },
     {
@@ -314,14 +314,14 @@ function StatsTable({ left, right, leftIdentity, rightIdentity }: { left: TeamTa
     },
     {
       label: "Home",
-      left: `${winLossDraw(left.home_record)} · ${left.home_record.ppg.toFixed(2)} PPG`,
-      right: `${winLossDraw(right.home_record)} · ${right.home_record.ppg.toFixed(2)} PPG`,
+      left: `${wdlLabel(left.home_record)} · ${left.home_record.ppg.toFixed(2)} PPG`,
+      right: `${wdlLabel(right.home_record)} · ${right.home_record.ppg.toFixed(2)} PPG`,
       lead: splitLead(left.home_record, right.home_record),
     },
     {
       label: "Away",
-      left: `${winLossDraw(left.away_record)} · ${left.away_record.ppg.toFixed(2)} PPG`,
-      right: `${winLossDraw(right.away_record)} · ${right.away_record.ppg.toFixed(2)} PPG`,
+      left: `${wdlLabel(left.away_record)} · ${left.away_record.ppg.toFixed(2)} PPG`,
+      right: `${wdlLabel(right.away_record)} · ${right.away_record.ppg.toFixed(2)} PPG`,
       lead: splitLead(left.away_record, right.away_record),
     },
     {
