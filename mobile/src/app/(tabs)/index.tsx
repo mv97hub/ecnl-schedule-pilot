@@ -4,11 +4,12 @@ import { useState } from "react";
 import { FlatList, RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { VenueLine } from "@/components/VenueLine";
 import { Card, Crest, GoldButton, Hit, Loading, Notice, OutlineButton, PreferencesButton, ResultBadge, SavedDataNote } from "@/components/ui";
 import { fetchDashboard } from "@/lib/api";
 import { formatKickoff } from "@/lib/format";
 import { openMaps } from "@/lib/maps";
-import { countdown, placeLabel, ppg, squadBadge, teamScoreline, wdl } from "@/lib/present";
+import { countdown, ppg, squadBadge, teamScoreline, wdl } from "@/lib/present";
 import { useFavorites } from "@/store/favorites";
 import { useSession } from "@/store/session";
 import { colors } from "@/theme";
@@ -202,11 +203,13 @@ function TeamMatchCard({ team, width, now, onScout }: { team: MobileTeamCard; wi
 
 function FieldLink({ game }: { game: MobileGame }) {
   return (
-    <Hit
-      label={`Open ${game.venue_name} in Maps`}
-      onPress={() => openMaps({ name: game.venue_name, city: game.city, state: game.state, latitude: game.latitude, longitude: game.longitude })}
-    >
-      <Text style={{ color: colors.navy, fontWeight: "700" }}>{placeLabel(game.venue_name, game.city, game.state, game.field_name)}</Text>
-    </Hit>
+    <VenueLine
+      name={game.venue_name}
+      city={game.city}
+      state={game.state}
+      field={game.field_name}
+      latitude={game.latitude}
+      longitude={game.longitude}
+    />
   );
 }

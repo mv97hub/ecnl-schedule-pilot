@@ -1,12 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { useState, type ReactNode } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Card, Crest, Hit, Loading, Notice, PreferencesButton, ResultBadge, SavedDataNote } from "@/components/ui";
 import { fetchClub, fetchClubs, fetchTeams } from "@/lib/api";
+import { placePath } from "@/lib/finishSignIn";
 import { openMaps } from "@/lib/maps";
 import { ordinal, signed, wdl } from "@/lib/present";
 import { useFavorites } from "@/store/favorites";
@@ -100,7 +101,7 @@ export default function ClubScreen() {
       </View>
 
       <SavedDataNote query={club} style={{ paddingHorizontal: 20, paddingTop: 12 }} />
-      {!clubKey && !resolvingTeamClub ? <View style={{ padding: 20 }}><Notice title="No club yet" body="Pick a favorite club, or search for any club. Ratings and tips are not in this app." action="Edit favorites" onAction={() => router.push("/favorites")} /></View> : null}
+      {!clubKey && !resolvingTeamClub ? <View style={{ padding: 20 }}><Notice title="No club yet" body="Pick a favorite club, or search for any club." action="Edit favorites" onAction={() => router.push("/favorites")} /></View> : null}
       {resolvingTeamClub || (club.isPending && clubKey) ? <Loading /> : null}
       {club.isError && !club.data ? <View style={{ padding: 20 }}><Notice title="Club unavailable" body="That club was not found." action="Try again" onAction={() => void club.refetch()} /></View> : null}
       {club.data ? (
@@ -116,6 +117,7 @@ export default function ClubScreen() {
 }
 
 function ClubBody({ detail, onSquad, onYourClub }: { detail: ClubDetail; onSquad: (squad: ClubSquad) => void; onYourClub?: () => void }) {
+  const router = useRouter();
   const [open, setOpen] = useState({ teams: false, past: false, next: false, fields: false });
   function toggle(key: keyof typeof open) {
     setOpen((current) => ({ ...current, [key]: !current[key] }));
@@ -200,9 +202,17 @@ function ClubBody({ detail, onSquad, onYourClub }: { detail: ClubDetail; onSquad
           <Card key={`${venue.venue_name}-${venue.city}`}>
             <Text style={{ color: colors.ink, fontWeight: "800" }}>{venue.venue_name}</Text>
             <Text style={{ color: colors.secondary, marginBottom: 8 }}>{venue.city}, {venue.state}</Text>
-            <Hit label={`Directions to ${venue.venue_name}`} onPress={() => openMaps({ name: venue.venue_name, city: venue.city, state: venue.state, latitude: venue.latitude, longitude: venue.longitude })}>
-              <Text style={{ color: colors.navy, fontWeight: "800" }}>Directions</Text>
-            </Hit>
+            <View style={{ flexDirection: "row", gap: 16 }}>
+              <Hit label={`Directions to ${venue.venue_name}`} onPress={() => openMaps({ name: venue.venue_name, city: venue.city, state: venue.state, latitude: venue.latitude, longitude: venue.longitude })}>
+                <Text style={{ color: colors.navy, fontWeight: "800" }}>Directions</Text>
+              </Hit>
+              <Hit
+                label={`Ratings for ${venue.venue_name}`}
+                onPress={() => router.push(placePath({ venueName: venue.venue_name, city: venue.city, state: venue.state }) as Href)}
+              >
+                <Text style={{ color: colors.navy, fontWeight: "800" }}>Ratings</Text>
+              </Hit>
+            </View>
           </Card>
         ))}
       </Fold>

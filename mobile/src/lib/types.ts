@@ -386,6 +386,7 @@ export type MyRating = {
   comment: string | null;
   author_name: string | null;
   updated_at: string;
+  edited?: boolean;
 };
 
 export type LocationGame = {
@@ -415,6 +416,7 @@ export type LocationTip = {
   my_vote: TipVote | null;
   created_at: string;
   map_url: string;
+  edited?: boolean;
 };
 
 export type LocationAggregate = {
@@ -529,4 +531,37 @@ export type MobileClub = {
 export type MobileDashboard = {
   teams: MobileTeamCard[];
   club: MobileClub | null;
+};
+
+export type AccountProfile = {
+  id: number;
+  display_name: string;
+  email: string | null;
+  providers: string[];
+  club_id: string | null;
+  team_ids: number[];
+};
+
+export type ProviderSession = {
+  token: string;
+  user: {
+    id: number;
+    display_name: string;
+    email: string | null;
+    providers: string[];
+  };
+};
+
+export type AccountHomeAddress = {
+  street: string;
+  unit: string;
+  city: string;
+  state: string;
+  postal_code: string;
+};
+
+export type AccountCalendar = {
+  team_id: number;
+  source: "playmetrics" | "teamsnap";
+  url: string;
 };

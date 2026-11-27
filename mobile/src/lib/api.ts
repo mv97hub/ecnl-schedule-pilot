@@ -2,15 +2,23 @@ import Constants from "expo-constants";
 
 import type { LeagueGender } from "@/lib/leagues";
 import type {
+  AccountCalendar,
+  AccountHomeAddress,
+  AccountProfile,
   ClubDetail,
   ClubListItem,
+  ClubLocations,
   HeadToHeadReport,
+  LocationDetail,
   MobileDashboard,
+  ProviderSession,
   PredictedStandings,
   ScheduleFilter,
   ScheduleResponse,
   StandingRow,
+  SurfaceVote,
   Team,
+  TipCategory,
 } from "@/lib/types";
 
 /** Website proxy. The Next.js route forwards to the FastAPI service. */
@@ -41,14 +49,53 @@ export function websiteOrigin(): string {
 }
 
 /**
- * v1 sends no profile key and no device identifier.
- * Favorites stay on the device. Do not add X-Profile-Key here.
+ * Schedule, standings, club, and dashboard calls stay unsigned.
+ * Pass `token` only for account and location calls. Never send X-Profile-Key.
+ * A 401 drops the phone session. Issue reports stay on `submitIssueReport`.
  */
-async function request<T>(path: string): Promise<T> {
-  const response = await fetch(`${apiBaseUrl()}${path}`);
-  if (!response.ok) {
-    throw new ApiError(response.status, `API ${response.status}`);
+type RequestOptions = {
+  method?: string;
+  body?: unknown;
+  token?: string | null;
+};
+
+let unauthorized: (() => void) | null = null;
+
+/** The account store registers this. A 401 means the 30-day session ended. */
+export function onUnauthorized(handler: () => void): void {
+  unauthorized = handler;
+}
+
+async function errorDetail(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as { detail?: unknown };
+    if (typeof payload.detail === "string" && payload.detail.trim()) return payload.detail;
+  } catch {
+    return "";
   }
+  return "";
+}
+
+async function request<T>(path: string, options?: RequestOptions): Promise<T> {
+  const headers: Record<string, string> = { accept: "application/json" };
+  if (options?.body !== undefined) headers["content-type"] = "application/json";
+  if (options?.token) headers.authorization = `Bearer ${options.token}`;
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${path}`, {
+      method: options?.method ?? "GET",
+      headers,
+      body: options?.body !== undefined ? JSON.stringify(options.body) : undefined,
+    });
+  } catch {
+    throw new ApiError(0, "Request failed.");
+  }
+  if (!response.ok) {
+    if (response.status === 401 && options?.token) unauthorized?.();
+    const detail = await errorDetail(response);
+    throw new ApiError(response.status, detail || `API ${response.status}`);
+  }
+  if (response.status === 204) return undefined as T;
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.toLowerCase().includes("application/json")) {
     throw new ApiError(response.status, `API ${response.status}`);
@@ -162,7 +209,7 @@ export function appVersion(): string {
   return "unknown";
 }
 
-/** Public report. No account and no profile key. */
+/** Public report. No account and no profile key, even when the phone is signed in. */
 export async function submitIssueReport(input: IssueReportInput): Promise<void> {
   let response: Response;
   try {
@@ -192,4 +239,129 @@ export async function submitIssueReport(input: IssueReportInput): Promise<void> 
     throw new ApiError(429, detail || "Too many reports from this network. Try again later.");
   }
   throw new ApiError(response.status, detail || "Could not send the report. Your draft is still here.");
+}
+
+export function fetchMe(token: string): Promise<AccountProfile> {
+  return request<AccountProfile>("/me", { token });
+}
+
+export function putFavorites(token: string, clubId: string | null, teamIds: number[]): Promise<AccountProfile> {
+  return request<AccountProfile>("/me/favorites", {
+    method: "PUT",
+    token,
+    body: { club_id: clubId, team_ids: teamIds },
+  });
+}
+
+export function postProvider(input: {
+  provider: "apple" | "google";
+  identityToken: string;
+  nonce: string | null;
+  displayName: string | null;
+}): Promise<ProviderSession> {
+  return request<ProviderSession>("/auth/provider", {
+    method: "POST",
+    body: {
+      provider: input.provider,
+      identity_token: input.identityToken,
+      nonce: input.nonce,
+      display_name: input.displayName,
+      client: "ios",
+    },
+  });
+}
+
+export function logoutSession(token: string): Promise<void> {
+  return request("/auth/logout", { method: "POST", token });
+}
+
+export function deleteAccount(token: string): Promise<void> {
+  return request("/auth/account", { method: "DELETE", token });
+}
+
+export type AuthMe = {
+  id: number;
+  display_name: string;
+  email: string | null;
+  providers: string[];
+  home_address?: AccountHomeAddress;
+};
+
+export function fetchAuthMe(token: string): Promise<AuthMe> {
+  return request<AuthMe>("/auth/me", { token });
+}
+
+export function putHomeAddress(token: string, address: AccountHomeAddress): Promise<AuthMe> {
+  return request<AuthMe>("/me/home-address", { method: "PUT", token, body: address });
+}
+
+export function deleteHomeAddress(token: string): Promise<void> {
+  return request("/me/home-address", { method: "DELETE", token });
+}
+
+export async function fetchCalendars(token: string): Promise<AccountCalendar[]> {
+  const body = await request<{ calendars?: AccountCalendar[] }>("/me/calendars", { token });
+  return Array.isArray(body.calendars) ? body.calendars : [];
+}
+
+export function putCalendar(token: string, link: AccountCalendar): Promise<AccountCalendar> {
+  return request<AccountCalendar>("/me/calendars", { method: "PUT", token, body: link });
+}
+
+export function deleteCalendar(token: string, teamId: number): Promise<void> {
+  return request(`/me/calendars/${teamId}`, { method: "DELETE", token });
+}
+
+export function fetchClubLocations(club: string, token: string | null): Promise<ClubLocations> {
+  const params = new URLSearchParams({ club });
+  return request<ClubLocations>(`/locations/club?${params.toString()}`, { token });
+}
+
+export function fetchLocationDetail(
+  query: { venueKey?: string; venueName?: string; city?: string; state?: string },
+  token: string | null,
+): Promise<LocationDetail> {
+  const params = new URLSearchParams();
+  if (query.venueKey) params.set("venue_key", query.venueKey);
+  if (query.venueName) params.set("venue_name", query.venueName);
+  if (query.city) params.set("city", query.city);
+  if (query.state) params.set("state", query.state);
+  return request<LocationDetail>(`/locations/detail?${params.toString()}`, { token });
+}
+
+export type RatingInput = {
+  venue_name: string;
+  city: string;
+  state: string;
+  field_quality: number;
+  referees: number;
+  parent_vibe: number;
+  parking_access: number;
+  amenities: number;
+  surface_vote: SurfaceVote | null;
+  comment: string | null;
+};
+
+export function postRating(token: string, body: RatingInput): Promise<void> {
+  return request("/locations/rate", { method: "POST", token, body });
+}
+
+export function postRecommendation(
+  token: string,
+  body: {
+    venue_name: string;
+    city: string;
+    state: string;
+    category: TipCategory;
+    title: string;
+    rating: number;
+    review_text: string;
+    tags: string[];
+  },
+): Promise<void> {
+  return request("/locations/recommendations", { method: "POST", token, body });
+}
+
+export function postVote(token: string, id: number, choice: "up" | "down"): Promise<LocationDetail["recommendations"][number]> {
+  return request(`/locations/recommendations/${id}/vote`, { method: "POST", token, body: { choice } });
 }

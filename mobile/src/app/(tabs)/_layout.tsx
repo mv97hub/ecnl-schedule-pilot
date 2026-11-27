@@ -38,6 +38,10 @@ export default function TabLayout() {
         name="club"
         options={{ title: "Club", tabBarIcon: ({ color }) => <FontAwesome name="shield" color={tint(color)} size={20} /> }}
       />
+      <Tabs.Screen
+        name="places"
+        options={{ title: "Places", tabBarIcon: ({ color }) => <FontAwesome name="map-marker" color={tint(color)} size={20} /> }}
+      />
     </Tabs>
   );
 }

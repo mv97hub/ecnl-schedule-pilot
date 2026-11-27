@@ -8,12 +8,14 @@ type FavoritesState = {
   favoriteTeamIds: number[];
   favoriteClubId: string | null;
   hasCompletedOnboarding: boolean;
+  hasSeenSignIn: boolean;
   hydrated: boolean;
   setClub: (id: string | null) => void;
   addTeam: (id: number) => void;
   removeTeam: (id: number) => void;
   moveTeam: (index: number, direction: -1 | 1) => void;
   completeOnboarding: () => void;
+  markSignInSeen: () => void;
   setHydrated: (value: boolean) => void;
 };
 
@@ -23,6 +25,7 @@ export const useFavorites = create<FavoritesState>()(
       favoriteTeamIds: [],
       favoriteClubId: null,
       hasCompletedOnboarding: false,
+      hasSeenSignIn: false,
       hydrated: false,
       setClub: (id) => set({ favoriteClubId: id }),
       addTeam: (id) => {
@@ -41,6 +44,7 @@ export const useFavorites = create<FavoritesState>()(
         set({ favoriteTeamIds: next });
       },
       completeOnboarding: () => set({ hasCompletedOnboarding: true }),
+      markSignInSeen: () => set({ hasSeenSignIn: true }),
       setHydrated: (value) => set({ hydrated: value }),
     }),
     {
@@ -50,6 +54,7 @@ export const useFavorites = create<FavoritesState>()(
         favoriteTeamIds: state.favoriteTeamIds,
         favoriteClubId: state.favoriteClubId,
         hasCompletedOnboarding: state.hasCompletedOnboarding,
+        hasSeenSignIn: state.hasSeenSignIn,
       }),
     },
   ),
