@@ -14,6 +14,7 @@ from app.maps_check import (
     is_named_example,
     lookup_skips,
     manual_coordinate,
+    manual_pair,
     maps_point_link,
     maps_search_link,
     parse_first_maps_result,
@@ -128,6 +129,21 @@ class MapsCheckTests(unittest.TestCase):
         self.assertTrue(retry_eligible("maps-failed", None, None))
         self.assertFalse(retry_eligible("maps-result", latitude, longitude))
         self.assertIsNone(manual_coordinate("30.09074022710416N", -90, 90))
+        pasted = manual_pair("  30.09074022710416, -81.56896571349351  ")
+        tight = manual_pair("30.09074022710416,-81.56896571349351")
+        longer = manual_pair("30.09074022710416123456789, -81.56896571349351987654321")
+        self.assertEqual(pasted, (latitude, longitude))
+        self.assertEqual(tight, (latitude, longitude))
+        self.assertIsNotNone(longer)
+        assert pasted is not None and longer is not None
+        self.assertAlmostEqual(pasted[0], 30.09074022710416, places=6)
+        self.assertAlmostEqual(pasted[1], -81.56896571349351, places=6)
+        self.assertNotEqual(round(pasted[0], 6), round(pasted[0], 10))
+        self.assertAlmostEqual(longer[0], 30.09074022710416, places=6)
+        self.assertAlmostEqual(longer[1], -81.56896571349351, places=6)
+        self.assertTrue(lookup_skips("manual", pasted[0], pasted[1]))
+        self.assertIsNone(manual_pair("30.09074022710416 -81.56896571349351"))
+        self.assertIsNone(manual_pair("91, 0"))
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ from typing import Annotated, Literal
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
@@ -42,6 +42,7 @@ from app.maps_check import (
     accept_result,
     maps_point_link,
     maps_search_link,
+    fit_manual_coordinate,
     pin_list_name,
     pin_source,
     lookup_skips,
@@ -1441,10 +1442,38 @@ def read_club_map(
     return ClubMapOut(club_id=source.id, club_name=source.name, fields=fields)
 
 
+def _stored_latitude(value: object) -> float:
+    if isinstance(value, str):
+        stored = fit_manual_coordinate(value, -90, 90)
+        if stored is None:
+            raise ValueError("Paste a latitude between -90 and 90.")
+        return stored
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("Paste a latitude between -90 and 90.")
+    number = float(value)
+    if number < -90 or number > 90:
+        raise ValueError("Paste a latitude between -90 and 90.")
+    return number
+
+
+def _stored_longitude(value: object) -> float:
+    if isinstance(value, str):
+        stored = fit_manual_coordinate(value, -180, 180)
+        if stored is None:
+            raise ValueError("Paste a longitude between -180 and 180.")
+        return stored
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("Paste a longitude between -180 and 180.")
+    number = float(value)
+    if number < -180 or number > 180:
+        raise ValueError("Paste a longitude between -180 and 180.")
+    return number
+
+
 class AdminFieldPinIn(BaseModel):
     venue_key: str = Field(min_length=1, max_length=300)
-    latitude: float = Field(ge=-90, le=90)
-    longitude: float = Field(ge=-180, le=180)
+    latitude: Annotated[float, BeforeValidator(_stored_latitude)]
+    longitude: Annotated[float, BeforeValidator(_stored_longitude)]
     venue_name: str | None = Field(default=None, max_length=160)
     city: str | None = Field(default=None, max_length=80)
     state: str | None = Field(default=None, max_length=2)
