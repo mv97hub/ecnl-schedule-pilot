@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
-"""One-time check of saved field pins against Google Maps.
+"""Fill field pins from the first Google Maps result.
 
-Do not run this against production from an unattended machine. It reads the
-database in DATABASE_URL and, unless --dry-run is set, clears pins that
-disagree with the first Maps result. A kept pin is not verified.
+Run this on the API shell, from the api directory, where the database
+settings are already in the environment. Do not print those settings or
+GEOAPIFY_API_KEY. A saved pin is not verified.
 
-From the api directory:
+    python scripts/check_field_pins_against_maps.py
 
-    python scripts/check_field_pins_against_maps.py --report reports/field-pin-maps-check.md
+The job walks every schedule field. It does not stop at rows already in
+venue_field_point. A field that already has coordinates is skipped. Every
+other field is looked up with the same `{name}, {city}, {state}` query the
+site uses. When the first result can be read and its state matches, those
+coordinates are saved even if the result's city name differs from the
+schedule. A pin is left blank only when the result cannot be read, or the
+result's state does not match. The last line is:
 
-Add --dry-run to write the report without changing rows.
-
-For each saved pin the query is `{venue name}, {city}, {state}`, the same
-text the site puts in https://www.google.com/maps/search/?api=1&query=
-The check reads the first result of that search. The pin is kept only when
-that result is in the field's city and state and the saved coordinates are
-within 25 miles of the result. Other pins are cleared and listed. Clay County
-Regional Sports Complex, Middleburg, FL is always included in the report.
+    saved=N skipped=N failed=N
 """
 
 from __future__ import annotations
@@ -32,21 +31,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.database import SessionLocal
-from sqlalchemy import select
-
-from app.maps_check import (
-    NAMED_EXAMPLE,
-    MapsPlace,
-    PinComparison,
-    compare_pin,
-    field_query,
-    is_named_example,
-    maps_result_url,
-    maps_search_link,
-    parse_first_maps_result,
-)
+from app.locations import _complexes, _is_tbd
+from app.maps_check import MapsPlace, accept_result, field_query, maps_result_url, parse_first_maps_result
 from app.models import VenueFieldPoint
-from app.places import PIN_RULE_MAPS
+from app.places import PIN_RULE_MAPS_RESULT
 
 _AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
@@ -60,142 +48,108 @@ def fetch_maps_body(query: str, timeout: float) -> str:
         return response.read().decode("utf-8", errors="replace")
 
 
-def clear_pin(row: VenueFieldPoint, now: datetime) -> None:
-    row.status = "miss"
-    row.provider = None
+def store_maps_pin(row: VenueFieldPoint, place: MapsPlace, now: datetime) -> None:
+    street = place.street.strip()
+    address = ", ".join(part for part in (street, place.city, place.state) if part)
+    row.status = "found"
+    row.provider = "google-maps"
     row.place_id = None
-    row.formatted_address = None
-    row.latitude = None
-    row.longitude = None
-    row.geocode_kind = "maps-check"
-    row.pin_rule = PIN_RULE_MAPS
+    row.formatted_address = address[:500] or None
+    row.latitude = place.latitude
+    row.longitude = place.longitude
+    row.geocode_kind = "maps"
+    row.pin_rule = PIN_RULE_MAPS_RESULT
     row.fetched_at = now
 
 
-def _line(name: str, city: str, state: str, detail: str) -> str:
-    return f"- {name}, {city}, {state} — {detail}"
-
-
-def _place_detail(place: MapsPlace | None, comparison: PinComparison, latitude: float, longitude: float) -> str:
-    if comparison.reason == "no-result":
-        return "left in place. The first Maps result could not be read, so the pin was not cleared. Not verified."
-    if place is None:
-        return "left in place. Not verified."
-    where = f"first result {place.city}, {place.state} ({place.latitude:.5f}, {place.longitude:.5f})"
-    if comparison.keep:
-        return f"kept. {where}. The saved pin is near that result. Not verified."
-    if comparison.reason == "pin-other-place":
-        return (
-            f"cleared. {where}. The saved pin was {latitude:.5f}, {longitude:.5f}, "
-            "which is not in that city. Not verified."
-        )
-    return f"cleared. {where}, which is not this field's city and state. Not verified."
-
-
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Compare saved field pins with the first Google Maps result.")
+    parser = argparse.ArgumentParser(description="Save the first Google Maps result for fields with no coordinates.")
     parser.add_argument("--report", default="reports/field-pin-maps-check.md")
     parser.add_argument("--sleep", type=float, default=0.35)
     parser.add_argument("--timeout", type=float, default=20.0)
-    parser.add_argument("--dry-run", action="store_true", help="Write the report and leave every pin unchanged.")
+    parser.add_argument("--dry-run", action="store_true", help="Look up and print counts without writing coordinates.")
     args = parser.parse_args()
 
+    saved = 0
+    skipped = 0
+    failed = 0
+    lines: list[str] = []
     session = SessionLocal()
-    kept: list[str] = []
-    cleared: list[str] = []
-    unchecked: list[str] = []
-    named: list[str] = []
-    seen_named = False
     try:
-        rows = list(
-            session.scalars(
-                select(VenueFieldPoint).order_by(VenueFieldPoint.venue_name, VenueFieldPoint.state, VenueFieldPoint.city)
-            )
-        )
-        for index, row in enumerate(rows):
-            named_row = is_named_example(row.venue_name, row.city, row.state)
-            if named_row:
-                seen_named = True
-            if row.latitude is None or row.longitude is None:
-                if named_row:
-                    named.append(_line(row.venue_name, row.city, row.state, "no saved pin to compare. Not verified."))
+        buckets = sorted(_complexes(session, datetime.now(UTC)).values(), key=lambda bucket: (bucket.venue_name, bucket.state, bucket.city))
+        print(f"fields={len(buckets)}", flush=True)
+        for index, bucket in enumerate(buckets):
+            name, city, state = bucket.venue_name, bucket.city, bucket.state
+            if _is_tbd(name) or not name or name == "TBD":
+                skipped += 1
                 continue
-            query = field_query(row.venue_name, row.city, row.state)
-            latitude, longitude = float(row.latitude), float(row.longitude)
-            fetched = True
-            place: MapsPlace | None
+            row = session.get(VenueFieldPoint, bucket.venue_key)
+            if row is not None and row.latitude is not None and row.longitude is not None:
+                skipped += 1
+                continue
+            if not state:
+                failed += 1
+                print(f"failed {name}, {city} no-state", flush=True)
+                continue
+            query = field_query(name, city, state)
             try:
                 place = parse_first_maps_result(fetch_maps_body(query, args.timeout))
             except (urllib.error.URLError, TimeoutError, OSError):
                 place = None
-            comparison = compare_pin(row.city, row.state, latitude, longitude, place)
-            detail = _place_detail(place, comparison, latitude, longitude)
-            link = maps_search_link(query)
-            text = _line(row.venue_name, row.city, row.state, f"{detail} [search]({link})")
-            if comparison.reason == "no-result":
-                unchecked.append(text)
-            elif comparison.keep:
-                kept.append(text)
-            else:
-                cleared.append(text)
-                if not args.dry_run:
-                    clear_pin(row, datetime.now(UTC))
-                    session.commit()
-            if named_row:
-                named.append(text)
-            if fetched and index + 1 < len(rows):
-                time.sleep(max(0.0, args.sleep))
-        if not seen_named:
-            example_name, example_city, example_state = NAMED_EXAMPLE
-            named.append(
-                _line(
-                    example_name,
-                    example_city,
-                    example_state,
-                    "not in the saved-pin table. Nothing was compared. Not verified.",
+            decision = accept_result(state, place)
+            if decision.keep and place is not None:
+                saved += 1
+                print(
+                    f"saved {name}, {city}, {state} -> {place.city}, {place.state} {place.latitude:.5f}, {place.longitude:.5f}",
+                    flush=True,
                 )
-            )
+                lines.append(f"- {name}, {city}, {state} — saved {place.city}, {place.state} {place.latitude:.5f}, {place.longitude:.5f}. Not verified.")
+                if not args.dry_run:
+                    now = datetime.now(UTC)
+                    if row is None:
+                        row = VenueFieldPoint(
+                            venue_key=bucket.venue_key,
+                            venue_name=name[:160],
+                            city=city[:80],
+                            state=state[:2],
+                            status="found",
+                            fetched_at=now,
+                        )
+                        store_maps_pin(row, place, now)
+                        session.add(row)
+                    else:
+                        store_maps_pin(row, place, now)
+                    session.commit()
+            else:
+                failed += 1
+                print(f"failed {name}, {city}, {state} {decision.reason}", flush=True)
+                lines.append(f"- {name}, {city}, {state} — {decision.reason}. Left blank. Not verified.")
+            if index + 1 < len(buckets):
+                time.sleep(max(0.0, args.sleep))
     finally:
+        print(f"saved={saved} skipped={skipped} failed={failed}", flush=True)
         session.close()
 
     report = Path(args.report)
-    report.parent.mkdir(parents=True, exist_ok=True)
-    mode = "Dry run. No pin was changed." if args.dry_run else "Pins that disagreed were cleared. A later map view does not look them up again."
-    body = "\n".join(
-        [
-            "# Field pin check against Google Maps",
-            "",
-            "Each saved pin was compared with the first result of the same search the site already links to: `{name}, {city}, {state}`.",
-            "",
-            "A pin is kept only when that first result is in the field's city and state and the saved coordinates are within 25 miles of the result. This is not a verification. A kept pin is not 100% verified.",
-            "",
-            mode,
-            "",
-            f"Kept: {len(kept)}. Cleared: {len(cleared)}. Unchecked because the result could not be read: {len(unchecked)}.",
-            "",
-            "## Named example",
-            "",
-            *named,
-            "",
-            "## Cleared",
-            "",
-            *(cleared or ["- None."]),
-            "",
-            "## Unchecked",
-            "",
-            *(unchecked or ["- None."]),
-            "",
-            "## Kept",
-            "",
-            "These pins agreed with the first result. They are not verified.",
-            "",
-            *(kept[:25] or ["- None."]),
-            "",
-        ]
-    )
-    report.write_text(body, encoding="utf-8")
-    print(f"Wrote {report.resolve()}")
-    print(f"kept={len(kept)} cleared={len(cleared)} unchecked={len(unchecked)} dry_run={args.dry_run}")
+    try:
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(
+            "\n".join(
+                [
+                    "# Field pins from Google Maps",
+                    "",
+                    "Every schedule field with no saved coordinates was looked up. A readable first result was saved when its state matched, even if the city name differed. This is not a verification.",
+                    "",
+                    f"saved={saved} skipped={skipped} failed={failed}",
+                    "",
+                    *(lines or ["- None."]),
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        print(f"report not written: {args.report}", flush=True)
     return 0
 
 

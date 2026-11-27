@@ -32,6 +32,7 @@ PIN_RULE_MATCH = "name-state-city-v1"
 PIN_RULE_MISS = "miss"
 PIN_RULE_ADMIN = "admin"
 PIN_RULE_MAPS = "maps-mismatch"
+PIN_RULE_MAPS_RESULT = "maps-result"
 _CITY_POINTS: dict[tuple[str, str], tuple[float, float] | None] = {}
 PLACE_LIMIT = 30
 PLACE_WINDOW_SECONDS = 10 * 60

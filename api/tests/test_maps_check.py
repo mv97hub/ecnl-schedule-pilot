@@ -1,4 +1,4 @@
-"""The Maps check reads the first result for the site's own search query."""
+"""The Maps check stores a readable first result when the state matches."""
 
 from __future__ import annotations
 
@@ -8,25 +8,26 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.maps_check import (
-    compare_pin,
-    field_query,
-    is_named_example,
-    maps_search_link,
-    parse_first_maps_result,
-)
+from app.maps_check import accept_result, field_query, is_named_example, maps_search_link, parse_first_maps_result
 
 CLAY = "Clay County Regional Sports Complex"
 MIDDLEBURG = (29.9994006, -81.8938394)
-PORT_ST_LUCIE = (27.2939, -80.3503)
 CLAY_BODY = """
 )]}'
 [["Clay County Regional Sports Complex, Middleburg, FL", [
   ["ignore", "this"],
   ["4790 Victory Ln", "Middleburg, FL 32068"],
   [null, null, 29.9994006, -81.8938394],
-  [null, null, 27.2939, -80.3503]
+  [null, null, 27.32148, -80.40356]
 ]]]
+"""
+COPPELL_BODY = """
+)]}'
+[["Coppell Middle School North, Coppell, TX",
+  [null, null, 32.9832707, -96.9912703],
+  "Middle School North, 120 Natches Trce, Coppell, TX 75019",
+  "Coppell, TX 75019"
+]]
 """
 
 
@@ -44,31 +45,44 @@ class MapsCheckTests(unittest.TestCase):
         self.assertEqual(place.state, "FL")
         self.assertAlmostEqual(place.latitude, MIDDLEBURG[0])
         self.assertAlmostEqual(place.longitude, MIDDLEBURG[1])
-
-    def test_port_st_lucie_pin_is_not_kept(self) -> None:
-        place = parse_first_maps_result(CLAY_BODY)
-        comparison = compare_pin("Middleburg", "FL", PORT_ST_LUCIE[0], PORT_ST_LUCIE[1], place)
-        self.assertFalse(comparison.keep)
-        self.assertEqual(comparison.reason, "pin-other-place")
         self.assertTrue(is_named_example(CLAY, "Middleburg", "FL"))
 
-    def test_pin_at_the_first_result_is_kept_and_not_called_verified(self) -> None:
+    def test_middleburg_result_is_saved_for_florida(self) -> None:
         place = parse_first_maps_result(CLAY_BODY)
-        comparison = compare_pin("Middleburg", "FL", MIDDLEBURG[0], MIDDLEBURG[1], place)
-        self.assertTrue(comparison.keep)
-        self.assertEqual(comparison.reason, "kept")
+        decision = accept_result("FL", place)
+        self.assertTrue(decision.keep)
+        self.assertEqual(decision.reason, "saved")
 
-    def test_result_in_another_city_is_not_kept(self) -> None:
-        body = ')]}\'\n[[["1 Harbor Dr", "Port St. Lucie, FL 34952"], [null, null, 27.2939, -80.3503]]]'
+    def test_neighboring_city_is_saved_when_the_state_matches(self) -> None:
+        body = ')]}\'\n[[["1 Stadium Dr", "Davie, FL 33314"], [null, null, 26.0765, -80.2521]]]'
         place = parse_first_maps_result(body)
-        comparison = compare_pin("Middleburg", "FL", PORT_ST_LUCIE[0], PORT_ST_LUCIE[1], place)
-        self.assertFalse(comparison.keep)
-        self.assertEqual(comparison.reason, "result-other-place")
+        assert place is not None
+        self.assertEqual(place.city, "Davie")
+        decision = accept_result("FL", place)
+        self.assertTrue(decision.keep)
+        self.assertEqual(decision.reason, "saved")
 
-    def test_unreadable_result_does_not_count_as_a_match(self) -> None:
-        comparison = compare_pin("Middleburg", "FL", MIDDLEBURG[0], MIDDLEBURG[1], parse_first_maps_result("<html></html>"))
-        self.assertFalse(comparison.keep)
-        self.assertEqual(comparison.reason, "no-result")
+    def test_other_state_is_not_saved(self) -> None:
+        body = ')]}\'\n[[["1 Harbor Dr", "Port St. Lucie, GA 34952"], [null, null, 27.32148, -80.40356]]]'
+        place = parse_first_maps_result(body)
+        decision = accept_result("FL", place)
+        self.assertFalse(decision.keep)
+        self.assertEqual(decision.reason, "state-mismatch")
+
+    def test_unreadable_result_is_left_blank(self) -> None:
+        decision = accept_result("FL", parse_first_maps_result("<html></html>"))
+        self.assertFalse(decision.keep)
+        self.assertEqual(decision.reason, "no-result")
+
+    def test_coppell_uses_the_city_line_and_the_first_point(self) -> None:
+        place = parse_first_maps_result(COPPELL_BODY)
+        self.assertIsNotNone(place)
+        assert place is not None
+        self.assertEqual(place.city, "Coppell")
+        self.assertEqual(place.state, "TX")
+        self.assertAlmostEqual(place.latitude, 32.9832707)
+        self.assertAlmostEqual(place.longitude, -96.9912703)
+        self.assertTrue(accept_result("TX", place).keep)
 
 
 if __name__ == "__main__":

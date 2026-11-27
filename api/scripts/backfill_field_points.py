@@ -30,9 +30,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.database import SessionLocal
 from app.locations import _complexes, _is_tbd, _save_map_geocode
 from app.models import VenueFieldPoint
-from app.places import PIN_RULE_ADMIN, PIN_RULE_MAPS, PIN_RULE_MATCH, PIN_RULE_MISS, PlacesUnavailable, lookup_field_pin
+from app.places import PIN_RULE_ADMIN, PIN_RULE_MAPS, PIN_RULE_MAPS_RESULT, PIN_RULE_MATCH, PIN_RULE_MISS, PlacesUnavailable, lookup_field_pin
 
-_DECIDED = frozenset({PIN_RULE_MATCH, PIN_RULE_MISS, PIN_RULE_ADMIN, PIN_RULE_MAPS})
+_DECIDED = frozenset({PIN_RULE_MATCH, PIN_RULE_MISS, PIN_RULE_ADMIN, PIN_RULE_MAPS, PIN_RULE_MAPS_RESULT})
 
 
 def main() -> int:
@@ -48,6 +48,7 @@ def main() -> int:
     unavailable = 0
     try:
         buckets = list(_complexes(session, datetime.now(UTC)).values())
+        print(f"fields={len(buckets)}", flush=True)
         for index, bucket in enumerate(buckets):
             name, city, state = bucket.venue_name, bucket.city, bucket.state
             if _is_tbd(name) or not city or not state:
@@ -74,6 +75,10 @@ def main() -> int:
             if index + 1 < len(buckets):
                 time.sleep(max(0.0, args.sleep))
     finally:
+        print(
+            f"accepted={len(accepted)} rejected={len(rejected)} skipped={skipped} unavailable={unavailable}",
+            flush=True,
+        )
         session.close()
 
     report = Path(args.report)
@@ -97,8 +102,7 @@ def main() -> int:
         ]
     )
     report.write_text(body, encoding="utf-8")
-    print(f"Wrote {report.resolve()}")
-    print(f"accepted={len(accepted)} rejected={len(rejected)} skipped={skipped} unavailable={unavailable}")
+    print(f"Wrote {report.resolve()}", flush=True)
     return 0
 
 
