@@ -11,6 +11,13 @@ function searchQuery(value: string): string {
   return value.replace(/[\n\r]/g, "").slice(0, 80);
 }
 
+function coordinate(value: string, low: number, high: number): number | null {
+  if (!/^-?\d+(?:\.\d+)?$/.test(value)) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < low || parsed > high) return null;
+  return parsed;
+}
+
 function backHref(query: string, notice: string): string {
   const params = new URLSearchParams();
   if (query) params.set("q", query);
@@ -64,11 +71,20 @@ export async function POST(request: NextRequest): Promise<Response> {
     if (venueKeys.length > 25) return redirectTo(backHref(query, "too-many"), [], request);
     return forward(request, gate.token, `${await apiOrigin()}/admin/field-pins/lookup`, { venue_keys: venueKeys }, query, "lookup");
   }
+  if (action === "retry") {
+    const done = form
+      .getAll("done")
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .slice(0, 500);
+    return retryFailed(request, gate.token, query, done, textValue(form.get("format")) === "json");
+  }
   if (action === "manual") {
-    const latitude = Number(textValue(form.get("latitude")));
-    const longitude = Number(textValue(form.get("longitude")));
+    const latitude = coordinate(textValue(form.get("latitude")), -90, 90);
+    const longitude = coordinate(textValue(form.get("longitude")), -180, 180);
     const venueKey = textValue(form.get("venue_key"));
-    if (!venueKey || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return redirectTo(failed, [], request);
+    if (!venueKey || latitude == null || longitude == null) return redirectTo(backHref(query, "coords"), [], request);
     return forward(
       request,
       gate.token,
@@ -123,6 +139,51 @@ async function forward(request: NextRequest, token: string, url: string, body: u
   params.set("saved", String(typeof counts.saved === "number" ? counts.saved : 0));
   params.set("failed", String(typeof counts.failed === "number" ? counts.failed : 0));
   params.set("skipped", String(typeof counts.skipped === "number" ? counts.skipped : 0));
+  return redirectTo(`/admin/field-pins?${params.toString()}`, [], request);
+}
+
+async function retryFailed(request: NextRequest, token: string, query: string, done: string[], wantsJson: boolean): Promise<Response> {
+  const failed = backHref(query, "error");
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${await apiOrigin()}/admin/field-pins/retry`, {
+      method: "POST",
+      headers: { accept: "application/json", authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ done }),
+      cache: "no-store",
+    });
+  } catch {
+    return wantsJson ? Response.json({ detail: "unavailable" }, { status: 502 }) : redirectTo(failed, [], request);
+  }
+  if (upstream.status === 401) return redirectTo(`/profile?next=${encodeURIComponent(backHref(query, ""))}`, [], request);
+  if (upstream.status === 403) return redirectTo("/", [], request);
+  if (!upstream.ok) return wantsJson ? Response.json({ detail: "unavailable" }, { status: 502 }) : redirectTo(failed, [], request);
+  let payload: unknown;
+  try {
+    payload = await upstream.json();
+  } catch {
+    return wantsJson ? Response.json({ detail: "unavailable" }, { status: 502 }) : redirectTo(failed, [], request);
+  }
+  const body = payload as { saved?: unknown; failed?: unknown; skipped?: unknown; remaining?: unknown; tried?: unknown };
+  const result = {
+    saved: typeof body.saved === "number" ? body.saved : 0,
+    failed: typeof body.failed === "number" ? body.failed : 0,
+    skipped: typeof body.skipped === "number" ? body.skipped : 0,
+    remaining: typeof body.remaining === "number" ? body.remaining : 0,
+    tried: Array.isArray(body.tried) ? body.tried.filter((key): key is string => typeof key === "string") : [],
+  };
+  if (wantsJson) {
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: { "content-type": "application/json", "cache-control": "private, no-store" },
+    });
+  }
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  params.set("notice", "retry");
+  params.set("saved", String(result.saved));
+  params.set("failed", String(result.failed));
+  params.set("skipped", String(result.skipped));
   return redirectTo(`/admin/field-pins?${params.toString()}`, [], request);
 }
 

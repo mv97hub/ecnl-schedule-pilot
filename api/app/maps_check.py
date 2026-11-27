@@ -118,6 +118,30 @@ def lookup_skips(pin_rule: str | None, latitude: float | None, longitude: float 
     return latitude is not None and longitude is not None
 
 
+def retry_eligible(pin_rule: str | None, latitude: float | None, longitude: float | None) -> bool:
+    """A field with no coordinates can be looked up again. A failed attempt does not block that.
+
+    A manual pin is never eligible, even when its coordinates are the ones an admin entered.
+    """
+
+    return not lookup_skips(pin_rule, latitude, longitude)
+
+
+_COORDINATE = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def manual_coordinate(value: str, low: float, high: float) -> float | None:
+    """Accept a pasted latitude or longitude, including a long decimal such as a map click."""
+
+    text = value.strip()
+    if _COORDINATE.fullmatch(text) is None:
+        return None
+    number = float(text)
+    if number < low or number > high:
+        return None
+    return number
+
+
 def pin_source(pin_rule: str | None) -> str:
     if (pin_rule or "") in MANUAL_PIN_RULES:
         return "Manual"
