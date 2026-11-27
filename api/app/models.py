@@ -473,6 +473,34 @@ class VenueRecommendation(Base):
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     auto_hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    place_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    place_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    matched_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    formatted_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    place_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class VenueFieldPoint(Base):
+    """One geocoded complex. Filled the first time a hotel or restaurant tip asks for the field."""
+
+    __tablename__ = "venue_field_point"
+    __table_args__ = (
+        CheckConstraint("status IN ('found', 'miss', 'skipped')", name="ck_venue_field_point_status"),
+    )
+
+    venue_key: Mapped[str] = mapped_column(String(300), primary_key=True)
+    venue_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    city: Mapped[str] = mapped_column(String(80), nullable=False)
+    state: Mapped[str] = mapped_column(String(2), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    place_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    formatted_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
 
 
 class AppUser(Base):

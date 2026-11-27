@@ -415,6 +415,9 @@ export type LocationTip = {
   created_at: string;
   map_url: string;
   edited?: boolean;
+  matched_name?: string | null;
+  formatted_address?: string | null;
+  place_provider?: string | null;
 };
 
 export type LocationAggregate = {

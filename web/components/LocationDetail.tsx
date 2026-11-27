@@ -6,6 +6,8 @@ import { useParams, usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { CommentBox, RATING_PLACEHOLDER, TIP_PLACEHOLDER, TermsCheckbox } from "@/components/CommentFields";
+import { PlaceAddress, tipDisplayName } from "@/components/PlaceCredit";
+import { PlaceNameInput } from "@/components/PlaceNameInput";
 import { ReportTip } from "@/components/ReportTip";
 import { TipVotes, sortTips } from "@/components/TipVotes";
 import { acceptTerms, fetchLocationDetail, postRating, postRecommendation, voteRecommendation } from "@/lib/api";
@@ -210,6 +212,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
   const [pendingVote, setPendingVote] = useState<number | null>(null);
   const [agreed, setAgreed] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [placeId, setPlaceId] = useState<string | null>(null);
   const needsTerms = Boolean(account && !account.terms_accepted && !termsAccepted);
 
   useEffect(() => {
@@ -325,8 +328,10 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
         rating: tipStars,
         review_text: review.trim(),
         tags,
+        place_id: category === "HOTEL" || category === "RESTAURANT" ? placeId : null,
       });
       setTitle("");
+      setPlaceId(null);
       setTipStars(0);
       setTags([]);
       setReview("");
@@ -519,10 +524,11 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                     <li key={tip.id} className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <h3 className="text-base font-semibold text-navy">{tip.title}</h3>
+                          <h3 className="text-base font-semibold text-navy">{tipDisplayName(tip)}</h3>
                           <div className="mt-1">
                             <StarRow value={tip.rating} />
                           </div>
+                          <PlaceAddress tip={tip} />
                         </div>
                         <a href={tip.map_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-navy underline-offset-4 hover:underline">
                           Map
@@ -584,7 +590,15 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <label htmlFor="tip-category" className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
                     Category
-                    <select id="tip-category" value={category} onChange={(event) => setCategory(event.target.value as TipCategory)} className={field}>
+                    <select
+                      id="tip-category"
+                      value={category}
+                      onChange={(event) => {
+                        setCategory(event.target.value as TipCategory);
+                        setPlaceId(null);
+                      }}
+                      className={field}
+                    >
                       {CATEGORIES.map((item) => (
                         <option key={item.id} value={item.id}>
                           {item.label}
@@ -592,10 +606,16 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                       ))}
                     </select>
                   </label>
-                  <label htmlFor="tip-title" className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
-                    Place name
-                    <input id="tip-title" value={title} onChange={(event) => setTitle(event.target.value)} className={field} />
-                  </label>
+                  <PlaceNameInput
+                    id="tip-title"
+                    category={category}
+                    venue={detail}
+                    value={title}
+                    onChange={setTitle}
+                    placeId={placeId}
+                    onPlaceId={setPlaceId}
+                    className={field}
+                  />
                 </div>
                 <div className="mt-3">
                   <ScorePicker label="Stars" value={tipStars} onChange={setTipStars} />

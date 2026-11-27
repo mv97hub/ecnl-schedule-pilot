@@ -157,6 +157,39 @@ export function postRecommendation(body: unknown): Promise<LocationTip> {
   return sendJson<LocationTip>("/locations/recommendations", body);
 }
 
+export type FieldPoint = {
+  venue_key: string;
+  status: "found" | "miss" | "skipped";
+  formatted_address: string | null;
+  map_url: string | null;
+};
+
+export function fetchFieldPoint(venue: { venue_name: string; city: string; state: string }): Promise<FieldPoint> {
+  const params = new URLSearchParams({
+    venue_name: venue.venue_name,
+    city: venue.city,
+    state: venue.state,
+  });
+  return siteRequest<FieldPoint>(`/locations/field-point?${params.toString()}`);
+}
+
+export type PlaceSuggestion = {
+  place_id: string;
+  name: string;
+  formatted_address: string;
+};
+
+export function fetchPlaceSuggestions(
+  venueKey: string,
+  category: "HOTEL" | "RESTAURANT",
+  q: string,
+): Promise<PlaceSuggestion[]> {
+  const params = new URLSearchParams({ venue_key: venueKey, category, q });
+  return siteRequest<{ suggestions: PlaceSuggestion[] }>(`/locations/places?${params.toString()}`).then(
+    (body) => body.suggestions,
+  );
+}
+
 export function voteRecommendation(id: number, choice: "up" | "down"): Promise<LocationTip> {
   return sendJson<LocationTip>(`/locations/recommendations/${id}/vote`, { choice });
 }

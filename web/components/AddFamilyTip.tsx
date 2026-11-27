@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { CommentBox, TIP_PLACEHOLDER, TermsCheckbox } from "@/components/CommentFields";
+import { PlaceNameInput } from "@/components/PlaceNameInput";
 import { acceptTerms, fetchClubLocations, postRecommendation } from "@/lib/api";
 import type { LocationCard, TipCategory } from "@/lib/types";
 import { signInHref, useAccount } from "@/lib/useAccount";
@@ -51,6 +52,7 @@ export function AddFamilyTip() {
   const [saving, setSaving] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [placeId, setPlaceId] = useState<string | null>(null);
   const needsTerms = Boolean(account && !account.terms_accepted && !termsAccepted);
 
   useEffect(() => {
@@ -125,6 +127,7 @@ export function AddFamilyTip() {
         rating: tipStars,
         review_text: review.trim(),
         tags,
+        place_id: category === "HOTEL" || category === "RESTAURANT" ? placeId : null,
       });
       router.push(backHref);
     } catch (err: unknown) {
@@ -191,7 +194,10 @@ export function AddFamilyTip() {
                 <select
                   id="club-tip-category"
                   value={category}
-                  onChange={(event) => setCategory(event.target.value as TipCategory)}
+                  onChange={(event) => {
+                    setCategory(event.target.value as TipCategory);
+                    setPlaceId(null);
+                  }}
                   className={fieldClass}
                 >
                   {CATEGORIES.map((item) => (
@@ -201,10 +207,16 @@ export function AddFamilyTip() {
                   ))}
                 </select>
               </label>
-              <label htmlFor="club-tip-title" className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
-                Place name
-                <input id="club-tip-title" value={title} onChange={(event) => setTitle(event.target.value)} className={fieldClass} />
-              </label>
+              <PlaceNameInput
+                id="club-tip-title"
+                category={category}
+                venue={selected}
+                value={title}
+                onChange={setTitle}
+                placeId={placeId}
+                onPlaceId={setPlaceId}
+                className={fieldClass}
+              />
             </div>
             <fieldset className="mt-3">
               <legend className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Stars</legend>
