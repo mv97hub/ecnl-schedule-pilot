@@ -20,7 +20,7 @@ from app.database import engine, ensure_location_columns
 from app.locations import make_venue_key
 from app.main import app
 from app.models import Base, LocationWriteEvent, VenueFieldPoint, VenueRecommendation
-from app.places import SEARCH_RADIUS_METERS, category_fits, miles_between, reset_place_rate_limit
+from app.places import NEAR_MILES, SEARCH_RADIUS_METERS, category_fits, miles_between, reset_place_rate_limit
 
 SECRET = "probe-place-secret"
 KEY = "super-secret-geoapify-key"
@@ -187,6 +187,27 @@ class PlaceLookupTests(unittest.TestCase):
                 return _Response({"features": [_place_feature(place_id, "Far Inn", ["accommodation.hotel"], 40.0, -105.0)]})
             return _Response({"features": [_place_feature(HOTEL_ID, "Hilton Probeplace", ["accommodation.hotel"])]})
         if url.endswith("/places") or "/v2/places" in url:
+            if str(query.get("name") or "") == "Named":
+                return _Response(
+                    {
+                        "features": [
+                            {
+                                "properties": {
+                                    "name": "Hilton Probeplace",
+                                    "address_line1": "Hilton Probeplace",
+                                    "address_line2": "100 Main Street, Probeplace, FL 32000, United States",
+                                    "city": "Probeplace",
+                                    "state_code": "fl",
+                                    "postcode": "32000",
+                                    "formatted": "Hilton Probeplace, 100 Main Street, Probeplace, FL 32000, United States",
+                                    "place_id": HOTEL_ID,
+                                    "lat": HOTEL_LAT,
+                                    "lon": HOTEL_LON,
+                                }
+                            }
+                        ]
+                    }
+                )
             return _Response(
                 {
                     "features": [
@@ -231,8 +252,9 @@ class PlaceLookupTests(unittest.TestCase):
         self.assertTrue(category_fits("HOTEL", ("accommodation.hotel",)))
         self.assertFalse(category_fits("HOTEL", ("catering.cafe",)))
         self.assertTrue(category_fits("RESTAURANT", ("catering.fast_food",)))
-        self.assertLess(miles_between(FIELD_LAT, FIELD_LON, HOTEL_LAT, HOTEL_LON), 10)
-        self.assertGreater(miles_between(FIELD_LAT, FIELD_LON, 40.0, -105.0), 10)
+        self.assertEqual(NEAR_MILES, 20.0)
+        self.assertLess(miles_between(FIELD_LAT, FIELD_LON, HOTEL_LAT, HOTEL_LON), NEAR_MILES)
+        self.assertGreater(miles_between(FIELD_LAT, FIELD_LON, 40.0, -105.0), NEAR_MILES)
 
     def test_field_point_is_geocoded_once_and_hides_the_key(self) -> None:
         with TestClient(app) as client, patch("app.places.httpx.get", side_effect=self._fake_get):
@@ -360,8 +382,19 @@ class PlaceLookupTests(unittest.TestCase):
             self.assertIsInstance(params, dict)
             self.assertEqual(params["name"], "Hilton")
             self.assertEqual(params["bias"], f"proximity:{FIELD_LON:.6f},{FIELD_LAT:.6f}")
-            self.assertEqual(SEARCH_RADIUS_METERS, 16093)
+            self.assertEqual(SEARCH_RADIUS_METERS, 32187)
             self.assertEqual(params["filter"], f"circle:{FIELD_LON:.6f},{FIELD_LAT:.6f},{SEARCH_RADIUS_METERS}")
+
+            named = client.get(
+                "/locations/places",
+                params={"venue_key": venue_key, "category": "HOTEL", "q": "Named"},
+                headers=headers,
+            )
+            self.assertEqual(named.status_code, 200, named.text)
+            named_hit = named.json()["suggestions"][0]
+            self.assertEqual(named_hit["name"], "Hilton Probeplace")
+            self.assertEqual(named_hit["street"], "100 Main Street")
+            self.assertNotEqual(named_hit["street"], named_hit["name"])
             self.assertIn("accommodation.hotel", str(params["categories"]))
             self.assertNotIn("1.000000", str(params["filter"]))
 

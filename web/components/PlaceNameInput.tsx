@@ -175,10 +175,12 @@ export function PlaceNameInput({
   }
 
   function choose(item: PlaceSuggestion) {
+    const street = item.street.trim();
+    const namedStreet = street.localeCompare(item.name.trim(), undefined, { sensitivity: "accent" }) === 0;
     onChange(item.name);
     onPlaceId(item.place_id);
     onAddress({
-      street: item.street || item.formatted_address,
+      street: namedStreet ? "" : street,
       city: item.city,
       state: item.state,
       postalCode: item.postal_code,
