@@ -43,7 +43,7 @@ function fallbackCard(mark: string) {
     shell(
       <div style={{ display: "flex", flexDirection: "column", flexGrow: 1, justifyContent: "center", border: "2px solid #F2B705", borderRadius: 28, padding: "48px" }}>
         <div style={{ display: "flex", fontSize: 22, letterSpacing: 3, color: "#F2B705" }}>{mark}</div>
-        <div style={{ display: "flex", marginTop: 16, fontSize: 64, fontWeight: 700 }}>Head-to-Head</div>
+        <div style={{ display: "flex", marginTop: 16, fontSize: 64, fontWeight: 700 }}>Match Up</div>
         <div style={{ display: "flex", marginTop: 18, fontSize: 28, color: "#cbd5e1" }}>Choose two teams to preview a matchup.</div>
       </div>,
     ),

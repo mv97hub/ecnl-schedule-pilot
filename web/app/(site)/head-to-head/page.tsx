@@ -32,7 +32,7 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
   const teamA = teamId(query.teamA);
   const teamB = teamId(query.teamB);
   if (teamA == null || teamB == null || teamA === teamB) {
-    return { title: "Head-to-Head | ECNL" };
+    return { title: "Match Up | ECNL" };
   }
   try {
     const data = await fetchHeadToHead(teamA, teamB, conferenceOnly(query));
@@ -46,7 +46,7 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
       twitter: { card: "summary_large_image", title, description, images: [image] },
     };
   } catch {
-    return { title: "Head-to-Head | ECNL" };
+    return { title: "Match Up | ECNL" };
   }
 }
 

@@ -282,7 +282,7 @@ export function StandingsBoard() {
   return (
     <div className="min-h-full bg-bone">
       <main className="mx-auto max-w-6xl px-6 py-8">
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Conference standings</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Standings</h1>
         {projected ? null : <p className="mt-1 text-sm text-slate-500">Sorted by points per game, then goal difference and goals for.</p>}
 
         <div className="mt-6 inline-flex items-center gap-0.5 rounded-lg bg-white p-1 ring-1 ring-stone-200" role="group" aria-label="Current or projected">

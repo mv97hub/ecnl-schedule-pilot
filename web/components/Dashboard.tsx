@@ -364,7 +364,7 @@ export function Dashboard() {
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gold">
               Elite Clubs National League
             </p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight">ECNL {genderWord} Schedule</h1>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight">Schedules</h1>
             <p className="mt-1 text-sm text-bone/75">
               {tier} {genderWord} · 2026–27
             </p>
