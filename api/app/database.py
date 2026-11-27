@@ -306,6 +306,8 @@ def ensure_location_columns() -> None:
         _add_timestamp(connection, "venue_recommendation", "accepted_at", nullable=True)
         if _table_exists(connection, "venue_field_point") and not _column_exists(connection, "venue_field_point", "geocode_kind"):
             connection.execute(text("ALTER TABLE venue_field_point ADD COLUMN geocode_kind varchar(16)"))
+        if _table_exists(connection, "venue_field_point") and not _column_exists(connection, "venue_field_point", "pin_rule"):
+            connection.execute(text("ALTER TABLE venue_field_point ADD COLUMN pin_rule varchar(32)"))
         _add_timestamp(connection, "venue_tip_vote", "updated_at", nullable=False)
         if not _table_exists(connection, "location_write_event"):
             return
