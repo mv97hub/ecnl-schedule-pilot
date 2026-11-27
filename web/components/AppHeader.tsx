@@ -92,7 +92,7 @@ function AppHeaderBar({ path, query, view = null, scheduleBoard = false }: { pat
               aria-current={locations ? "page" : undefined}
               className={`rounded-full px-3 py-1.5 ${locations ? "bg-gold text-navy" : "text-bone/80 hover:bg-white/10"}`}
             >
-              Locations Guide
+              Places
             </Link>
           </nav>
         </div>

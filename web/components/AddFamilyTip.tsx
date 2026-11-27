@@ -137,7 +137,7 @@ export function AddFamilyTip() {
     <div className="min-h-full bg-bone">
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
         <Link href={backHref} className="text-sm font-medium text-navy underline-offset-4 hover:underline">
-          {clubName ? clubName : "Locations Guide"}
+          {clubName ? clubName : "Places"}
         </Link>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-navy">Add a family tip</h1>
         <p className="mt-1 text-sm text-stone-500">Pick one of this club’s fields, then add the tip. It shows with the other tips for those fields.</p>
