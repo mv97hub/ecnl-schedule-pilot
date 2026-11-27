@@ -1,17 +1,18 @@
 """Admin list of accounts. Newest first, one page at a time.
 
 Calendar links and session tokens are not part of this response.
+The terms list is the same accounts, with whether each one accepted the current terms.
 """
 
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, not_, or_, select
 from sqlalchemy.orm import Session
 
-from app.auth import require_admin, require_bearer
+from app.auth import TERMS_VERSION, has_current_terms, require_admin, require_bearer
 from app.clubs import club_location_source
 from app.database import get_session
 from app.models import AppUser, AuthIdentity, ScheduleTeam, UserFavorite, UserHomeAddress
@@ -169,3 +170,88 @@ def list_users(
             )
         )
     return AdminUserPage(page=page, total=total, rows=rows)
+
+
+class AdminTermsOut(BaseModel):
+    id: int
+    display_name: str
+    email: str | None
+    terms_accepted_at: datetime | None
+    terms_version: str | None
+    terms_accepted: bool
+
+
+class AdminTermsPage(BaseModel):
+    page: int
+    total: int
+    terms_version: str
+    rows: list[AdminTermsOut]
+
+
+def _terms_row(user: AppUser) -> AdminTermsOut:
+    return AdminTermsOut(
+        id=int(user.id),
+        display_name=user.display_name,
+        email=user.email,
+        terms_accepted_at=user.terms_accepted_at,
+        terms_version=user.terms_version,
+        terms_accepted=has_current_terms(user),
+    )
+
+
+@router.get("/admin/terms", response_model=AdminTermsPage)
+def list_terms(
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+    q: Annotated[str | None, Query(description="Name or email")] = None,
+    accepted: Annotated[str | None, Query(description="yes or no for the current terms")] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+) -> AdminTermsPage:
+    """One page of accounts and whether each has accepted the current terms."""
+
+    require_admin(session, token)
+    choice = (accepted or "").strip().lower()
+    if choice and choice not in {"yes", "no"}:
+        raise HTTPException(status_code=400, detail="accepted must be yes or no")
+    statement = select(AppUser)
+    needle = (q or "").strip()[:200]
+    if needle:
+        like = _like(needle)
+        statement = statement.where(
+            or_(
+                AppUser.display_name.ilike(like, escape="\\"),
+                AppUser.email.ilike(like, escape="\\"),
+            )
+        )
+    current = and_(AppUser.terms_accepted_at.is_not(None), AppUser.terms_version == TERMS_VERSION)
+    if choice == "yes":
+        statement = statement.where(current)
+    elif choice == "no":
+        statement = statement.where(not_(current))
+    total = int(session.scalar(select(func.count()).select_from(statement.subquery())) or 0)
+    offset = (page - 1) * PAGE_SIZE
+    users = list(
+        session.scalars(
+            statement.order_by(AppUser.created_at.desc(), AppUser.id.desc()).offset(offset).limit(PAGE_SIZE)
+        ).all()
+    )
+    return AdminTermsPage(page=page, total=total, terms_version=TERMS_VERSION, rows=[_terms_row(user) for user in users])
+
+
+@router.post("/admin/terms/{user_id}/revoke", response_model=AdminTermsOut)
+def revoke_terms(
+    user_id: int,
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+) -> AdminTermsOut:
+    """Clear stored acceptance. The next review or tip asks this account to agree again."""
+
+    require_admin(session, token)
+    user = session.get(AppUser, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    user.terms_accepted_at = None
+    user.terms_version = None
+    session.commit()
+    session.refresh(user)
+    return _terms_row(user)
