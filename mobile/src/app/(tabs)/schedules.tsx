@@ -4,12 +4,12 @@ import { useMemo, useState } from "react";
 import { Modal, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { VenueLine } from "@/components/VenueLine";
 import { Chip, Crest, GoldButton, Hit, Loading, Notice, OutlineButton, PreferencesButton, ResultBadge, SavedDataNote, Segmented } from "@/components/ui";
 import { fetchSchedule, fetchTeams } from "@/lib/api";
 import { formatKickoff } from "@/lib/format";
 import { CONFERENCES, TIERS, ageGroupsFor, type LeagueGender } from "@/lib/leagues";
-import { openMaps } from "@/lib/maps";
-import { countdown, kickoffStillAhead, placeLabel, shortConference, teamScoreline, wdlFromSummary } from "@/lib/present";
+import { countdown, kickoffStillAhead, shortConference, teamScoreline, wdlFromSummary } from "@/lib/present";
 import { useFavorites } from "@/store/favorites";
 import { useSession } from "@/store/session";
 import { colors } from "@/theme";
@@ -155,26 +155,23 @@ export default function SchedulesScreen() {
           <Text style={{ color: colors.ink, fontSize: 22, fontWeight: "800" }}>Upcoming</Text>
           {upcoming.length === 0 && !schedule.isPending ? <Text style={{ color: colors.secondary }}>No upcoming games in this filter.</Text> : null}
           {upcoming.map((game, index) => (
-            <Hit key={game.id} label={`Open matchup against ${game.opponent.name}`} onPress={() => openMatchup(game)} style={{ flexDirection: "row", gap: 12 }}>
+            <View key={game.id} style={{ flexDirection: "row", gap: 12 }}>
               <View style={{ width: 16, alignItems: "center" }}>
                 <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.navy, marginTop: 6 }} />
                 {index < upcoming.length - 1 ? <View style={{ width: 2, flex: 1, backgroundColor: colors.line }} /> : null}
               </View>
               <View style={{ flex: 1, paddingBottom: 12, gap: 4 }}>
-                <Text style={{ color: colors.secondary }}>{formatKickoff(game.starts_at, game.timezone).day} · {formatKickoff(game.starts_at, game.timezone).clock}</Text>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Crest uri={game.opponent.logo_url} name={game.opponent.name} size={28} />
-                  <Text style={{ color: colors.ink, fontWeight: "800", flex: 1 }}>{game.side === "home" ? "Home" : "Away"} · {game.opponent.name}</Text>
-                </View>
-                <Text
-                  style={{ color: colors.navy, fontWeight: "700" }}
-                  onPress={() => openMaps({ name: game.venue_name, city: game.city, state: game.state })}
-                >
-                  {placeLabel(game.venue_name, game.city, game.state, game.field_name)}
-                </Text>
+                <Hit label={`Open matchup against ${game.opponent.name}`} onPress={() => openMatchup(game)}>
+                  <Text style={{ color: colors.secondary }}>{formatKickoff(game.starts_at, game.timezone).day} · {formatKickoff(game.starts_at, game.timezone).clock}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Crest uri={game.opponent.logo_url} name={game.opponent.name} size={28} />
+                    <Text style={{ color: colors.ink, fontWeight: "800", flex: 1 }}>{game.side === "home" ? "Home" : "Away"} · {game.opponent.name}</Text>
+                  </View>
+                </Hit>
+                <VenueLine name={game.venue_name} city={game.city} state={game.state} field={game.field_name} />
                 {game.status === "POSTPONED" ? <Text style={{ color: colors.draw, fontWeight: "800" }}>Postponed</Text> : null}
               </View>
-            </Hit>
+            </View>
           ))}
 
           {awaitingScore.length > 0 ? (

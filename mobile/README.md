@@ -2,7 +2,7 @@
 
 A schedule companion for ECNL families. It is not affiliated with, endorsed by, or sponsored by ECNL.
 
-The app lives in this folder so the Render web build under `web/` stays unchanged. Favorites (up to 4 teams and 1 club) stay on the device. The app does not send a profile key or other personal data.
+The app lives in this folder so the Render web build under `web/` stays unchanged. Favorites (up to 4 teams and 1 club) stay on the device. Sign-in is optional. The device profile key is still never sent. Schedule and standings calls stay unsigned.
 
 ## API
 
@@ -12,7 +12,7 @@ Requests go to `EXPO_PUBLIC_API_URL` when that variable is set at build time. Ot
 
 `/backend` is a proxy on the website. It forwards to the FastAPI service (`NEXT_PUBLIC_API_URL`).
 
-Home calls `GET /mobile/dashboard` from the API pull request. Schedules, tables, matchup, and club call the existing `/teams`, `/teams/{id}/schedule`, `/standings`, `/standings/predicted`, `/head-to-head`, and `/clubs` routes.
+Home calls `GET /mobile/dashboard`. Schedules, tables, matchup, and club call the existing `/teams`, `/teams/{id}/schedule`, `/standings`, `/standings/predicted`, `/head-to-head`, and `/clubs` routes. Places calls `/locations/club` and `/locations/detail`. Signed-in rating, comment, vote, favorites, address, and calendar calls send `Authorization: Bearer`.
 
 ## Checks
 

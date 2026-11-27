@@ -3,6 +3,7 @@ import { Keyboard, Text, TextInput, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 
 import { Chip, Crest, GoldButton, Hit, OutlineButton } from "@/components/ui";
+import { useAccount } from "@/store/account";
 import { fetchClub, fetchClubs, fetchTeams, requestErrorText } from "@/lib/api";
 import type { LeagueGender } from "@/lib/leagues";
 import { MAX_FAVORITE_TEAMS, useFavorites } from "@/store/favorites";
@@ -47,6 +48,7 @@ export function FavoritesEditor({
   doneLabel?: string;
   section?: "club" | "teams" | "all";
 }) {
+  const syncNote = useAccount((state) => state.favoritesSyncNote);
   const clubId = useFavorites((state) => state.favoriteClubId);
   const teamIds = useFavorites((state) => state.favoriteTeamIds);
   const setClub = useFavorites((state) => state.setClub);
@@ -87,6 +89,7 @@ export function FavoritesEditor({
 
   return (
     <View style={{ gap: 16 }}>
+      {syncNote ? <Text style={{ color: colors.ink, lineHeight: 20 }}>{syncNote}</Text> : null}
       {showClub ? <View style={{ backgroundColor: colors.navy, borderRadius: 16, padding: 16, gap: 10 }}>
         <Text style={{ color: colors.gold, fontWeight: "800", letterSpacing: 0.4 }}>CLUB</Text>
         {club.data ? (
