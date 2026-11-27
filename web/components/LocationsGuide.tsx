@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ClubMark } from "@/components/ClubMark";
+import { PlaceAddress, tipDisplayName } from "@/components/PlaceCredit";
 import { ReportTip } from "@/components/ReportTip";
 import { TipVotes, sortTips } from "@/components/TipVotes";
 import { fetchClubCatalog, fetchClubLocations, voteRecommendation } from "@/lib/api";
@@ -390,17 +391,25 @@ function Tips({ tips, clubId }: { tips: ClubLocationTip[]; clubId: string }) {
             <li key={tip.id} className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <h3 className="text-base font-semibold text-navy">{tip.title}</h3>
+                  <h3 className="text-base font-semibold text-navy">{tipDisplayName(tip)}</h3>
                   <div className="mt-1">
                     <StarRow value={tip.rating} />
                   </div>
+                  <PlaceAddress tip={tip} />
                 </div>
-                <Link
-                  href={`/locations/${encodeURIComponent(tip.venue_key)}`}
-                  className="text-sm font-medium text-navy underline-offset-4 hover:underline"
-                >
-                  {tip.venue_name}
-                </Link>
+                <div className="flex flex-col items-end gap-1">
+                  <Link
+                    href={`/locations/${encodeURIComponent(tip.venue_key)}`}
+                    className="text-sm font-medium text-navy underline-offset-4 hover:underline"
+                  >
+                    {tip.venue_name}
+                  </Link>
+                  {tip.formatted_address ? (
+                    <a href={tip.map_url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-navy underline-offset-4 hover:underline">
+                      Map
+                    </a>
+                  ) : null}
+                </div>
               </div>
               <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-stone-400">{TIP_LABEL[tip.category]}</p>
               {tip.tags.length > 0 ? (

@@ -4,6 +4,9 @@ One complex is one place. Field numbers are stripped with the same split the
 schedule already uses, then the cleaned name, lowercase city, and state form
 `venue_key`. Ratings, tips, and votes require a signed-in account. Older rows
 that still use a browser `author_key` stay readable and are not rewritten.
+
+A hotel or restaurant tip can store a Geoapify match. The key stays on the
+server. Hangout, activity, and sideline tips stay free text.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth import author_for, bearer_token, has_current_terms, require_bearer, require_user, user_from_token
@@ -28,9 +32,26 @@ from app.models import (
     ContentFlag,
     LocationWriteEvent,
     ScheduleGame,
+    VenueFieldPoint,
     VenueRating,
     VenueRecommendation,
     VenueTipVote,
+)
+from app.places import (
+    MIN_QUERY_CHARS,
+    NEAR_MILES,
+    PROVIDER,
+    GeocodeHit,
+    PlaceHit,
+    PlacesBusy,
+    PlacesUnavailable,
+    category_fits,
+    claim_place_slot,
+    clean_place_id,
+    geocode_complex,
+    miles_between,
+    retrieve_place,
+    suggest_places,
 )
 
 router = APIRouter(tags=["locations"])
@@ -39,6 +60,10 @@ SurfaceVote = Literal["GRASS", "TURF", "MIXED"]
 TipCategory = Literal["HOTEL", "RESTAURANT", "COFFEE_GAP", "ACTIVITY", "SIDELINE_TIP"]
 VoteChoice = Literal["up", "down"]
 CATEGORIES = {"HOTEL", "RESTAURANT", "COFFEE_GAP", "ACTIVITY", "SIDELINE_TIP"}
+MATCH_CATEGORIES = frozenset({"HOTEL", "RESTAURANT"})
+PLACE_UNAVAILABLE = "Place lookup is unavailable"
+PLACE_BUSY = "Too many place lookups. You can still save the name as typed."
+PLACE_NOT_NEAR = "That place is not near this field. You can still save the name as typed."
 SURFACES = {"GRASS", "TURF", "MIXED"}
 TIP_TAGS = (
     "Good for Big Teams",
@@ -412,6 +437,9 @@ class RecommendationOut(BaseModel):
     created_at: datetime
     map_url: str
     edited: bool = False
+    matched_name: str | None = None
+    formatted_address: str | None = None
+    place_provider: str | None = None
 
 
 class ClubTipOut(RecommendationOut):
@@ -459,6 +487,29 @@ class RecommendationIn(BaseModel):
     review_text: str = Field(min_length=1, max_length=4000)
     tags: list[str] = Field(default_factory=list)
     author_name: str | None = Field(default=None, max_length=80)
+    place_id: str | None = Field(default=None, max_length=512)
+    formatted_address: str | None = Field(default=None, max_length=500)
+
+
+class FieldPointOut(BaseModel):
+    venue_key: str
+    status: Literal["found", "miss", "skipped"]
+    formatted_address: str | None = None
+    map_url: str | None = None
+
+
+class PlaceSuggestionOut(BaseModel):
+    place_id: str
+    name: str
+    formatted_address: str
+    street: str = ""
+    city: str = ""
+    state: str = ""
+    postal_code: str = ""
+
+
+class PlaceSuggestionsOut(BaseModel):
+    suggestions: list[PlaceSuggestionOut]
 
 
 class VoteIn(BaseModel):
@@ -581,6 +632,13 @@ def _my_votes(session: Session, tip_ids: list[int], author_key: str | None) -> d
     return {row.recommendation_id: row.choice for row in rows}
 
 
+def _tip_map_query(row: VenueRecommendation) -> str:
+    address = (row.formatted_address or "").strip()
+    if address:
+        return address
+    return _place(row.title, row.city, row.state)
+
+
 def _recommendation_out(row: VenueRecommendation, my_vote: str | None = None) -> RecommendationOut:
     return RecommendationOut(
         id=row.id,
@@ -595,8 +653,11 @@ def _recommendation_out(row: VenueRecommendation, my_vote: str | None = None) ->
         downvotes=row.downvotes,
         my_vote=my_vote if my_vote in ("up", "down") else None,
         created_at=_utc(row.created_at),
-        map_url=_maps_search(_place(row.title, row.city, row.state)),
+        map_url=_maps_search(_tip_map_query(row)),
         edited=row.edited_at is not None,
+        matched_name=row.matched_name,
+        formatted_address=row.formatted_address,
+        place_provider=row.place_provider,
     )
 
 
@@ -856,13 +917,23 @@ def _rating_values(row: VenueRating) -> dict[str, object]:
 
 
 def _tip_values(row: VenueRecommendation) -> dict[str, object]:
-    return {
+    values: dict[str, object] = {
         "category": row.category,
         "title": row.title,
         "stars": row.rating,
         "review_text": row.review_text,
         "tags": row.tags,
     }
+    if row.place_provider:
+        values["place_provider"] = row.place_provider
+        values["place_id"] = row.place_id
+        values["matched_name"] = row.matched_name
+        values["formatted_address"] = row.formatted_address
+        values["latitude"] = row.latitude
+        values["longitude"] = row.longitude
+    elif row.formatted_address:
+        values["formatted_address"] = row.formatted_address
+    return values
 
 
 def _record_write(
@@ -996,6 +1067,209 @@ def rate_location(
     return _averages_out(session, venue_key, venue_name, city, state)
 
 
+def _is_tbd(venue_name: str) -> bool:
+    return clean_venue_for_geocoding(venue_name).casefold() == "tbd"
+
+
+def _place_failure(exc: Exception) -> HTTPException:
+    if isinstance(exc, PlacesBusy):
+        return HTTPException(status_code=429, detail=PLACE_BUSY)
+    return HTTPException(status_code=503, detail=PLACE_UNAVAILABLE)
+
+
+def _insert_field_point(session: Session, row: VenueFieldPoint) -> VenueFieldPoint:
+    session.add(row)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        existing = session.get(VenueFieldPoint, row.venue_key)
+        if existing is None:
+            raise HTTPException(status_code=503, detail=PLACE_UNAVAILABLE) from None
+        return existing
+    return row
+
+
+def ensure_field_point(
+    session: Session,
+    user_id: int,
+    venue_key: str,
+    venue_name: str,
+    city: str,
+    state: str,
+) -> VenueFieldPoint:
+    """Return the cached field point, geocoding once when this complex has none."""
+
+    existing = session.get(VenueFieldPoint, venue_key)
+    if existing is not None:
+        return existing
+    skipped = _is_tbd(venue_name)
+    session.rollback()
+    now = datetime.now(UTC)
+    if skipped:
+        return _insert_field_point(
+            session,
+            VenueFieldPoint(
+                venue_key=venue_key,
+                venue_name=venue_name,
+                city=city,
+                state=state,
+                status="skipped",
+                fetched_at=now,
+            ),
+        )
+    try:
+        claim_place_slot(user_id)
+        hit: GeocodeHit | None = geocode_complex(venue_name, city, state)
+    except (PlacesBusy, PlacesUnavailable) as exc:
+        raise _place_failure(exc) from None
+    if hit is None:
+        return _insert_field_point(
+            session,
+            VenueFieldPoint(
+                venue_key=venue_key,
+                venue_name=venue_name,
+                city=city,
+                state=state,
+                status="miss",
+                fetched_at=now,
+            ),
+        )
+    return _insert_field_point(
+        session,
+        VenueFieldPoint(
+            venue_key=venue_key,
+            venue_name=venue_name,
+            city=city,
+            state=state,
+            status="found",
+            provider=PROVIDER,
+            place_id=hit.place_id,
+            formatted_address=hit.formatted_address,
+            latitude=hit.latitude,
+            longitude=hit.longitude,
+            fetched_at=now,
+        ),
+    )
+
+
+def _field_point_out(row: VenueFieldPoint) -> FieldPointOut:
+    address = (row.formatted_address or "").strip() or None
+    return FieldPointOut(
+        venue_key=row.venue_key,
+        status=row.status,  # type: ignore[arg-type]
+        formatted_address=address,
+        map_url=_maps_search(address) if address else None,
+    )
+
+
+def _matched_place(
+    session: Session,
+    user_id: int,
+    category: str,
+    place_id: str,
+    venue_key: str,
+) -> PlaceHit:
+    point = session.get(VenueFieldPoint, venue_key)
+    latitude = point.latitude if point is not None and point.status == "found" else None
+    longitude = point.longitude if point is not None and point.status == "found" else None
+    session.rollback()
+    if latitude is None or longitude is None:
+        raise HTTPException(status_code=400, detail=PLACE_NOT_NEAR)
+    try:
+        claim_place_slot(user_id)
+        hit = retrieve_place(place_id)
+    except (PlacesBusy, PlacesUnavailable) as exc:
+        raise _place_failure(exc) from None
+    if hit is None or not category_fits(category, hit.categories):
+        raise HTTPException(status_code=400, detail=PLACE_NOT_NEAR)
+    if miles_between(latitude, longitude, hit.latitude, hit.longitude) > NEAR_MILES:
+        raise HTTPException(status_code=400, detail=PLACE_NOT_NEAR)
+    return hit
+
+
+def _manual_address(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = " ".join(value.split())
+    if not text:
+        return None
+    return text[:500]
+
+
+def _apply_match(row: VenueRecommendation, hit: PlaceHit) -> None:
+    row.place_provider = PROVIDER
+    row.place_id = hit.place_id
+    row.matched_name = hit.name[:200]
+    row.formatted_address = hit.formatted_address[:500]
+    row.latitude = hit.latitude
+    row.longitude = hit.longitude
+    row.place_fetched_at = datetime.now(UTC)
+
+
+@router.get("/locations/field-point", response_model=FieldPointOut)
+def read_field_point(
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+    venue_name: str = Query(min_length=1, max_length=160),
+    city: str = Query(min_length=1, max_length=80),
+    state: str = Query(min_length=2, max_length=2),
+) -> FieldPointOut:
+    """Geocode this complex once. The browser receives the label, not the key or the raw point."""
+
+    user = require_user(session, token)
+    _require_terms(user)
+    venue_key, display, city_text, state_text = _place_from_body(venue_name, city, state)
+    row = ensure_field_point(session, int(user.id), venue_key, display, city_text, state_text)
+    return _field_point_out(row)
+
+
+@router.get("/locations/places", response_model=PlaceSuggestionsOut)
+def read_place_suggestions(
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+    venue_key: str = Query(min_length=1, max_length=300),
+    category: str = Query(min_length=1, max_length=16),
+    q: str = Query(default="", max_length=80),
+) -> PlaceSuggestionsOut:
+    """Suggest hotels or restaurants within ten miles of the cached field point. Short queries do not call Geoapify."""
+
+    user = require_user(session, token)
+    _require_terms(user)
+    user_id = int(user.id)
+    if category not in MATCH_CATEGORIES:
+        raise HTTPException(status_code=400, detail="Place search is only for a hotel or a restaurant.")
+    query = " ".join(q.split())
+    if len(query) < MIN_QUERY_CHARS:
+        return PlaceSuggestionsOut(suggestions=[])
+    key = venue_key.strip()
+    point = session.get(VenueFieldPoint, key)
+    latitude = point.latitude if point is not None and point.status == "found" else None
+    longitude = point.longitude if point is not None and point.status == "found" else None
+    session.rollback()
+    if latitude is None or longitude is None:
+        return PlaceSuggestionsOut(suggestions=[])
+    try:
+        claim_place_slot(user_id)
+        hits = suggest_places(query, category, latitude, longitude)
+    except (PlacesBusy, PlacesUnavailable) as exc:
+        raise _place_failure(exc) from None
+    return PlaceSuggestionsOut(
+        suggestions=[
+            PlaceSuggestionOut(
+                place_id=hit.place_id,
+                name=hit.name,
+                formatted_address=hit.formatted_address,
+                street=hit.street,
+                city=hit.city,
+                state=hit.state,
+                postal_code=hit.postal_code,
+            )
+            for hit in hits
+        ]
+    )
+
+
 @router.post("/locations/recommendations", response_model=RecommendationOut)
 def add_recommendation(
     payload: RecommendationIn,
@@ -1005,11 +1279,20 @@ def add_recommendation(
     user = require_user(session, token)
     _require_terms(user)
     user_id, author_key, author_name = author_for(user)
+    account_id = int(user.id)
     venue_key, venue_name, city, state = _place_from_body(payload.venue_name, payload.city, payload.state)
     title = " ".join(payload.title.split())
     review = payload.review_text.strip()
     if not title or not review:
         raise HTTPException(status_code=400, detail="title and review_text are required")
+    try:
+        place_id = clean_place_id(payload.place_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Unknown place") from None
+    match: PlaceHit | None = None
+    if place_id and payload.category in MATCH_CATEGORIES:
+        match = _matched_place(session, account_id, payload.category, place_id, venue_key)
+    manual = _manual_address(payload.formatted_address) if payload.category in MATCH_CATEGORIES and match is None else None
     row = VenueRecommendation(
         venue_key=venue_key,
         venue_name=venue_name,
@@ -1027,6 +1310,10 @@ def add_recommendation(
         downvotes=0,
         created_at=datetime.now(UTC),
     )
+    if match is not None:
+        _apply_match(row, match)
+    elif manual:
+        row.formatted_address = manual
     session.add(row)
     session.flush()
     _record_write(

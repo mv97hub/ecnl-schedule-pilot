@@ -276,8 +276,17 @@ def _add_timestamp(connection, table: str, column: str, *, nullable: bool) -> No
 
 
 def ensure_location_columns() -> None:
-    """Add tip votes and contribution-review columns. New tables come from create_all."""
+    """Add tip votes, contribution-review columns, and place-match columns. New tables come from create_all."""
 
+    place_columns = (
+        ("place_provider", "varchar(32)"),
+        ("place_id", "text"),
+        ("matched_name", "varchar(200)"),
+        ("formatted_address", "text"),
+        ("latitude", "double precision"),
+        ("longitude", "double precision"),
+        ("place_fetched_at", "timestamp with time zone"),
+    )
     with engine.begin() as connection:
         if _table_exists(connection, "venue_recommendation"):
             if not _column_exists(connection, "venue_recommendation", "downvotes"):
@@ -285,6 +294,9 @@ def ensure_location_columns() -> None:
                     text("ALTER TABLE venue_recommendation ADD COLUMN downvotes integer NOT NULL DEFAULT 0")
                 )
             _add_check(connection, "venue_recommendation", "ck_venue_recommendation_downvotes", "downvotes >= 0")
+            for column, kind in place_columns:
+                if not _column_exists(connection, "venue_recommendation", column):
+                    connection.execute(text(f"ALTER TABLE venue_recommendation ADD COLUMN {column} {kind}"))
         for table in ("venue_rating", "venue_recommendation", "venue_tip_vote"):
             _add_timestamp(connection, table, "hidden_at", nullable=True)
             _add_timestamp(connection, table, "flagged_at", nullable=True)
