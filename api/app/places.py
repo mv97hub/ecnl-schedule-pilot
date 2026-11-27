@@ -20,10 +20,10 @@ PROVIDER = "geoapify"
 GEOCODE_URL = "https://api.geoapify.com/v1/geocode/search"
 PLACES_URL = "https://api.geoapify.com/v2/places"
 DETAILS_URL = "https://api.geoapify.com/v2/place-details"
-SEARCH_RADIUS_METERS = 16093  # 10 miles
+SEARCH_RADIUS_METERS = 32187  # 20 miles
 SUGGEST_LIMIT = 5
 MIN_QUERY_CHARS = 3
-NEAR_MILES = 10.0
+NEAR_MILES = 20.0
 PLACE_LIMIT = 30
 PLACE_WINDOW_SECONDS = 10 * 60
 
@@ -149,7 +149,7 @@ def geocode_complex(name: str, city: str, state: str) -> GeocodeHit | None:
 
 
 def suggest_places(query: str, category: str, latitude: float, longitude: float) -> list[PlaceSuggestionHit]:
-    """Places whose names contain the typed text, inside ten miles of the field."""
+    """Places whose names contain the typed text, inside twenty miles of the field."""
 
     categories = _HOTEL_CATEGORIES if category == "HOTEL" else _FOOD_CATEGORIES if category == "RESTAURANT" else ""
     if not categories:
@@ -279,9 +279,7 @@ def _suggestions(payload: dict) -> list[PlaceSuggestionHit]:
         if cleaned is None or cleaned in seen:
             continue
         seen.add(cleaned)
-        street, city, state, postal = _address_parts(props)
-        if not street:
-            street = address[:160]
+        street, city, state, postal = _address_parts(props, name)
         found.append(
             PlaceSuggestionHit(
                 place_id=cleaned,
@@ -316,16 +314,43 @@ def _details_feature(payload: dict) -> dict | None:
     return fallback
 
 
-def _address_parts(props: dict) -> tuple[str, str, str, str]:
-    line1 = _text(props.get("address_line1"))
+def _same(left: str, right: str) -> bool:
+    return bool(left) and bool(right) and left.casefold() == right.casefold()
+
+
+def _without_leading_name(value: str, name: str) -> str:
+    text = value.strip()
+    if name and text.casefold().startswith(name.casefold()):
+        return text[len(name) :].lstrip(" ,")
+    return text
+
+
+def _street_line(props: dict, name: str) -> str:
+    """The street only. Geoapify puts the business name in address_line1 for a place."""
+
     housenumber = _text(props.get("housenumber"))
     street_name = _text(props.get("street"))
-    street = line1 or " ".join(part for part in (housenumber, street_name) if part)
+    composed = " ".join(part for part in (housenumber, street_name) if part)
+    if composed and not _same(composed, name):
+        return composed[:160]
+    line1 = _text(props.get("address_line1"))
+    if line1 and not _same(line1, name):
+        return line1[:160]
+    city = _text(props.get("city")) or _text(props.get("town")) or _text(props.get("village"))
+    for source in (_text(props.get("address_line2")), _without_leading_name(_text(props.get("formatted")), name)):
+        first = source.split(",")[0].strip() if source else ""
+        if not first or _same(first, name) or _same(first, city):
+            continue
+        return first[:160]
+    return ""
+
+
+def _address_parts(props: dict, name: str) -> tuple[str, str, str, str]:
     city = _text(props.get("city")) or _text(props.get("town")) or _text(props.get("village"))
     code = _text(props.get("state_code"))
     state = code.upper() if code else _text(props.get("state"))
     postal = _text(props.get("postcode"))
-    return street[:160], city[:80], state[:40], postal[:20]
+    return _street_line(props, name), city[:80], state[:40], postal[:20]
 
 
 def _formatted(props: dict) -> str:
