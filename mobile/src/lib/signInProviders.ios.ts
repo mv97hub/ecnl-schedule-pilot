@@ -32,13 +32,18 @@ export async function signInWithApple(): Promise<NativeIdentity> {
   if (!available) throw new Error("Sign in with Apple is not available on this device.");
   const bytes = await Crypto.getRandomBytesAsync(16);
   const rawNonce = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  // Expo 58 and Apple both copy this string through. Hash it once here, as lowercase hex.
+  // The API hashes the raw nonce the same way and compares that to the token.
+  const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce, {
+    encoding: Crypto.CryptoEncoding.HEX,
+  });
   try {
     const credential = await AppleAuthentication.signInAsync({
       requestedScopes: [
         AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
         AppleAuthentication.AppleAuthenticationScope.EMAIL,
       ],
-      nonce: rawNonce,
+      nonce: hashedNonce,
     });
     if (!credential.identityToken) throw new Error("Apple did not return an account.");
     const displayName = [credential.fullName?.givenName, credential.fullName?.familyName].filter(Boolean).join(" ").trim();
