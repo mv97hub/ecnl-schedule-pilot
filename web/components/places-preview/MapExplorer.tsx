@@ -14,7 +14,9 @@ import type { ClubListItem, ClubLocationTip, LocationAggregate, LocationCard, Lo
 import { FieldMap, type MapPin } from "./FieldMap";
 import { Meter, PreviewBack, TipCard, scoreText } from "./bits";
 
-const SCORE_CRITERIA: { key: keyof LocationScores; label: string; short: string }[] = [
+type ScoreKey = "field_quality" | "referees" | "parent_vibe" | "parking_access" | "amenities";
+
+const SCORE_CRITERIA: { key: ScoreKey; label: string; short: string }[] = [
   { key: "field_quality", label: "Field quality", short: "Field quality" },
   { key: "referees", label: "Referees", short: "Referees" },
   { key: "parent_vibe", label: "Parent and sideline vibe", short: "Parent vibe" },
