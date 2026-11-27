@@ -362,7 +362,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
     <div className="min-h-full bg-bone">
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <Link href="/locations" className="text-sm font-medium text-navy underline-offset-4 hover:underline">
-          Locations Guide
+          Places
         </Link>
         {loading && !detail ? (
           <div className="mt-6 flex items-center gap-2 text-sm text-stone-500">

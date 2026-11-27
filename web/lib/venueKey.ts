@@ -30,3 +30,15 @@ export function makeVenueKey(venueName: string, city: string, state: string): st
 export function venueGuideHref(venueName: string, city: string, state: string): string {
   return `/locations/${encodeURIComponent(makeVenueKey(venueName, city, state))}`;
 }
+
+/** Public `/locations?club=` id. A split club uses `club_key`, not the bare numeric id. */
+export function publicClubKey(team: { club_key?: string | null; club_id?: number | null }): string | null {
+  const key = (team.club_key ?? "").trim();
+  if (key) return key;
+  if (team.club_id != null) return String(team.club_id);
+  return null;
+}
+
+export function clubPlacesHref(clubKey: string): string {
+  return `/locations?club=${encodeURIComponent(clubKey)}`;
+}

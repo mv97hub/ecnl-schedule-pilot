@@ -13,10 +13,11 @@ import { CalendarView, ScheduleBoard, ViewSwitch, type ScheduleView } from "@/co
 import { SeasonTimeline } from "@/components/SeasonTimeline";
 import { TeamHero } from "@/components/TeamHero";
 import { TeamSelector } from "@/components/TeamSelector";
-import { fetchDataRefresh, fetchSchedule, fetchTeams } from "@/lib/api";
+import { fetchDataRefresh, fetchSchedule, fetchTeams, fetchTeamsByIds } from "@/lib/api";
 import { formatDataAsOf } from "@/lib/format";
 import { AGE_GROUPS, TIERS, ageGroupsFor, parseLeagueGender, type LeagueGender } from "@/lib/leagues";
 import { rememberSquad, rememberedSquad, shortConference } from "@/lib/selection";
+import { publicClubKey } from "@/lib/venueKey";
 import type { Game, ScheduleFilter, Team, TeamRecordSummary } from "@/lib/types";
 
 function teamTier(team: Team): (typeof TIERS)[number] {
@@ -71,6 +72,8 @@ export function Dashboard() {
   const [summary, setSummary] = useState<TeamRecordSummary | null>(null);
   const [teamLogo, setTeamLogo] = useState<string | null>(null);
   const [clubId, setClubId] = useState<number | null>(null);
+  const [extraClubKeys, setExtraClubKeys] = useState<ReadonlyMap<number, string>>(() => new Map());
+  const lookedUpClubs = useRef(new Set<number>());
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dataAsOf, setDataAsOf] = useState<string | null>(null);
@@ -243,6 +246,46 @@ export function Dashboard() {
   const visible = selected && teamTier(selected) === tier && selected.conference === conference && selected.age_group === ageGroup ? selected : null;
   const ageLabel = ageOptions.find((item) => item.value === ageGroup)?.label ?? ageGroup;
   const shownGames = games.filter((game) => (filter === "all" ? true : game.side === filter));
+  const clubKeys = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const team of teams) {
+      const key = publicClubKey(team);
+      if (key) map.set(team.id, key);
+    }
+    for (const [id, key] of extraClubKeys) {
+      if (!map.has(id)) map.set(id, key);
+    }
+    return map;
+  }, [teams, extraClubKeys]);
+
+  useEffect(() => {
+    const missing = [...new Set(games.flatMap((game) => (game.side === "away" ? [game.opponent.id] : [])))].filter(
+      (id) => !clubKeys.has(id) && !lookedUpClubs.current.has(id),
+    );
+    if (missing.length === 0) return;
+    let cancelled = false;
+    fetchTeamsByIds(missing)
+      .then((rows) => {
+        if (cancelled) return;
+        for (const id of missing) lookedUpClubs.current.add(id);
+        setExtraClubKeys((current) => {
+          let changed = false;
+          const next = new Map(current);
+          for (const row of rows) {
+            const key = publicClubKey(row);
+            if (key && next.get(row.id) !== key) {
+              next.set(row.id, key);
+              changed = true;
+            }
+          }
+          return changed ? next : current;
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [games, clubKeys]);
 
   function selectTeam(nextTeam: Team | undefined) {
     if (nextTeam) {
@@ -403,11 +446,11 @@ export function Dashboard() {
               ) : shownGames.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-slate-500">No games in this filter.</div>
               ) : (
-                <ScheduleBoard games={shownGames} view={view} teamName={visible.name} teamId={visible.id} teamLogo={teamLogo} />
+                <ScheduleBoard games={shownGames} view={view} teamName={visible.name} teamId={visible.id} teamLogo={teamLogo} clubKeys={clubKeys} />
               )}
             </div>
             <aside className="min-w-0" aria-label="Season calendar">
-              <CalendarView games={shownGames} teamName={visible.name} />
+              <CalendarView games={shownGames} teamName={visible.name} teamId={visible.id} clubKeys={clubKeys} />
             </aside>
           </div>
         )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronRight, LoaderCircle, Search, Star } from "lucide-react";
+import { ChevronDown, ChevronRight, LoaderCircle, MapPin, Search, Star } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -9,7 +9,7 @@ import { ClubMark } from "@/components/ClubMark";
 import { ReportTip } from "@/components/ReportTip";
 import { TipVotes, sortTips } from "@/components/TipVotes";
 import { fetchClubCatalog, fetchClubLocations, voteRecommendation } from "@/lib/api";
-import { easternStamp } from "@/lib/format";
+import { easternStamp, mapsUrl } from "@/lib/format";
 import type { HomeAddress } from "@/lib/homeAddress";
 import { signInHref, useAccount } from "@/lib/useAccount";
 import type { ClubListItem, ClubLocationTip, ClubLocations, LocationAggregate, LocationCard, TipCategory, TipVote } from "@/lib/types";
@@ -100,22 +100,36 @@ function FieldCard({ card, home }: { card: LocationCard; home: HomeAddress | nul
   const place = [card.city, card.state].filter(Boolean).join(", ");
   const meta = [place, surface, drive].filter(Boolean).join(" · ");
   return (
-    <Link
-      href={`/locations/${encodeURIComponent(card.venue_key)}`}
+    <div
       data-field-card={card.venue_key}
-      aria-label={`Rate ${card.venue_name} and add tips`}
-      className="block rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-sm hover:border-gold"
+      className="flex items-start gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 shadow-sm hover:border-gold"
     >
-      <div className="flex items-center gap-2">
-        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-navy">{card.venue_name}</h2>
-        {meta ? <p className="hidden truncate text-xs text-stone-500 sm:block">{meta}</p> : null}
-        <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-gold px-2 py-0.5 text-[11px] font-medium text-navy">
-          Rate
-          <ChevronRight className="size-3.5" />
-        </span>
-      </div>
-      <ScoreRow scores={card} />
-    </Link>
+      <Link
+        href={`/locations/${encodeURIComponent(card.venue_key)}`}
+        aria-label={`Rate ${card.venue_name} and add tips`}
+        className="min-w-0 flex-1"
+      >
+        <div className="flex items-center gap-2">
+          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-navy">{card.venue_name}</h2>
+          {meta ? <p className="hidden truncate text-xs text-stone-500 sm:block">{meta}</p> : null}
+          <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-gold px-2 py-0.5 text-[11px] font-medium text-navy">
+            Rate
+            <ChevronRight className="size-3.5" />
+          </span>
+        </div>
+        <ScoreRow scores={card} />
+      </Link>
+      <a
+        href={mapsUrl(card.venue_name, card.city, card.state)}
+        target="_blank"
+        rel="noopener noreferrer"
+        data-field-map={card.venue_key}
+        aria-label={`Open ${card.venue_name} in Google Maps`}
+        className="mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full text-navy hover:bg-stone-100"
+      >
+        <MapPin className="size-4" />
+      </a>
+    </div>
   );
 }
 
@@ -480,7 +494,7 @@ export function LocationsDirectory() {
   return (
     <div className="min-h-full bg-bone">
       <main data-location-directory className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-        <h1 className="text-3xl font-semibold tracking-tight text-navy">Locations Guide</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-navy">Places</h1>
         <p className="mt-1 max-w-2xl text-sm text-stone-500">
           Choose a club to see its fields. Scores and family tips are combined across those fields. Ratings are entered on each field.
         </p>

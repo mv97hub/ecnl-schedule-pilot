@@ -9,6 +9,8 @@ export type Team = {
   state: string;
   tier?: string;
   gender?: "boys" | "girls";
+  club_id?: number | null;
+  club_key?: string | null;
 };
 
 export type Opponent = {

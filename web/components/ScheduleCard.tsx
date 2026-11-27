@@ -1,18 +1,45 @@
-import { ExternalLink } from "lucide-react";
+import { ArrowLeftRight } from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { ClubMark } from "@/components/ClubMark";
 import { VenueGuideLink } from "@/components/VenueGuideLink";
-import { easternStamp, mapsUrl } from "@/lib/format";
+import { easternStamp } from "@/lib/format";
+import { clubPlacesHref } from "@/lib/venueKey";
 import type { Game } from "@/lib/types";
 
 export function ScoutLink({ teamId, opponentId }: { teamId: number; opponentId: number }) {
   return (
     <Link
       href={`/head-to-head?teamA=${teamId}&teamB=${opponentId}`}
-      className="shrink-0 whitespace-nowrap text-xs font-medium text-navy underline-offset-4 hover:underline"
+      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs font-medium text-navy underline-offset-4 hover:underline"
     >
-      Matchup
+      Match Up
+      <ArrowLeftRight className="size-3 shrink-0" aria-hidden="true" />
+    </Link>
+  );
+}
+
+export function fieldClubKey(game: Game, teamId: number, keys: ReadonlyMap<number, string>): string | null {
+  const ownerId = game.side === "away" ? game.opponent.id : teamId;
+  return keys.get(ownerId) ?? null;
+}
+
+export function PlaceLink({
+  clubKey,
+  label,
+  className,
+  children,
+}: {
+  clubKey: string | null;
+  label: string;
+  className: string;
+  children: ReactNode;
+}) {
+  if (!clubKey) return <span className={className}>{children}</span>;
+  return (
+    <Link href={clubPlacesHref(clubKey)} aria-label={label} data-places-link={clubKey} className={className}>
+      {children}
     </Link>
   );
 }
@@ -40,10 +67,22 @@ export function FieldBadge({ name, className = "" }: { name: string; className?:
   );
 }
 
-export function ScheduleCard({ game, teamName, teamId, teamLogo }: { game: Game; teamName: string; teamId: number; teamLogo?: string | null }) {
+export function ScheduleCard({
+  game,
+  teamName,
+  teamId,
+  teamLogo,
+  clubKeys,
+}: {
+  game: Game;
+  teamName: string;
+  teamId: number;
+  teamLogo?: string | null;
+  clubKeys: ReadonlyMap<number, string>;
+}) {
   const stamp = easternStamp(game.starts_at);
-  const maps = mapsUrl(game.venue_name, game.city, game.state);
   const field = fieldLabel(game.field_name);
+  const clubKey = fieldClubKey(game, teamId, clubKeys);
   const postponed = game.status === "POSTPONED" || game.status === "CANCELLED";
   const completed = game.status === "COMPLETED" && game.home_score != null && game.away_score != null;
   const homeName = game.side === "home" ? teamName : game.opponent.name;
@@ -85,11 +124,9 @@ export function ScheduleCard({ game, teamName, teamId, teamLogo }: { game: Game;
           {stamp && (
             <p className="mt-0.5 text-xs leading-tight text-stone-500">{completed || postponed ? stamp.dateLabel : `${stamp.weekday}, ${stamp.dateLabel}`}</p>
           )}
-          <a
-            href={maps}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`Open ${game.venue_name}${field ? `, ${field}` : ""} in Google Maps`}
+          <PlaceLink
+            clubKey={clubKey}
+            label={`Open ${game.venue_name}${field ? `, ${field}` : ""} on Places`}
             className="mt-0.5 flex w-full min-w-0 items-center justify-center gap-1.5 text-xs font-medium leading-tight text-stone-600 underline-offset-4 hover:underline"
           >
             <span className="min-w-0 truncate">
@@ -97,8 +134,7 @@ export function ScheduleCard({ game, teamName, teamId, teamLogo }: { game: Game;
               <span className="text-stone-400"> · {game.city}, {game.state}</span>
             </span>
             {field ? <FieldBadge name={field} /> : null}
-            <ExternalLink className="size-3 shrink-0 text-stone-400" />
-          </a>
+          </PlaceLink>
           <VenueGuideLink venueName={game.venue_name} city={game.city} state={game.state} className="text-xs" />
         </div>
         <ClubMark name={awayName} src={awayLogo} align="end" />

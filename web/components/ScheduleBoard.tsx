@@ -3,9 +3,9 @@
 import { useMemo, useState } from "react";
 
 import { ClubMark } from "@/components/ClubMark";
-import { FieldBadge, ScheduleCard, ScoutLink, fieldLabel } from "@/components/ScheduleCard";
+import { FieldBadge, PlaceLink, ScheduleCard, ScoutLink, fieldClubKey, fieldLabel } from "@/components/ScheduleCard";
 import { VenueGuideLink } from "@/components/VenueGuideLink";
-import { easternStamp, easternToday, mapsUrl, teamScoreline } from "@/lib/format";
+import { easternStamp, easternToday, teamScoreline } from "@/lib/format";
 import type { Game } from "@/lib/types";
 
 export type ScheduleView = "list" | "scorecard";
@@ -52,7 +52,7 @@ export function ViewSwitch({ value, onChange }: { value: ScheduleView; onChange:
   );
 }
 
-function ListView({ games, teamId }: { games: Game[]; teamId: number }) {
+function ListView({ games, teamId, clubKeys }: { games: Game[]; teamId: number; clubKeys: ReadonlyMap<number, string> }) {
   const groups = useMemo(() => {
     const buckets = new Map<string, { label: string; games: Game[] }>();
     for (const game of games) {
@@ -88,15 +88,14 @@ function ListView({ games, teamId }: { games: Game[]; teamId: number }) {
                         <ScoutLink teamId={teamId} opponentId={game.opponent.id} />
                       </span>
                       <span className="flex min-w-0 items-center gap-1.5">
-                        <a
-                          href={mapsUrl(game.venue_name, game.city, game.state)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="min-w-0 truncate text-sm text-stone-500 underline-offset-4 hover:underline"
+                        <PlaceLink
+                          clubKey={fieldClubKey(game, teamId, clubKeys)}
+                          label={`Open ${game.venue_name}${field ? `, ${field}` : ""} on Places`}
+                          className="flex min-w-0 items-center gap-1.5 text-sm text-stone-500 underline-offset-4 hover:underline"
                         >
-                          {game.venue_name}
-                        </a>
-                        {field ? <FieldBadge name={field} /> : null}
+                          <span className="min-w-0 truncate">{game.venue_name}</span>
+                          {field ? <FieldBadge name={field} /> : null}
+                        </PlaceLink>
                         <VenueGuideLink venueName={game.venue_name} city={game.city} state={game.state} className="text-xs" />
                       </span>
                       </span>
@@ -122,7 +121,7 @@ function ListView({ games, teamId }: { games: Game[]; teamId: number }) {
   );
 }
 
-export function CalendarView({ games, teamName }: { games: Game[]; teamName: string }) {
+export function CalendarView({ games, teamName, teamId, clubKeys }: { games: Game[]; teamName: string; teamId: number; clubKeys: ReadonlyMap<number, string> }) {
   const initial = easternToday();
   const [cursor, setCursor] = useState(initial);
   const byDay = useMemo(() => {
@@ -206,8 +205,14 @@ export function CalendarView({ games, teamName }: { games: Game[]; teamName: str
                             <p className="text-stone-500">{postponed ? (game.status === "POSTPONED" ? "Postponed" : "Cancelled") : stamp?.clock}</p>
                           )}
                           <p className="min-w-0 text-stone-500" title={`${game.venue_name}${field ? ` · ${field}` : ""}, ${game.city}, ${game.state}`}>
-                            <span className="block truncate">{game.venue_name}</span>
-                            {field ? <FieldBadge name={field} className="mt-0.5" /> : null}
+                            <PlaceLink
+                              clubKey={fieldClubKey(game, teamId, clubKeys)}
+                              label={`Open ${game.venue_name}${field ? `, ${field}` : ""} on Places`}
+                              className="block text-stone-500 underline-offset-2 hover:underline"
+                            >
+                              <span className="block truncate">{game.venue_name}</span>
+                              {field ? <FieldBadge name={field} className="mt-0.5" /> : null}
+                            </PlaceLink>
                             <VenueGuideLink venueName={game.venue_name} city={game.city} state={game.state} className="mt-0.5 block whitespace-normal text-[10px] leading-tight" />
                           </p>
                         </div>
@@ -230,18 +235,20 @@ export function ScheduleBoard({
   teamName,
   teamId,
   teamLogo,
+  clubKeys,
 }: {
   games: Game[];
   view: ScheduleView;
   teamName: string;
   teamId: number;
   teamLogo?: string | null;
+  clubKeys: ReadonlyMap<number, string>;
 }) {
-  if (view === "list") return <ListView games={games} teamId={teamId} />;
+  if (view === "list") return <ListView games={games} teamId={teamId} clubKeys={clubKeys} />;
   return (
     <div className="grid gap-3">
       {games.map((game) => (
-        <ScheduleCard key={game.id} game={game} teamName={teamName} teamId={teamId} teamLogo={teamLogo} />
+        <ScheduleCard key={game.id} game={game} teamName={teamName} teamId={teamId} teamLogo={teamLogo} clubKeys={clubKeys} />
       ))}
     </div>
   );
