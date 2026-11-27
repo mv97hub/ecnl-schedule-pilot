@@ -53,6 +53,7 @@ class GeocodeHit:
     formatted_address: str
     latitude: float
     longitude: float
+    kind: str = "place"
 
 
 @dataclass(frozen=True)
@@ -151,6 +152,28 @@ def geocode_complex(name: str, city: str, state: str) -> GeocodeHit | None:
     if not isinstance(row, dict):
         return None
     return _geocode_hit(row)
+
+
+def geocode_venue(name: str, city: str, state: str) -> GeocodeHit | None:
+    """Point for a field name plus city and state, preferring a park or venue over a city centroid.
+
+    The map explorer uses this. The tip form still uses ``geocode_complex``.
+    """
+
+    payload = _get(
+        GEOCODE_URL,
+        {
+            "text": f"{name}, {city}, {state}",
+            "format": "json",
+            "limit": "5",
+            "filter": "countrycode:us",
+            "lang": "en",
+        },
+    )
+    results = payload.get("results")
+    if not isinstance(results, list):
+        return None
+    return choose_geocode(results, name)
 
 
 def suggest_places(query: str, category: str, latitude: float, longitude: float) -> list[PlaceSuggestionHit]:
@@ -259,6 +282,77 @@ def _get(url: str, params: dict[str, str]) -> dict:
     return payload
 
 
+_VENUE_TYPES = frozenset({"amenity", "building"})
+_CITY_TYPES = frozenset({"city", "county", "state", "country", "postcode"})
+_AREA_TYPES = frozenset({"street", "suburb", "district", "neighbourhood", "neighborhood"})
+_VENUE_PREFIXES = ("leisure", "sport", "tourism", "entertainment", "natural", "building", "parking")
+
+
+def _category_text(row: dict) -> str:
+    parts: list[str] = []
+    for key in ("category", "categories"):
+        value = row.get(key)
+        if isinstance(value, str):
+            parts.append(value)
+        elif isinstance(value, list):
+            parts.extend(str(part) for part in value)
+    return " ".join(parts).casefold()
+
+
+def geocode_kind(row: dict) -> str:
+    """``venue`` for a park, building, or amenity; ``city`` for a city or county centroid."""
+
+    result_type = (_text(row.get("result_type")) or "").casefold()
+    category = _category_text(row)
+    labels = category.split()
+    if result_type in _VENUE_TYPES or any(label.startswith(prefix) for label in labels for prefix in _VENUE_PREFIXES):
+        return "venue"
+    if result_type in _CITY_TYPES:
+        return "city"
+    return "place"
+
+
+def _name_matches(row: dict, name: str) -> bool:
+    wanted = name.casefold().strip()
+    found = (_text(row.get("name")) or "").casefold()
+    if not wanted or not found:
+        return False
+    return wanted in found or found in wanted
+
+
+def _geocode_rank(row: dict, name: str) -> int:
+    kind = geocode_kind(row)
+    named = _name_matches(row, name)
+    result_type = (_text(row.get("result_type")) or "").casefold()
+    if kind == "venue" and named:
+        return 0
+    if kind == "venue":
+        return 1
+    if named and result_type in _AREA_TYPES:
+        return 2
+    if named and kind != "city":
+        return 3
+    if kind == "city":
+        return 5
+    return 4
+
+
+def choose_geocode(results: list, name: str) -> GeocodeHit | None:
+    """Pick the field pin. A named park or venue beats a city, county, or state centroid."""
+
+    best: tuple[int, int, GeocodeHit] | None = None
+    for index, row in enumerate(results):
+        if not isinstance(row, dict):
+            continue
+        hit = _geocode_hit(row)
+        if hit is None:
+            continue
+        rank = _geocode_rank(row, name)
+        if best is None or (rank, index) < (best[0], best[1]):
+            best = (rank, index, hit)
+    return None if best is None else best[2]
+
+
 def _geocode_hit(row: dict) -> GeocodeHit | None:
     latitude = _number(row.get("lat"))
     longitude = _number(row.get("lon"))
@@ -277,6 +371,7 @@ def _geocode_hit(row: dict) -> GeocodeHit | None:
         formatted_address=address[:500],
         latitude=latitude,
         longitude=longitude,
+        kind=geocode_kind(row),
     )
 
 

@@ -21,7 +21,7 @@ from app.database import engine, ensure_location_columns
 from app.locations import make_venue_key
 from app.main import app
 from app.models import Base, LocationWriteEvent, VenueFieldPoint, VenueRecommendation
-from app.places import NEAR_MILES, SEARCH_RADIUS_METERS, category_fits, miles_between, reset_place_rate_limit, suggest_places
+from app.places import NEAR_MILES, SEARCH_RADIUS_METERS, category_fits, choose_geocode, miles_between, reset_place_rate_limit, suggest_places
 
 SECRET = "probe-place-secret"
 KEY = "super-secret-geoapify-key"
@@ -120,6 +120,46 @@ def _place_feature(place_id: str, name: str, categories: list[str], lat: float =
             "categories": categories,
         }
     }
+
+
+class GeocodeRankTests(unittest.TestCase):
+    def test_named_park_beats_the_county_centroid(self) -> None:
+        county = {
+            "name": "St. Johns County",
+            "result_type": "county",
+            "lat": 30.0801,
+            "lon": -81.4501,
+            "formatted": "St. Johns County, Florida, United States",
+        }
+        park = {
+            "name": "Veterans Park",
+            "result_type": "amenity",
+            "category": "leisure.park",
+            "lat": 30.3322,
+            "lon": -81.6557,
+            "formatted": "Veterans Park, Jacksonville, FL, United States",
+            "place_id": FIELD_ID,
+        }
+        hit = choose_geocode([county, park], "Veterans Park")
+        self.assertIsNotNone(hit)
+        assert hit is not None
+        self.assertEqual(hit.latitude, 30.3322)
+        self.assertEqual(hit.longitude, -81.6557)
+        self.assertEqual(hit.kind, "venue")
+
+    def test_city_is_used_only_when_no_venue_is_returned(self) -> None:
+        city = {
+            "name": "Jacksonville",
+            "result_type": "city",
+            "lat": 30.3322,
+            "lon": -81.6557,
+            "formatted": "Jacksonville, Florida, United States",
+        }
+        hit = choose_geocode([city], "Veterans Park")
+        self.assertIsNotNone(hit)
+        assert hit is not None
+        self.assertEqual(hit.kind, "city")
+        self.assertEqual(hit.latitude, 30.3322)
 
 
 class PlaceLookupTests(unittest.TestCase):
@@ -714,6 +754,7 @@ class PlaceLookupTests(unittest.TestCase):
                     formatted_address=FIELD_ADDRESS,
                     latitude=FIELD_LAT,
                     longitude=FIELD_LON,
+                    geocode_kind="venue",
                     fetched_at=datetime.now(UTC),
                 )
             )
@@ -751,3 +792,74 @@ class PlaceLookupTests(unittest.TestCase):
             self.assertEqual(self.calls, [])
             club = client.get("/locations/map/club", params={"club": "not-a-real-club"})
             self.assertEqual(club.status_code, 404, club.text)
+
+    def test_map_pin_uses_the_park_not_the_city_centroid(self) -> None:
+        from app.locations import ComplexBucket, _resolve_map_field
+
+        key = make_venue_key(FIELD, CITY, STATE)
+        park_lat = 30.3322
+        park_lon = -81.6557
+        county_lat = 30.0801
+        county_lon = -81.4501
+
+        def fake_get(url: str, params: dict | None = None, timeout: float | None = None) -> _Response:
+            query = dict(params or {})
+            self.calls.append({"url": url, "params": query, "timeout": timeout})
+            return _Response(
+                {
+                    "results": [
+                        {
+                            "name": "St. Johns County",
+                            "result_type": "county",
+                            "lat": county_lat,
+                            "lon": county_lon,
+                            "formatted": "St. Johns County, Florida, United States",
+                        },
+                        {
+                            "name": FIELD,
+                            "result_type": "amenity",
+                            "category": "leisure.park",
+                            "lat": park_lat,
+                            "lon": park_lon,
+                            "formatted": "Veterans Park, Jacksonville, FL, United States",
+                            "place_id": FIELD_ID,
+                        },
+                    ]
+                }
+            )
+
+        bucket = ComplexBucket(key)
+        bucket.names[FIELD] += 1
+        bucket.cities[CITY] += 1
+        bucket.states[STATE] += 1
+        bucket.latitudes.append(county_lat)
+        bucket.longitudes.append(county_lon)
+        with Session(engine) as session, patch("app.places.httpx.get", side_effect=fake_get):
+            first = _resolve_map_field(session, bucket)
+            self.assertEqual(first.status, "found")
+            self.assertEqual(first.latitude, park_lat)
+            self.assertEqual(first.longitude, park_lon)
+            self.assertNotEqual(first.latitude, county_lat)
+            self.assertEqual(len(self.calls), 1)
+            params = self.calls[0]["params"]
+            self.assertIsInstance(params, dict)
+            self.assertEqual(params["text"], f"{FIELD}, {CITY}, {STATE}")
+            self.assertEqual(params["limit"], "5")
+            self.assertNotIn(KEY, str(first.model_dump()))
+            second = _resolve_map_field(session, bucket)
+            self.assertEqual(second.latitude, park_lat)
+            self.assertEqual(len(self.calls), 1)
+
+        with TestClient(app) as client:
+            found = client.get("/locations/map/field", params={"venue_key": key})
+            self.assertEqual(found.status_code, 200, found.text)
+            self.assertEqual(found.json()["latitude"], park_lat)
+            self._assert_key_stays_out(found.text)
+            self.assertEqual(len(self.calls), 1)
+
+        with Session(engine) as session:
+            row = session.get(VenueFieldPoint, key)
+            self.assertIsNotNone(row)
+            assert row is not None
+            self.assertEqual(row.geocode_kind, "venue")
+            self.assertEqual(row.latitude, park_lat)

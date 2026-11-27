@@ -49,6 +49,7 @@ from app.places import (
     claim_place_slot,
     clean_place_id,
     geocode_complex,
+    geocode_venue,
     miles_between,
     retrieve_place,
     suggest_places,
@@ -1249,47 +1250,94 @@ def _apply_match(row: VenueRecommendation, hit: PlaceHit) -> None:
     row.place_fetched_at = datetime.now(UTC)
 
 
-def _resolve_map_field(session: Session, bucket: ComplexBucket) -> MapFieldOut:
-    """Coordinates for one complex: schedule data, then the geocode cache, then one cached geocode.
+_MAP_KINDS = frozenset({"venue", "city", "place", "miss"})
 
-    Only the requested field or club is resolved here. There is deliberately
-    no endpoint that geocodes every complex at once.
-    """
 
-    base = {"venue_key": bucket.venue_key, "venue_name": bucket.venue_name, "city": bucket.city, "state": bucket.state}
-    if bucket.latitudes and bucket.longitudes:
-        return MapFieldOut(
-            **base,
-            status="found",
-            latitude=sum(bucket.latitudes) / len(bucket.latitudes),
-            longitude=sum(bucket.longitudes) / len(bucket.longitudes),
-        )
-    cached = session.get(VenueFieldPoint, bucket.venue_key)
-    if cached is not None:
-        return MapFieldOut(
-            venue_key=bucket.venue_key,
-            venue_name=bucket.venue_name if bucket.names else cached.venue_name,
-            city=bucket.city or cached.city,
-            state=bucket.state or cached.state,
-            status=cached.status,
-            latitude=cached.latitude if cached.status == "found" else None,
-            longitude=cached.longitude if cached.status == "found" else None,
-            formatted_address=(cached.formatted_address or "").strip() or None,
-        )
-    if not bucket.city or not bucket.state or _is_tbd(bucket.venue_name):
-        return MapFieldOut(**base, status="skipped")
-    try:
-        row = ensure_field_point(session, None, bucket.venue_key, bucket.venue_name, bucket.city, bucket.state)
-    except HTTPException:
-        session.rollback()
-        return MapFieldOut(**base, status="unavailable")
+def _map_from_row(bucket: ComplexBucket, row: VenueFieldPoint) -> MapFieldOut:
     return MapFieldOut(
-        **base,
-        status=row.status,
+        venue_key=bucket.venue_key,
+        venue_name=bucket.venue_name if bucket.names else row.venue_name,
+        city=bucket.city or row.city,
+        state=bucket.state or row.state,
+        status=row.status,  # type: ignore[arg-type]
         latitude=row.latitude if row.status == "found" else None,
         longitude=row.longitude if row.status == "found" else None,
         formatted_address=(row.formatted_address or "").strip() or None,
     )
+
+
+def _save_map_geocode(session: Session, bucket: ComplexBucket, hit: GeocodeHit | None) -> VenueFieldPoint:
+    """Store the venue-preferring pin. A later map view reuses it and does not call Geoapify again."""
+
+    now = datetime.now(UTC)
+    kind = hit.kind if hit is not None else "miss"
+    status = "found" if hit is not None else "miss"
+    row = session.get(VenueFieldPoint, bucket.venue_key)
+    if row is None:
+        row = VenueFieldPoint(
+            venue_key=bucket.venue_key,
+            venue_name=bucket.venue_name,
+            city=bucket.city,
+            state=bucket.state,
+            status=status,
+            provider=PROVIDER if hit is not None else None,
+            place_id=hit.place_id if hit is not None else None,
+            formatted_address=hit.formatted_address if hit is not None else None,
+            latitude=hit.latitude if hit is not None else None,
+            longitude=hit.longitude if hit is not None else None,
+            geocode_kind=kind,
+            fetched_at=now,
+        )
+        session.add(row)
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            existing = session.get(VenueFieldPoint, bucket.venue_key)
+            if existing is None:
+                raise HTTPException(status_code=503, detail=PLACE_UNAVAILABLE) from None
+            return existing
+        session.refresh(row)
+        return row
+    row.status = status
+    row.provider = PROVIDER if hit is not None else row.provider
+    row.place_id = hit.place_id if hit is not None else None
+    row.formatted_address = hit.formatted_address if hit is not None else None
+    row.latitude = hit.latitude if hit is not None else None
+    row.longitude = hit.longitude if hit is not None else None
+    row.geocode_kind = kind
+    row.fetched_at = now
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def _resolve_map_field(session: Session, bucket: ComplexBucket) -> MapFieldOut:
+    """Pin one complex from its name, city, and state, preferring a park or venue over a city centroid.
+
+    Schedule coordinates are city-level and are not used. Only the requested
+    field or club is resolved. There is no endpoint that geocodes every complex.
+    """
+
+    base = {"venue_key": bucket.venue_key, "venue_name": bucket.venue_name, "city": bucket.city, "state": bucket.state}
+    if _is_tbd(bucket.venue_name):
+        return MapFieldOut(**base, status="skipped")
+    cached = session.get(VenueFieldPoint, bucket.venue_key)
+    if cached is not None and (cached.geocode_kind or "") in _MAP_KINDS:
+        return _map_from_row(bucket, cached)
+    fallback = None
+    if cached is not None and cached.status == "found" and cached.latitude is not None and cached.longitude is not None:
+        fallback = (cached.latitude, cached.longitude, (cached.formatted_address or "").strip() or None)
+    session.rollback()
+    if not bucket.city or not bucket.state:
+        return MapFieldOut(**base, status="skipped")
+    try:
+        hit = geocode_venue(bucket.venue_name, bucket.city, bucket.state)
+    except PlacesUnavailable:
+        if fallback is None:
+            return MapFieldOut(**base, status="unavailable")
+        return MapFieldOut(**base, status="found", latitude=fallback[0], longitude=fallback[1], formatted_address=fallback[2])
+    return _map_from_row(bucket, _save_map_geocode(session, bucket, hit))
 
 
 def _map_tip(row: VenueRecommendation, field: MapFieldOut) -> MapTipOut:
