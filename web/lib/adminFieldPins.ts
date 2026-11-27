@@ -33,8 +33,8 @@ input[type="search"], input[type="text"], input[type="number"] { width: 100%; bo
 .meta { color: #51565F; font-size: 13px; margin: 4px 0 0; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin-top: 8px; }
 .actions form, .manual { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
-.manual label { font-size: 13px; font-weight: 700; flex: 1 1 220px; }
-.manual input { width: 100%; font-variant-numeric: tabular-nums; }
+.manual label { font-size: 13px; font-weight: 700; flex: 1 1 320px; }
+.manual input { width: 100%; min-width: 280px; font-variant-numeric: tabular-nums; }
 code.cmd { display: block; margin-top: 8px; padding: 10px 12px; background: #fff; border: 1px solid #E4E0D4; border-radius: 12px; overflow-wrap: anywhere; }
 button, a.button { font: inherit; font-weight: 700; border-radius: 12px; min-height: 44px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; padding: 0 16px; }
 button.primary, a.primary { background: #F2B705; color: #14284B; border: 0; }
@@ -96,9 +96,12 @@ ${manualForm(item, query)}
 </div>`;
 }
 
+function pointText(item: FieldPinItem): string {
+  if (item.latitude == null || item.longitude == null) return "";
+  return `${item.latitude}, ${item.longitude}`;
+}
+
 function manualForm(item: FieldPinItem, query: string): string {
-  const latitude = item.latitude == null ? "" : String(item.latitude);
-  const longitude = item.longitude == null ? "" : String(item.longitude);
   return `<form class="manual" method="post" action="/admin/field-pins" novalidate>
 <input type="hidden" name="action" value="manual">
 <input type="hidden" name="q" value="${escapeHtml(query)}">
@@ -106,8 +109,7 @@ function manualForm(item: FieldPinItem, query: string): string {
 <input type="hidden" name="venue_name" value="${escapeHtml(item.venue_name)}">
 <input type="hidden" name="city" value="${escapeHtml(item.city)}">
 <input type="hidden" name="state" value="${escapeHtml(item.state)}">
-<label>Latitude<input class="pin-lat" type="text" inputmode="decimal" name="latitude" autocomplete="off" spellcheck="false" required value="${escapeHtml(latitude)}"></label>
-<label>Longitude<input class="pin-lng" type="text" inputmode="decimal" name="longitude" autocomplete="off" spellcheck="false" required value="${escapeHtml(longitude)}"></label>
+<label>Coordinates<input class="pin-point" type="text" name="point" autocomplete="off" spellcheck="false" placeholder="30.09074022710416, -81.56896571349351" value="${escapeHtml(pointText(item))}"></label>
 <button class="primary" type="submit">Save manual pin</button>
 </form>`;
 }
@@ -152,7 +154,7 @@ function notice(kind: string | null, saved: string | null, failed: string | null
   if (kind === "retry" && saved != null && failed != null && skipped != null) {
     return `<p class="note">Retried fields with no saved coordinates. saved=${escapeHtml(saved)} skipped=${escapeHtml(skipped)} failed=${escapeHtml(failed)}. A manual pin was not changed. A saved pin is not verified.</p>`;
   }
-  if (kind === "coords") return `<p class="error">Enter a latitude between -90 and 90 and a longitude between -180 and 180.</p>`;
+  if (kind === "coords") return `<p class="error">Paste latitude, longitude. For example 30.09074022710416, -81.56896571349351.</p>`;
   if (kind === "clear") return `<p class="note">Pin cleared. The field is in Failed.</p>`;
   if (kind === "too-many") return `<p class="error">Select at most 25 fields. The shell script looks up the rest.</p>`;
   if (kind === "empty") return `<p class="error">Select at least one field.</p>`;
@@ -186,7 +188,7 @@ ${banner ?? ""}
 </label>
 <button class="primary" type="submit">Search</button>
 </form>
-<p class="note">Click the map to fill the latitude and longitude of the manual form you last used. Or paste the coordinates.</p>
+<p class="note">Click the map to fill the coordinate box of the manual form you last used. Or paste latitude, longitude.</p>
 <div id="drop-map"></div>
 <form id="lookup" class="lookup" method="post" action="/admin/field-pins">
 <input type="hidden" name="action" value="lookup">
@@ -213,11 +215,9 @@ ${listSection("Saved", board.saved_count, board.saved.length, saved)}
     var marker = null;
     map.on("click", function (event) {
       if (!target) return;
-      var lat = target.querySelector(".pin-lat");
-      var lng = target.querySelector(".pin-lng");
-      if (!lat || !lng) return;
-      lat.value = String(event.latlng.lat);
-      lng.value = String(event.latlng.lng);
+      var point = target.querySelector(".pin-point");
+      if (!point) return;
+      point.value = event.latlng.lat + ", " + event.latlng.lng;
       if (marker) marker.remove();
       marker = L.marker(event.latlng).addTo(map);
     });

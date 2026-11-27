@@ -14,6 +14,7 @@ from app.maps_check import (
     is_named_example,
     lookup_skips,
     manual_coordinate,
+    manual_pair,
     maps_point_link,
     maps_search_link,
     parse_first_maps_result,
@@ -128,6 +129,13 @@ class MapsCheckTests(unittest.TestCase):
         self.assertTrue(retry_eligible("maps-failed", None, None))
         self.assertFalse(retry_eligible("maps-result", latitude, longitude))
         self.assertIsNone(manual_coordinate("30.09074022710416N", -90, 90))
+        pasted = manual_pair("30.09074022710416, -81.56896571349351")
+        tight = manual_pair("30.09074022710416,-81.56896571349351")
+        self.assertEqual(pasted, (latitude, longitude))
+        self.assertEqual(tight, (latitude, longitude))
+        self.assertTrue(lookup_skips("manual", pasted[0], pasted[1]))
+        self.assertIsNone(manual_pair("30.09074022710416 -81.56896571349351"))
+        self.assertIsNone(manual_pair("91, 0"))
 
 
 if __name__ == "__main__":

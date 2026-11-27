@@ -142,6 +142,19 @@ def manual_coordinate(value: str, low: float, high: float) -> float | None:
     return number
 
 
+def manual_pair(value: str) -> tuple[float, float] | None:
+    """Read one pasted box: latitude, optional space, comma, optional space, longitude."""
+
+    match = re.fullmatch(r"\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*", value.strip())
+    if match is None:
+        return None
+    latitude = manual_coordinate(match.group(1), -90, 90)
+    longitude = manual_coordinate(match.group(2), -180, 180)
+    if latitude is None or longitude is None:
+        return None
+    return latitude, longitude
+
+
 def pin_source(pin_rule: str | None) -> str:
     if (pin_rule or "") in MANUAL_PIN_RULES:
         return "Manual"

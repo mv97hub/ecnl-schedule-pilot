@@ -11,11 +11,14 @@ function searchQuery(value: string): string {
   return value.replace(/[\n\r]/g, "").slice(0, 80);
 }
 
-function coordinate(value: string, low: number, high: number): number | null {
-  if (!/^-?\d+(?:\.\d+)?$/.test(value)) return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < low || parsed > high) return null;
-  return parsed;
+function coordinatePair(value: string): { latitude: number; longitude: number } | null {
+  const match = value.trim().match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+  if (!match) return null;
+  const latitude = Number(match[1]);
+  const longitude = Number(match[2]);
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return null;
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null;
+  return { latitude, longitude };
 }
 
 function backHref(query: string, notice: string): string {
@@ -81,10 +84,10 @@ export async function POST(request: NextRequest): Promise<Response> {
     return retryFailed(request, gate.token, query, done, textValue(form.get("format")) === "json");
   }
   if (action === "manual") {
-    const latitude = coordinate(textValue(form.get("latitude")), -90, 90);
-    const longitude = coordinate(textValue(form.get("longitude")), -180, 180);
+    const pair = coordinatePair(textValue(form.get("point")));
     const venueKey = textValue(form.get("venue_key"));
-    if (!venueKey || latitude == null || longitude == null) return redirectTo(backHref(query, "coords"), [], request);
+    if (!venueKey || !pair) return redirectTo(backHref(query, "coords"), [], request);
+    const { latitude, longitude } = pair;
     return forward(
       request,
       gate.token,
