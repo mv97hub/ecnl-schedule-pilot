@@ -9,7 +9,7 @@ import { ClubMark } from "@/components/ClubMark";
 import { fetchClubCatalog, fetchClubLocations, fetchClubMap, fetchFieldMap, fetchLocationDetail, voteRecommendation } from "@/lib/api";
 import type { MapFieldPoint, MapTipPoint } from "@/lib/api";
 import { signInHref, useAccount } from "@/lib/useAccount";
-import type { ClubListItem, ClubLocationTip, LocationCard, LocationDetail, LocationScores, LocationTip, TipVote } from "@/lib/types";
+import type { ClubListItem, ClubLocationTip, LocationAggregate, LocationCard, LocationDetail, LocationScores, LocationTip, TipVote } from "@/lib/types";
 
 import { FieldMap, type MapPin } from "./FieldMap";
 import { Meter, PreviewBack, TipCard, scoreText } from "./bits";
@@ -100,6 +100,37 @@ function byDistance(distance: Map<number, number | null>) {
   };
 }
 
+function overallLine(overall: number | null, count: number): string {
+  if (overall == null || count === 0) return "No ratings yet";
+  const ratings = count === 1 ? "rating" : "ratings";
+  return `${scoreText(overall)} overall · ${count} ${ratings}`;
+}
+
+function ClubScores({ scores }: { scores: LocationAggregate }) {
+  const keys = ["field_quality", "referees", "parent_vibe", "parking_access", "amenities"] as const;
+  return (
+    <section data-aggregate className="mt-4 text-center" aria-label="Club Ratings">
+      <h2 className="text-base font-semibold text-navy">Club Ratings</h2>
+      <p className="mt-1 text-sm text-stone-500">{overallLine(scores.overall, scores.ratings_count)}</p>
+      <div className="mt-3 flex flex-wrap items-start justify-center gap-x-8 gap-y-4">
+        {keys.map((key) => {
+          const item = SCORE_CRITERIA.find((row) => row.key === key);
+          const value = scores[key];
+          return (
+            <div key={key} className="flex min-w-24 flex-col items-center" data-club-score={key}>
+              <span className="inline-flex items-center gap-1.5 text-3xl font-semibold tracking-tight text-navy">
+                {scoreText(value)}
+                <Star className={`size-5 ${value == null ? "text-stone-300" : "fill-amber-400 text-amber-500"}`} />
+              </span>
+              <span className="mt-1 text-sm font-medium text-ink">{item?.short}</span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function MapExplorerDirectory() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -109,7 +140,9 @@ export function MapExplorerDirectory() {
   const [open, setOpen] = useState(false);
   const [fields, setFields] = useState<LocationCard[]>([]);
   const [tips, setTips] = useState<ClubLocationTip[]>([]);
+  const [aggregate, setAggregate] = useState<LocationAggregate | null>(null);
   const [points, setPoints] = useState<MapFieldPoint[]>([]);
+  const [pointsClub, setPointsClub] = useState("");
   const [clubName, setClubName] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [loadedClub, setLoadedClub] = useState("");
@@ -135,13 +168,13 @@ export function MapExplorerDirectory() {
   useEffect(() => {
     if (!clubId) return;
     let active = true;
-    Promise.all([fetchClubLocations(clubId), fetchClubMap(clubId)])
-      .then(([directory, map]) => {
+    fetchClubLocations(clubId)
+      .then((directory) => {
         if (!active) return;
         setFields(directory.fields);
         setTips(directory.tips);
+        setAggregate(directory.aggregate);
         setClubName(directory.club_name);
-        setPoints(map.fields);
         setSelected(null);
         setLoadedClub(clubId);
         setError(null);
@@ -150,9 +183,20 @@ export function MapExplorerDirectory() {
         if (!active) return;
         setFields([]);
         setTips([]);
-        setPoints([]);
+        setAggregate(null);
         setLoadedClub(clubId);
         setError(err instanceof Error ? err.message : "Could not load this club");
+      });
+    fetchClubMap(clubId)
+      .then((map) => {
+        if (!active) return;
+        setPoints(map.fields);
+        setPointsClub(clubId);
+      })
+      .catch(() => {
+        if (!active) return;
+        setPoints([]);
+        setPointsClub(clubId);
       });
     return () => {
       active = false;
@@ -188,14 +232,16 @@ export function MapExplorerDirectory() {
       return true;
     });
   }, [ready, fields, summaries, hotelTips, foodTips, highlyRated]);
+  const pinsReady = pointsClub === clubId;
   const visiblePins = useMemo<MapPin[]>(() => {
+    if (!pinsReady) return [];
     const keys = new Set(visibleFields.map((field) => field.venue_key));
     return points.flatMap((point) =>
       point.latitude != null && point.longitude != null && keys.has(point.venue_key)
         ? [{ id: point.venue_key, latitude: point.latitude, longitude: point.longitude, label: point.venue_name, kind: "field" as const }]
         : [],
     );
-  }, [points, visibleFields]);
+  }, [pinsReady, points, visibleFields]);
 
   return (
     <div className="min-h-full bg-bone">
@@ -203,7 +249,7 @@ export function MapExplorerDirectory() {
         <PreviewBack href="/locations" label="Places" />
         <p className="mt-3 text-xs font-medium uppercase tracking-wide text-stone-400">Preview</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight text-navy">Map explorer</h1>
-        <p className="mt-1 max-w-2xl text-sm text-stone-500">Pick a club. Its fields are listed beside the map, and only those fields are geocoded. Select a field to center the map.</p>
+        <p className="mt-1 max-w-2xl text-sm text-stone-500">Pick a club. Its fields are listed from the schedule right away. Saved pins fill in on the map. A pin is a saved lookup, not a verified location.</p>
         <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Field filters">
           <FilterChip pressed={hotelTips} onClick={() => setHotelTips((current) => !current)}>
             Hotel tips
@@ -270,6 +316,7 @@ export function MapExplorerDirectory() {
           </p>
         ) : null}
         {error ? <p className="mt-4 text-sm text-ink">{error}</p> : null}
+        {clubId && !loading && !error && aggregate ? <ClubScores scores={aggregate} /> : null}
         {clubId && !loading && !error ? (
           <div className="mt-4 grid items-start gap-4 lg:grid-cols-[28rem_minmax(0,1fr)]">
             <ul className="max-h-[32rem] space-y-2 overflow-y-auto">
@@ -309,7 +356,9 @@ export function MapExplorerDirectory() {
             </ul>
             <div>
               <FieldMap pins={visiblePins} focusId={selected && visibleFields.some((field) => field.venue_key === selected) ? selected : undefined} className="h-[32rem]" />
-              <p className="mt-2 text-xs text-stone-400">Map tiles © OpenStreetMap contributors. Points are cached per field.</p>
+              <p className="mt-2 text-xs text-stone-400">
+                {pinsReady ? "Map tiles © OpenStreetMap contributors. Saved pins are not verified locations." : "Field list is ready. Saved pins are loading onto the map."}
+              </p>
             </div>
           </div>
         ) : null}

@@ -21,7 +21,16 @@ from app.database import engine, ensure_location_columns
 from app.locations import make_venue_key
 from app.main import app
 from app.models import Base, LocationWriteEvent, VenueFieldPoint, VenueRecommendation
-from app.places import NEAR_MILES, SEARCH_RADIUS_METERS, category_fits, choose_geocode, miles_between, reset_place_rate_limit, suggest_places
+from app.places import (
+    NEAR_MILES,
+    PIN_RULE_MATCH,
+    SEARCH_RADIUS_METERS,
+    category_fits,
+    choose_field_pin,
+    miles_between,
+    reset_place_rate_limit,
+    suggest_places,
+)
 
 SECRET = "probe-place-secret"
 KEY = "super-secret-geoapify-key"
@@ -123,10 +132,11 @@ def _place_feature(place_id: str, name: str, categories: list[str], lat: float =
 
 
 class GeocodeRankTests(unittest.TestCase):
-    def test_named_park_beats_the_county_centroid(self) -> None:
+    def test_named_park_near_the_city_beats_the_county_centroid(self) -> None:
         county = {
             "name": "St. Johns County",
             "result_type": "county",
+            "state_code": "FL",
             "lat": 30.0801,
             "lon": -81.4501,
             "formatted": "St. Johns County, Florida, United States",
@@ -135,31 +145,68 @@ class GeocodeRankTests(unittest.TestCase):
             "name": "Veterans Park",
             "result_type": "amenity",
             "category": "leisure.park",
+            "state_code": "FL",
             "lat": 30.3322,
             "lon": -81.6557,
             "formatted": "Veterans Park, Jacksonville, FL, United States",
             "place_id": FIELD_ID,
         }
-        hit = choose_geocode([county, park], "Veterans Park")
+        hit = choose_field_pin([county, park], "Veterans Park", "FL", 30.33, -81.66)
         self.assertIsNotNone(hit)
         assert hit is not None
         self.assertEqual(hit.latitude, 30.3322)
         self.assertEqual(hit.longitude, -81.6557)
         self.assertEqual(hit.kind, "venue")
 
-    def test_city_is_used_only_when_no_venue_is_returned(self) -> None:
+    def test_city_centroid_is_not_saved_as_the_field(self) -> None:
         city = {
             "name": "Jacksonville",
             "result_type": "city",
+            "state_code": "FL",
             "lat": 30.3322,
             "lon": -81.6557,
             "formatted": "Jacksonville, Florida, United States",
         }
-        hit = choose_geocode([city], "Veterans Park")
+        self.assertIsNone(choose_field_pin([city], "Veterans Park", "FL", 30.33, -81.66))
+
+    def test_port_st_lucie_complex_is_rejected_for_middleburg(self) -> None:
+        wrong = {
+            "name": "Port St. Lucie Sports Complex",
+            "result_type": "amenity",
+            "category": "sport.sports_centre",
+            "state_code": "FL",
+            "city": "Port St. Lucie",
+            "lat": 27.2939,
+            "lon": -80.3503,
+            "formatted": "Port St. Lucie Sports Complex, Port St. Lucie, FL, United States",
+        }
+        named_far = {
+            "name": "Clay County Regional Sports Complex",
+            "result_type": "amenity",
+            "category": "sport.sports_centre",
+            "state_code": "FL",
+            "lat": 27.2939,
+            "lon": -80.3503,
+            "formatted": "Clay County Regional Sports Complex, Port St. Lucie, FL, United States",
+        }
+        middleburg = (30.0688, -81.8606)
+        self.assertIsNone(
+            choose_field_pin([wrong, named_far], "Clay County Regional Sports Complex", "FL", *middleburg)
+        )
+        near = {
+            "name": "Clay County Regional Sports Complex",
+            "result_type": "amenity",
+            "category": "sport.sports_centre",
+            "state_code": "FL",
+            "lat": 30.068,
+            "lon": -81.901,
+            "formatted": "Clay County Regional Sports Complex, Middleburg, FL, United States",
+        }
+        hit = choose_field_pin([wrong, near], "Clay County Regional Sports Complex", "FL", *middleburg)
         self.assertIsNotNone(hit)
         assert hit is not None
-        self.assertEqual(hit.kind, "city")
-        self.assertEqual(hit.latitude, 30.3322)
+        self.assertEqual(hit.latitude, 30.068)
+        self.assertEqual(hit.longitude, -81.901)
 
 
 class PlaceLookupTests(unittest.TestCase):
@@ -755,6 +802,7 @@ class PlaceLookupTests(unittest.TestCase):
                     latitude=FIELD_LAT,
                     longitude=FIELD_LON,
                     geocode_kind="venue",
+                    pin_rule=PIN_RULE_MATCH,
                     fetched_at=datetime.now(UTC),
                 )
             )
@@ -805,12 +853,29 @@ class PlaceLookupTests(unittest.TestCase):
         def fake_get(url: str, params: dict | None = None, timeout: float | None = None) -> _Response:
             query = dict(params or {})
             self.calls.append({"url": url, "params": query, "timeout": timeout})
+            text_value = str(query.get("text") or "")
+            if text_value.startswith(f"{CITY},"):
+                return _Response(
+                    {
+                        "results": [
+                            {
+                                "name": CITY,
+                                "result_type": "city",
+                                "state_code": STATE,
+                                "lat": 30.33,
+                                "lon": -81.65,
+                                "formatted": f"{CITY}, {STATE}, United States",
+                            }
+                        ]
+                    }
+                )
             return _Response(
                 {
                     "results": [
                         {
                             "name": "St. Johns County",
                             "result_type": "county",
+                            "state_code": STATE,
                             "lat": county_lat,
                             "lon": county_lon,
                             "formatted": "St. Johns County, Florida, United States",
@@ -819,6 +884,7 @@ class PlaceLookupTests(unittest.TestCase):
                             "name": FIELD,
                             "result_type": "amenity",
                             "category": "leisure.park",
+                            "state_code": STATE,
                             "lat": park_lat,
                             "lon": park_lon,
                             "formatted": "Veterans Park, Jacksonville, FL, United States",
@@ -840,26 +906,27 @@ class PlaceLookupTests(unittest.TestCase):
             self.assertEqual(first.latitude, park_lat)
             self.assertEqual(first.longitude, park_lon)
             self.assertNotEqual(first.latitude, county_lat)
-            self.assertEqual(len(self.calls), 1)
-            params = self.calls[0]["params"]
+            self.assertEqual(len(self.calls), 2)
+            params = self.calls[1]["params"]
             self.assertIsInstance(params, dict)
             self.assertEqual(params["text"], f"{FIELD}, {CITY}, {STATE}")
-            self.assertEqual(params["limit"], "5")
+            self.assertEqual(params["limit"], "8")
             self.assertNotIn(KEY, str(first.model_dump()))
             second = _resolve_map_field(session, bucket)
             self.assertEqual(second.latitude, park_lat)
-            self.assertEqual(len(self.calls), 1)
+            self.assertEqual(len(self.calls), 2)
 
         with TestClient(app) as client:
             found = client.get("/locations/map/field", params={"venue_key": key})
             self.assertEqual(found.status_code, 200, found.text)
             self.assertEqual(found.json()["latitude"], park_lat)
             self._assert_key_stays_out(found.text)
-            self.assertEqual(len(self.calls), 1)
+            self.assertEqual(len(self.calls), 2)
 
         with Session(engine) as session:
             row = session.get(VenueFieldPoint, key)
             self.assertIsNotNone(row)
             assert row is not None
             self.assertEqual(row.geocode_kind, "venue")
+            self.assertEqual(row.pin_rule, PIN_RULE_MATCH)
             self.assertEqual(row.latitude, park_lat)

@@ -1,6 +1,7 @@
 .env
 .venv/
 api/.venv/
+api/reports/
 __pycache__/
 *.pyc
 .DS_Store

@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.auth import author_for, bearer_token, has_current_terms, require_bearer, require_user, user_from_token
+from app.auth import author_for, bearer_token, has_current_terms, require_admin, require_bearer, require_user, user_from_token
 from app.clubs import club_location_source
 from app.database import get_session
 from app.ingestion.normalizer import split_venue
@@ -48,8 +48,13 @@ from app.places import (
     category_fits,
     claim_place_slot,
     clean_place_id,
+    PIN_RULE_ADMIN,
+    PIN_RULE_MAPS,
+    PIN_RULE_MATCH,
+    PIN_RULE_MISS,
+    FieldLookup,
     geocode_complex,
-    geocode_venue,
+    lookup_field_pin,
     miles_between,
     retrieve_place,
     suggest_places,
@@ -1250,7 +1255,7 @@ def _apply_match(row: VenueRecommendation, hit: PlaceHit) -> None:
     row.place_fetched_at = datetime.now(UTC)
 
 
-_MAP_KINDS = frozenset({"venue", "city", "place", "miss"})
+_SAVED_PIN_RULES = frozenset({PIN_RULE_MATCH, PIN_RULE_MISS, PIN_RULE_ADMIN, PIN_RULE_MAPS})
 
 
 def _map_from_row(bucket: ComplexBucket, row: VenueFieldPoint) -> MapFieldOut:
@@ -1266,28 +1271,50 @@ def _map_from_row(bucket: ComplexBucket, row: VenueFieldPoint) -> MapFieldOut:
     )
 
 
-def _save_map_geocode(session: Session, bucket: ComplexBucket, hit: GeocodeHit | None) -> VenueFieldPoint:
-    """Store the venue-preferring pin. A later map view reuses it and does not call Geoapify again."""
+def _apply_lookup(row: VenueFieldPoint, lookup: FieldLookup, now: datetime) -> None:
+    hit = lookup.hit
+    if hit is None:
+        row.status = "miss"
+        row.provider = None
+        row.place_id = None
+        row.formatted_address = None
+        row.latitude = None
+        row.longitude = None
+        row.geocode_kind = lookup.outcome if lookup.outcome in {"no-city", "rejected"} else "miss"
+        row.pin_rule = PIN_RULE_MISS
+        return
+    row.status = "found"
+    row.provider = PROVIDER
+    row.place_id = hit.place_id
+    row.formatted_address = hit.formatted_address
+    row.latitude = hit.latitude
+    row.longitude = hit.longitude
+    row.geocode_kind = "venue"
+    row.pin_rule = PIN_RULE_MATCH
+
+
+def _save_map_geocode(session: Session, bucket: ComplexBucket, lookup: FieldLookup) -> VenueFieldPoint:
+    """Store a passing pin, or clear coordinates when the lookup does not pass.
+
+    A later view reads this row and does not call Geoapify again. An admin
+    replacement, and a pin the Maps check cleared, are left as stored.
+    Nothing here is marked verified.
+    """
 
     now = datetime.now(UTC)
-    kind = hit.kind if hit is not None else "miss"
-    status = "found" if hit is not None else "miss"
     row = session.get(VenueFieldPoint, bucket.venue_key)
+    if row is not None and row.pin_rule in {PIN_RULE_ADMIN, PIN_RULE_MAPS}:
+        return row
     if row is None:
         row = VenueFieldPoint(
             venue_key=bucket.venue_key,
             venue_name=bucket.venue_name,
             city=bucket.city,
             state=bucket.state,
-            status=status,
-            provider=PROVIDER if hit is not None else None,
-            place_id=hit.place_id if hit is not None else None,
-            formatted_address=hit.formatted_address if hit is not None else None,
-            latitude=hit.latitude if hit is not None else None,
-            longitude=hit.longitude if hit is not None else None,
-            geocode_kind=kind,
+            status="miss",
             fetched_at=now,
         )
+        _apply_lookup(row, lookup, now)
         session.add(row)
         try:
             session.commit()
@@ -1299,45 +1326,33 @@ def _save_map_geocode(session: Session, bucket: ComplexBucket, hit: GeocodeHit |
             return existing
         session.refresh(row)
         return row
-    row.status = status
-    row.provider = PROVIDER if hit is not None else row.provider
-    row.place_id = hit.place_id if hit is not None else None
-    row.formatted_address = hit.formatted_address if hit is not None else None
-    row.latitude = hit.latitude if hit is not None else None
-    row.longitude = hit.longitude if hit is not None else None
-    row.geocode_kind = kind
-    row.fetched_at = now
+    _apply_lookup(row, lookup, now)
     session.commit()
     session.refresh(row)
     return row
 
 
 def _resolve_map_field(session: Session, bucket: ComplexBucket) -> MapFieldOut:
-    """Pin one complex from its name, city, and state, preferring a park or venue over a city centroid.
+    """Read a saved pin, or look the field up once when none is saved.
 
-    Schedule coordinates are city-level and are not used. Only the requested
-    field or club is resolved. There is no endpoint that geocodes every complex.
+    Schedule coordinates are not used. A result that fails the name, state,
+    or distance checks is stored with no coordinates.
     """
 
     base = {"venue_key": bucket.venue_key, "venue_name": bucket.venue_name, "city": bucket.city, "state": bucket.state}
     if _is_tbd(bucket.venue_name):
         return MapFieldOut(**base, status="skipped")
     cached = session.get(VenueFieldPoint, bucket.venue_key)
-    if cached is not None and (cached.geocode_kind or "") in _MAP_KINDS:
+    if cached is not None and (cached.pin_rule or "") in _SAVED_PIN_RULES:
         return _map_from_row(bucket, cached)
-    fallback = None
-    if cached is not None and cached.status == "found" and cached.latitude is not None and cached.longitude is not None:
-        fallback = (cached.latitude, cached.longitude, (cached.formatted_address or "").strip() or None)
     session.rollback()
     if not bucket.city or not bucket.state:
         return MapFieldOut(**base, status="skipped")
     try:
-        hit = geocode_venue(bucket.venue_name, bucket.city, bucket.state)
+        lookup = lookup_field_pin(bucket.venue_name, bucket.city, bucket.state)
     except PlacesUnavailable:
-        if fallback is None:
-            return MapFieldOut(**base, status="unavailable")
-        return MapFieldOut(**base, status="found", latitude=fallback[0], longitude=fallback[1], formatted_address=fallback[2])
-    return _map_from_row(bucket, _save_map_geocode(session, bucket, hit))
+        return MapFieldOut(**base, status="unavailable")
+    return _map_from_row(bucket, _save_map_geocode(session, bucket, lookup))
 
 
 def _map_tip(row: VenueRecommendation, field: MapFieldOut) -> MapTipOut:
@@ -1393,7 +1408,7 @@ def read_club_map(
     session: Annotated[Session, Depends(get_session)],
     club: str = Query(description="Club id, or the split id used on the club page"),
 ) -> ClubMapOut:
-    """Map points for one club's home fields only, resolved and cached field by field."""
+    """Saved pins for one club's home fields. Fields with no saved point are looked up once."""
 
     source = club_location_source(session, club)
     if source is None:
@@ -1402,6 +1417,129 @@ def read_club_map(
     fields = [_resolve_map_field(session, bucket) for bucket in grouped.values()]
     fields.sort(key=lambda item: (item.venue_name.casefold(), item.city.casefold(), item.state, item.venue_key))
     return ClubMapOut(club_id=source.id, club_name=source.name, fields=fields)
+
+
+class AdminFieldPinIn(BaseModel):
+    venue_key: str = Field(min_length=1, max_length=300)
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
+class AdminFieldPinClear(BaseModel):
+    venue_key: str = Field(min_length=1, max_length=300)
+
+
+class AdminFieldPinOut(BaseModel):
+    venue_key: str
+    venue_name: str
+    city: str
+    state: str
+    status: str
+    latitude: float | None = None
+    longitude: float | None = None
+    formatted_address: str | None = None
+    pin_rule: str | None = None
+    note: str
+
+
+def _admin_pin_out(row: VenueFieldPoint, note: str) -> AdminFieldPinOut:
+    return AdminFieldPinOut(
+        venue_key=row.venue_key,
+        venue_name=row.venue_name,
+        city=row.city,
+        state=row.state,
+        status=row.status,
+        latitude=row.latitude if row.status == "found" else None,
+        longitude=row.longitude if row.status == "found" else None,
+        formatted_address=(row.formatted_address or "").strip() or None,
+        pin_rule=row.pin_rule,
+        note=note,
+    )
+
+
+def _admin_pin_key(venue_key: str) -> str:
+    key = venue_key.strip()
+    parts = key.rsplit("|", 2)
+    if len(parts) != 3 or not all(part.strip() for part in parts):
+        raise HTTPException(status_code=400, detail="Use the field key shown on the map explorer.")
+    return key
+
+
+@router.get("/admin/field-pins", response_model=AdminFieldPinOut)
+def read_admin_field_pin(
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+    venue_key: str = Query(min_length=1, max_length=300),
+) -> AdminFieldPinOut:
+    """Saved pin for one field. Admins only. This is not a verification."""
+
+    require_admin(session, token)
+    row = session.get(VenueFieldPoint, _admin_pin_key(venue_key))
+    if row is None:
+        raise HTTPException(status_code=404, detail="No saved pin for that field.")
+    return _admin_pin_out(row, "Saved pin. This is not marked as verified.")
+
+
+@router.post("/admin/field-pins", response_model=AdminFieldPinOut)
+def replace_admin_field_pin(
+    body: AdminFieldPinIn,
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+) -> AdminFieldPinOut:
+    """Replace a saved pin with coordinates an admin entered. Does not mark it verified."""
+
+    require_admin(session, token)
+    key = _admin_pin_key(body.venue_key)
+    name, city, state = key.rsplit("|", 2)
+    now = datetime.now(UTC)
+    row = session.get(VenueFieldPoint, key)
+    if row is None:
+        row = VenueFieldPoint(
+            venue_key=key,
+            venue_name=name,
+            city=city,
+            state=state.upper(),
+            status="found",
+            fetched_at=now,
+        )
+        session.add(row)
+    row.status = "found"
+    row.latitude = body.latitude
+    row.longitude = body.longitude
+    row.provider = None
+    row.place_id = None
+    row.geocode_kind = "admin"
+    row.pin_rule = PIN_RULE_ADMIN
+    row.fetched_at = now
+    session.commit()
+    session.refresh(row)
+    return _admin_pin_out(row, "Saved pin replaced. This does not mark the location as verified.")
+
+
+@router.post("/admin/field-pins/clear", response_model=AdminFieldPinOut)
+def clear_admin_field_pin(
+    body: AdminFieldPinClear,
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+) -> AdminFieldPinOut:
+    """Drop a saved pin so the next visit can look the field up again."""
+
+    require_admin(session, token)
+    key = _admin_pin_key(body.venue_key)
+    row = session.get(VenueFieldPoint, key)
+    if row is None:
+        raise HTTPException(status_code=404, detail="No saved pin for that field.")
+    name, city, state = row.venue_name, row.city, row.state
+    session.delete(row)
+    session.commit()
+    return AdminFieldPinOut(
+        venue_key=key,
+        venue_name=name,
+        city=city,
+        state=state,
+        status="miss",
+        note="Saved pin removed. The next visit can look this field up again. That lookup is not a verification.",
+    )
 
 
 @router.get("/locations/field-point", response_model=FieldPointOut)

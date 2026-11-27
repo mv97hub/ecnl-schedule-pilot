@@ -27,6 +27,12 @@ SEARCH_RADIUS_METERS = 40234  # 25 miles
 SUGGEST_LIMIT = 5
 MIN_QUERY_CHARS = 3
 NEAR_MILES = 25.0
+FIELD_NEAR_CITY_MILES = 25.0
+PIN_RULE_MATCH = "name-state-city-v1"
+PIN_RULE_MISS = "miss"
+PIN_RULE_ADMIN = "admin"
+PIN_RULE_MAPS = "maps-mismatch"
+_CITY_POINTS: dict[tuple[str, str], tuple[float, float] | None] = {}
 PLACE_LIMIT = 30
 PLACE_WINDOW_SECONDS = 10 * 60
 
@@ -82,6 +88,7 @@ class PlaceHit:
 def reset_place_rate_limit() -> None:
     with _LOCK:
         _HITS.clear()
+        _CITY_POINTS.clear()
 
 
 def claim_place_slot(user_id: int) -> None:
@@ -155,25 +162,12 @@ def geocode_complex(name: str, city: str, state: str) -> GeocodeHit | None:
 
 
 def geocode_venue(name: str, city: str, state: str) -> GeocodeHit | None:
-    """Point for a field name plus city and state, preferring a park or venue over a city centroid.
+    """Saved map pin for one field. None when no result passes the field checks.
 
-    The map explorer uses this. The tip form still uses ``geocode_complex``.
+    The tip form still uses ``geocode_complex``. A miss is not a verified absence.
     """
 
-    payload = _get(
-        GEOCODE_URL,
-        {
-            "text": f"{name}, {city}, {state}",
-            "format": "json",
-            "limit": "5",
-            "filter": "countrycode:us",
-            "lang": "en",
-        },
-    )
-    results = payload.get("results")
-    if not isinstance(results, list):
-        return None
-    return choose_geocode(results, name)
+    return lookup_field_pin(name, city, state).hit
 
 
 def suggest_places(query: str, category: str, latitude: float, longitude: float) -> list[PlaceSuggestionHit]:
@@ -283,9 +277,93 @@ def _get(url: str, params: dict[str, str]) -> dict:
 
 
 _VENUE_TYPES = frozenset({"amenity", "building"})
-_CITY_TYPES = frozenset({"city", "county", "state", "country", "postcode"})
-_AREA_TYPES = frozenset({"street", "suburb", "district", "neighbourhood", "neighborhood"})
-_VENUE_PREFIXES = ("leisure", "sport", "tourism", "entertainment", "natural", "building", "parking")
+_CENTROID_TYPES = frozenset({"city", "county", "state", "country"})
+_CITY_TYPES = _CENTROID_TYPES | frozenset({"postcode"})
+_VENUE_PREFIXES = ("leisure", "sport", "tourism", "entertainment", "natural", "building")
+_NAME_STOP = frozenset(
+    {
+        "park",
+        "parks",
+        "field",
+        "fields",
+        "regional",
+        "sports",
+        "sport",
+        "complex",
+        "stadium",
+        "center",
+        "centre",
+        "county",
+        "the",
+        "of",
+        "and",
+        "at",
+        "fc",
+        "soccer",
+        "club",
+        "national",
+        "high",
+        "school",
+        "athletic",
+        "athletics",
+        "recreation",
+        "community",
+        "youth",
+    }
+)
+_STATE_NAMES = {
+    "alabama": "AL",
+    "alaska": "AK",
+    "arizona": "AZ",
+    "arkansas": "AR",
+    "california": "CA",
+    "colorado": "CO",
+    "connecticut": "CT",
+    "delaware": "DE",
+    "district of columbia": "DC",
+    "florida": "FL",
+    "georgia": "GA",
+    "hawaii": "HI",
+    "idaho": "ID",
+    "illinois": "IL",
+    "indiana": "IN",
+    "iowa": "IA",
+    "kansas": "KS",
+    "kentucky": "KY",
+    "louisiana": "LA",
+    "maine": "ME",
+    "maryland": "MD",
+    "massachusetts": "MA",
+    "michigan": "MI",
+    "minnesota": "MN",
+    "mississippi": "MS",
+    "missouri": "MO",
+    "montana": "MT",
+    "nebraska": "NE",
+    "nevada": "NV",
+    "new hampshire": "NH",
+    "new jersey": "NJ",
+    "new mexico": "NM",
+    "new york": "NY",
+    "north carolina": "NC",
+    "north dakota": "ND",
+    "ohio": "OH",
+    "oklahoma": "OK",
+    "oregon": "OR",
+    "pennsylvania": "PA",
+    "rhode island": "RI",
+    "south carolina": "SC",
+    "south dakota": "SD",
+    "tennessee": "TN",
+    "texas": "TX",
+    "utah": "UT",
+    "vermont": "VT",
+    "virginia": "VA",
+    "washington": "WA",
+    "west virginia": "WV",
+    "wisconsin": "WI",
+    "wyoming": "WY",
+}
 
 
 def _category_text(row: dict) -> str:
@@ -312,45 +390,159 @@ def geocode_kind(row: dict) -> str:
     return "place"
 
 
-def _name_matches(row: dict, name: str) -> bool:
-    wanted = name.casefold().strip()
-    found = (_text(row.get("name")) or "").casefold()
-    if not wanted or not found:
+def _normalize_name(value: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() else " " for ch in value.casefold())
+    return " ".join(cleaned.split())
+
+
+def names_match(field_name: str, result_name: str) -> bool:
+    """True when the result is this field, not merely another sports complex."""
+
+    field = _normalize_name(field_name)
+    result = _normalize_name(result_name)
+    if not field or not result:
         return False
-    return wanted in found or found in wanted
+    if field in result or (len(result) >= 8 and result in field):
+        return True
+    field_tokens = [token for token in field.split() if token not in _NAME_STOP and len(token) > 2]
+    result_tokens = [token for token in result.split() if token not in _NAME_STOP and len(token) > 2]
+    if not field_tokens or not result_tokens:
+        return False
+    return all(any(token == other or token in other or other in token for other in result_tokens) for token in field_tokens)
 
 
-def _geocode_rank(row: dict, name: str) -> int:
-    kind = geocode_kind(row)
-    named = _name_matches(row, name)
+def result_state(row: dict) -> str | None:
+    for key in ("state_code", "state"):
+        raw = _text(row.get(key))
+        if not raw:
+            continue
+        upper = raw.upper()
+        if len(upper) == 2 and upper.isalpha():
+            return upper
+        if upper.startswith("US-") and len(upper) == 5 and upper[3:].isalpha():
+            return upper[3:]
+        named = _STATE_NAMES.get(raw.casefold())
+        if named:
+            return named
+    return None
+
+
+def is_centroid(row: dict) -> bool:
+    return (_text(row.get("result_type")) or "").casefold() in _CENTROID_TYPES
+
+
+def is_field_venue(row: dict) -> bool:
+    if is_centroid(row):
+        return False
     result_type = (_text(row.get("result_type")) or "").casefold()
-    if kind == "venue" and named:
+    if result_type in _VENUE_TYPES:
+        return True
+    category = _category_text(row)
+    return any(category.startswith(prefix) or f" {prefix}" in f" {category}" for prefix in ("leisure", "sport", "stadium", "park"))
+
+
+def field_result_passes(row: dict, name: str, state: str, city_lat: float, city_lng: float) -> bool:
+    """A pin must match the field name and state, sit near that city, and not be a centroid."""
+
+    if is_centroid(row) or not is_field_venue(row):
+        return False
+    if result_state(row) != state.strip().upper():
+        return False
+    if not names_match(name, _text(row.get("name"))):
+        return False
+    latitude = _number(row.get("lat"))
+    longitude = _number(row.get("lon"))
+    if latitude is None or longitude is None:
+        return False
+    return miles_between(latitude, longitude, city_lat, city_lng) <= FIELD_NEAR_CITY_MILES
+
+
+def _pin_rank(row: dict) -> int:
+    category = _category_text(row)
+    if any(hint in category for hint in ("sport", "leisure.park", "stadium")):
         return 0
-    if kind == "venue":
-        return 1
-    if named and result_type in _AREA_TYPES:
-        return 2
-    if named and kind != "city":
-        return 3
-    if kind == "city":
-        return 5
-    return 4
+    return 1
 
 
-def choose_geocode(results: list, name: str) -> GeocodeHit | None:
-    """Pick the field pin. A named park or venue beats a city, county, or state centroid."""
+def choose_field_pin(
+    results: list,
+    name: str,
+    state: str,
+    city_lat: float,
+    city_lng: float,
+) -> GeocodeHit | None:
+    """Pick a passing park, stadium, or sports complex. None when every result fails."""
 
     best: tuple[int, int, GeocodeHit] | None = None
     for index, row in enumerate(results):
-        if not isinstance(row, dict):
+        if not isinstance(row, dict) or not field_result_passes(row, name, state, city_lat, city_lng):
             continue
         hit = _geocode_hit(row)
         if hit is None:
             continue
-        rank = _geocode_rank(row, name)
+        rank = _pin_rank(row)
         if best is None or (rank, index) < (best[0], best[1]):
             best = (rank, index, hit)
     return None if best is None else best[2]
+
+
+@dataclass(frozen=True)
+class FieldLookup:
+    hit: GeocodeHit | None
+    outcome: str
+
+
+def _geocode_rows(text: str, limit: str) -> list:
+    payload = _get(
+        GEOCODE_URL,
+        {
+            "text": text,
+            "format": "json",
+            "limit": limit,
+            "filter": "countrycode:us",
+            "lang": "en",
+        },
+    )
+    results = payload.get("results")
+    return results if isinstance(results, list) else []
+
+
+def geocode_city_point(city: str, state: str) -> tuple[float, float] | None:
+    """Reference point for the named city. Not a field pin."""
+
+    key = (" ".join(city.split()).casefold(), state.strip().upper())
+    with _LOCK:
+        if key in _CITY_POINTS:
+            return _CITY_POINTS[key]
+    point: tuple[float, float] | None = None
+    wanted = key[1]
+    for row in _geocode_rows(f"{city}, {state}", "5"):
+        if not isinstance(row, dict) or result_state(row) != wanted:
+            continue
+        if (_text(row.get("result_type")) or "").casefold() != "city":
+            continue
+        latitude = _number(row.get("lat"))
+        longitude = _number(row.get("lon"))
+        if latitude is None or longitude is None or not _valid(latitude, longitude):
+            continue
+        point = (latitude, longitude)
+        break
+    with _LOCK:
+        _CITY_POINTS[key] = point
+    return point
+
+
+def lookup_field_pin(name: str, city: str, state: str) -> FieldLookup:
+    """One Geoapify pass for a field. A failed check leaves the pin unset."""
+
+    city_point = geocode_city_point(city, state)
+    if city_point is None:
+        return FieldLookup(None, "no-city")
+    results = _geocode_rows(f"{name}, {city}, {state}", "8")
+    hit = choose_field_pin(results, name, state, city_point[0], city_point[1])
+    if hit is None:
+        return FieldLookup(None, "rejected")
+    return FieldLookup(hit, "accepted")
 
 
 def _geocode_hit(row: dict) -> GeocodeHit | None:
