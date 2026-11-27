@@ -46,6 +46,7 @@ from app.maps_check import (
     pin_source,
     lookup_skips,
     read_maps_result,
+    retry_eligible,
 )
 from app.places import (
     MIN_QUERY_CHARS,
@@ -1685,6 +1686,8 @@ def read_admin_field_pin_board(
 
 
 def _apply_maps_result(row: VenueFieldPoint, place, now: datetime) -> None:
+    if row.pin_rule in {PIN_RULE_ADMIN, PIN_RULE_MANUAL}:
+        return
     street = (place.street or "").strip()
     address = ", ".join(part for part in (street, place.city, place.state) if part)
     row.status = "found"
@@ -1777,6 +1780,75 @@ def lookup_admin_field_pins(
         failed=failed,
         skipped=skipped,
         note="Lookup finished for the selected fields only. A saved pin is not verified.",
+    )
+
+
+_PIN_RETRY_BATCH = 8
+
+
+class FieldPinRetryIn(BaseModel):
+    done: list[str] = Field(default_factory=list, max_length=500)
+
+
+class FieldPinRetryOut(BaseModel):
+    saved: int
+    failed: int
+    skipped: int
+    remaining: int
+    tried: list[str]
+    note: str
+
+
+@router.post("/admin/field-pins/retry", response_model=FieldPinRetryOut)
+def retry_failed_field_pins(
+    body: FieldPinRetryIn,
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+) -> FieldPinRetryOut:
+    """Look up one batch of fields that have no saved coordinates.
+
+    A maps-failed row is included. A manual pin is not. This does not walk every complex.
+    """
+
+    require_admin(session, token)
+    finished = {key.strip() for key in body.done if key.strip()}
+    skipped = 0
+    eligible: list[VenueFieldPoint] = []
+    for row in session.scalars(select(VenueFieldPoint).order_by(VenueFieldPoint.fetched_at, VenueFieldPoint.venue_key)):
+        if row.venue_key in finished:
+            continue
+        if row.latitude is not None and row.longitude is not None and row.status == "found":
+            continue
+        if not retry_eligible(row.pin_rule, row.latitude, row.longitude):
+            skipped += 1
+            continue
+        eligible.append(row)
+    batch = eligible[:_PIN_RETRY_BATCH]
+    saved = 0
+    failed = 0
+    tried: list[str] = []
+    for index, row in enumerate(batch):
+        tried.append(row.venue_key)
+        if not retry_eligible(row.pin_rule, row.latitude, row.longitude):
+            skipped += 1
+            continue
+        place = read_maps_result(row.venue_name, row.city, row.state, timeout=8)
+        if accept_result(row.state, place).keep and place is not None:
+            _apply_maps_result(row, place, datetime.now(UTC))
+            saved += 1
+        else:
+            _mark_maps_failed(session, row.venue_key, row.venue_name, row.city, row.state, row)
+            failed += 1
+        session.commit()
+        if index + 1 < len(batch):
+            time.sleep(0.2)
+    return FieldPinRetryOut(
+        saved=saved,
+        failed=failed,
+        skipped=skipped,
+        remaining=max(0, len(eligible) - len(batch)),
+        tried=tried,
+        note="Retried fields with no saved coordinates. A manual pin was left as entered. A saved pin is not verified.",
     )
 
 

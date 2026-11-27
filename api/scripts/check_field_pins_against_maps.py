@@ -7,13 +7,19 @@ GEOAPIFY_API_KEY. A saved pin is not verified.
 
     python scripts/check_field_pins_against_maps.py
 
-The job walks every schedule field. It does not stop at rows already in
-venue_field_point. A field that already has coordinates is skipped. Every
-other field is looked up with the same `{name}, {city}, {state}` query the
-site uses. When the first result can be read and its state matches, those
-coordinates are saved even if the result's city name differs from the
-schedule. A pin is left blank only when the result cannot be read, or the
-result's state does not match. The last line is:
+To look up only fields that have no saved coordinates, including a previous
+failed attempt, and to leave a manual pin untouched:
+
+    python scripts/check_field_pins_against_maps.py --retry-failed
+
+The job walks every schedule field unless --retry-failed is set. It does not
+stop at rows already in venue_field_point. A field that already has
+coordinates is skipped. A manual pin is left as entered. Every other field
+is looked up with the same `{name}, {city}, {state}` query the site uses.
+When the first result can be read and its state matches, those coordinates
+are saved even if the result's city name differs from the schedule. A pin is
+left blank only when the result cannot be read, or the result's state does
+not match. The last line is:
 
     saved=N skipped=N failed=N
 """
@@ -30,11 +36,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from sqlalchemy import select
+
 from app.database import SessionLocal
 from app.locations import _complexes, _is_tbd
-from app.maps_check import MapsPlace, accept_result, field_query, maps_result_url, parse_first_maps_result
+from app.maps_check import MapsPlace, accept_result, field_query, maps_result_url, parse_first_maps_result, retry_eligible
 from app.models import VenueFieldPoint
-from app.places import PIN_RULE_ADMIN, PIN_RULE_MANUAL, PIN_RULE_MAPS_FAILED, PIN_RULE_MAPS_RESULT
+from app.places import PIN_RULE_MAPS_FAILED, PIN_RULE_MAPS_RESULT
 
 _AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
@@ -71,6 +79,8 @@ def store_maps_miss(row: VenueFieldPoint | None, bucket, now: datetime) -> Venue
 
 
 def store_maps_pin(row: VenueFieldPoint, place: MapsPlace, now: datetime) -> None:
+    if row.pin_rule in {"manual", "admin"}:
+        return
     street = place.street.strip()
     address = ", ".join(part for part in (street, place.city, place.state) if part)
     row.status = "found"
@@ -90,6 +100,11 @@ def main() -> int:
     parser.add_argument("--sleep", type=float, default=0.35)
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument("--dry-run", action="store_true", help="Look up and print counts without writing coordinates.")
+    parser.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="Look up only rows with no coordinates. A failed attempt is included. A manual pin is left as entered.",
+    )
     args = parser.parse_args()
 
     saved = 0
@@ -98,20 +113,38 @@ def main() -> int:
     lines: list[str] = []
     session = SessionLocal()
     try:
-        buckets = sorted(_complexes(session, datetime.now(UTC)).values(), key=lambda bucket: (bucket.venue_name, bucket.state, bucket.city))
-        print(f"fields={len(buckets)}", flush=True)
-        for index, bucket in enumerate(buckets):
-            name, city, state = bucket.venue_name, bucket.city, bucket.state
-            if _is_tbd(name) or not name or name == "TBD":
-                skipped += 1
-                continue
-            row = session.get(VenueFieldPoint, bucket.venue_key)
-            if row is not None and row.pin_rule in {PIN_RULE_ADMIN, PIN_RULE_MANUAL}:
-                skipped += 1
-                continue
-            if row is not None and row.latitude is not None and row.longitude is not None:
-                skipped += 1
-                continue
+        if args.retry_failed:
+            pending = []
+            for row in session.scalars(select(VenueFieldPoint).order_by(VenueFieldPoint.venue_name, VenueFieldPoint.state, VenueFieldPoint.city)):
+                if row.latitude is not None and row.longitude is not None and row.status == "found":
+                    continue
+                if not retry_eligible(row.pin_rule, row.latitude, row.longitude):
+                    skipped += 1
+                    continue
+                pending.append(row)
+            print(f"fields={len(pending)}", flush=True)
+            targets = pending
+        else:
+            targets = None
+        buckets = [] if args.retry_failed else sorted(_complexes(session, datetime.now(UTC)).values(), key=lambda bucket: (bucket.venue_name, bucket.state, bucket.city))
+        if not args.retry_failed:
+            print(f"fields={len(buckets)}", flush=True)
+        steps = targets if targets is not None else buckets
+        for index, item in enumerate(steps):
+            if targets is not None:
+                row = item
+                name, city, state = row.venue_name, row.city, row.state
+                bucket = row
+            else:
+                bucket = item
+                name, city, state = bucket.venue_name, bucket.city, bucket.state
+                if _is_tbd(name) or not name or name == "TBD":
+                    skipped += 1
+                    continue
+                row = session.get(VenueFieldPoint, bucket.venue_key)
+                if row is not None and not retry_eligible(row.pin_rule, row.latitude, row.longitude):
+                    skipped += 1
+                    continue
             if not state:
                 failed += 1
                 print(f"failed {name}, {city} no-state", flush=True)
@@ -155,7 +188,7 @@ def main() -> int:
                     if row is None:
                         session.add(missed)
                     session.commit()
-            if index + 1 < len(buckets):
+            if index + 1 < len(steps):
                 time.sleep(max(0.0, args.sleep))
     finally:
         print(f"saved={saved} skipped={skipped} failed={failed}", flush=True)

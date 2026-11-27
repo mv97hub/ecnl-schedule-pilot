@@ -13,11 +13,13 @@ from app.maps_check import (
     field_query,
     is_named_example,
     lookup_skips,
+    manual_coordinate,
     maps_point_link,
     maps_search_link,
     parse_first_maps_result,
     pin_list_name,
     pin_source,
+    retry_eligible,
 )
 
 CLAY = "Clay County Regional Sports Complex"
@@ -112,6 +114,20 @@ class MapsCheckTests(unittest.TestCase):
         self.assertFalse(lookup_skips(None, None, None))
         link = maps_point_link(29.99940, -81.89384)
         self.assertIn("query=29.99940%2C-81.89384", link)
+
+    def test_veterans_park_manual_pin_is_accepted_and_kept(self) -> None:
+        latitude = manual_coordinate("30.09074022710416", -90, 90)
+        longitude = manual_coordinate("-81.56896571349351", -180, 180)
+        self.assertIsNotNone(latitude)
+        self.assertIsNotNone(longitude)
+        assert latitude is not None and longitude is not None
+        self.assertAlmostEqual(latitude, 30.09074022710416)
+        self.assertAlmostEqual(longitude, -81.56896571349351)
+        self.assertTrue(lookup_skips("manual", latitude, longitude))
+        self.assertFalse(retry_eligible("manual", latitude, longitude))
+        self.assertTrue(retry_eligible("maps-failed", None, None))
+        self.assertFalse(retry_eligible("maps-result", latitude, longitude))
+        self.assertIsNone(manual_coordinate("30.09074022710416N", -90, 90))
 
 
 if __name__ == "__main__":

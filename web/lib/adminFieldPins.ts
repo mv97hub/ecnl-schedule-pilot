@@ -27,14 +27,15 @@ const EXTRA_STYLE = `
 form.filters, form.lookup { display: grid; gap: 12px; margin: 16px 0 28px; }
 form.filters { grid-template-columns: minmax(220px, 360px) auto; align-items: end; }
 label.field { display: block; font-weight: 700; margin: 0; }
-input[type="search"], input[type="number"] { width: 100%; border-radius: 12px; border: 1px solid #E4E0D4; padding: 10px 12px; margin-top: 6px; font: inherit; color: #14284B; background: #fff; min-height: 44px; }
+input[type="search"], input[type="text"], input[type="number"] { width: 100%; border-radius: 12px; border: 1px solid #E4E0D4; padding: 10px 12px; margin-top: 6px; font: inherit; color: #14284B; background: #fff; min-height: 44px; }
 .row { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; padding: 12px 0; border-bottom: 1px solid #E4E0D4; }
 .row h3 { margin: 0; font-size: 16px; }
 .meta { color: #51565F; font-size: 13px; margin: 4px 0 0; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin-top: 8px; }
 .actions form, .manual { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
-.manual label { font-size: 13px; font-weight: 700; }
-.manual input { width: 140px; }
+.manual label { font-size: 13px; font-weight: 700; flex: 1 1 220px; }
+.manual input { width: 100%; font-variant-numeric: tabular-nums; }
+code.cmd { display: block; margin-top: 8px; padding: 10px 12px; background: #fff; border: 1px solid #E4E0D4; border-radius: 12px; overflow-wrap: anywhere; }
 button, a.button { font: inherit; font-weight: 700; border-radius: 12px; min-height: 44px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; padding: 0 16px; }
 button.primary, a.primary { background: #F2B705; color: #14284B; border: 0; }
 button.ghost, a.ghost { background: #fff; color: #14284B; border: 1px solid #E4E0D4; }
@@ -98,15 +99,15 @@ ${manualForm(item, query)}
 function manualForm(item: FieldPinItem, query: string): string {
   const latitude = item.latitude == null ? "" : String(item.latitude);
   const longitude = item.longitude == null ? "" : String(item.longitude);
-  return `<form class="manual" method="post" action="/admin/field-pins">
+  return `<form class="manual" method="post" action="/admin/field-pins" novalidate>
 <input type="hidden" name="action" value="manual">
 <input type="hidden" name="q" value="${escapeHtml(query)}">
 <input type="hidden" name="venue_key" value="${escapeHtml(item.venue_key)}">
 <input type="hidden" name="venue_name" value="${escapeHtml(item.venue_name)}">
 <input type="hidden" name="city" value="${escapeHtml(item.city)}">
 <input type="hidden" name="state" value="${escapeHtml(item.state)}">
-<label>Latitude<input class="pin-lat" type="number" name="latitude" step="any" min="-90" max="90" required value="${escapeHtml(latitude)}"></label>
-<label>Longitude<input class="pin-lng" type="number" name="longitude" step="any" min="-180" max="180" required value="${escapeHtml(longitude)}"></label>
+<label>Latitude<input class="pin-lat" type="text" inputmode="decimal" name="latitude" autocomplete="off" spellcheck="false" required value="${escapeHtml(latitude)}"></label>
+<label>Longitude<input class="pin-lng" type="text" inputmode="decimal" name="longitude" autocomplete="off" spellcheck="false" required value="${escapeHtml(longitude)}"></label>
 <button class="primary" type="submit">Save manual pin</button>
 </form>`;
 }
@@ -148,6 +149,10 @@ function notice(kind: string | null, saved: string | null, failed: string | null
     return `<p class="note">Looked up the selected fields. Saved ${escapeHtml(saved)}, failed ${escapeHtml(failed)}, left ${escapeHtml(skipped)}. A saved pin is not verified.</p>`;
   }
   if (kind === "manual") return `<p class="note">Manual pin saved. A later lookup will not replace it. This is not a verification.</p>`;
+  if (kind === "retry" && saved != null && failed != null && skipped != null) {
+    return `<p class="note">Retried fields with no saved coordinates. saved=${escapeHtml(saved)} skipped=${escapeHtml(skipped)} failed=${escapeHtml(failed)}. A manual pin was not changed. A saved pin is not verified.</p>`;
+  }
+  if (kind === "coords") return `<p class="error">Enter a latitude between -90 and 90 and a longitude between -180 and 180.</p>`;
   if (kind === "clear") return `<p class="note">Pin cleared. The field is in Failed.</p>`;
   if (kind === "too-many") return `<p class="error">Select at most 25 fields. The shell script looks up the rest.</p>`;
   if (kind === "empty") return `<p class="error">Select at least one field.</p>`;
@@ -166,8 +171,15 @@ export function fieldPinsPage(board: FieldPinBoard, banner: string | null): stri
 <h1>Field pins</h1>
 <form method="post" action="/api/auth/logout"><button class="ghost" type="submit">Sign out</button></form>
 </div>
-<p class="lede">Failed, untagged, and saved fields. The shell script looks up every field that has no pin. This page looks up only the fields you select. A saved pin is not verified. A manual pin is kept and is not replaced by a later lookup.</p>
+<p class="lede">Failed, untagged, and saved fields. Lookup runs for the fields you select, or for failed rows in batches. It does not look up every complex. A saved pin is not verified. A manual pin is kept and is not replaced by a later lookup.</p>
 ${banner ?? ""}
+<form id="retry" method="post" action="/admin/field-pins">
+<input type="hidden" name="action" value="retry">
+<input type="hidden" name="q" value="${escapeHtml(query)}">
+<button class="primary" type="submit">Retry failed</button>
+</form>
+<p id="retry-status" class="note">Retry failed looks up fields with no saved coordinates, including a previous failed attempt. A manual pin is left as entered. From the api directory on the API shell:</p>
+<code class="cmd">python scripts/check_field_pins_against_maps.py --retry-failed</code>
 <form class="filters" method="get" action="/admin/field-pins">
 <label class="field">Name, city, or state
 <input type="search" name="q" value="${escapeHtml(query)}" placeholder="Middleburg">
@@ -185,27 +197,78 @@ ${listSection("Untagged", board.untagged_count, board.untagged.length, untagged)
 <button class="primary" type="submit" form="lookup">Look up selected</button>
 ${listSection("Saved", board.saved_count, board.saved.length, saved)}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script id="leaflet-js" src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" async></script>
 <script>
 (function () {
   var target = null;
   document.querySelectorAll("form.manual").forEach(function (form) {
     form.addEventListener("focusin", function () { target = form; });
   });
-  var node = document.getElementById("drop-map");
-  if (!node || !window.L) return;
-  var map = L.map(node).setView([39.8, -98.6], 4);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
-  var marker = null;
-  map.on("click", function (event) {
-    if (!target) return;
-    var lat = target.querySelector(".pin-lat");
-    var lng = target.querySelector(".pin-lng");
-    if (!lat || !lng) return;
-    lat.value = event.latlng.lat.toFixed(5);
-    lng.value = event.latlng.lng.toFixed(5);
-    if (marker) marker.remove();
-    marker = L.marker(event.latlng).addTo(map);
+  function startMap() {
+    var node = document.getElementById("drop-map");
+    if (!node || !window.L || node.dataset.ready) return;
+    node.dataset.ready = "1";
+    var map = L.map(node).setView([39.8, -98.6], 4);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
+    var marker = null;
+    map.on("click", function (event) {
+      if (!target) return;
+      var lat = target.querySelector(".pin-lat");
+      var lng = target.querySelector(".pin-lng");
+      if (!lat || !lng) return;
+      lat.value = String(event.latlng.lat);
+      lng.value = String(event.latlng.lng);
+      if (marker) marker.remove();
+      marker = L.marker(event.latlng).addTo(map);
+    });
+  }
+  if (window.L) startMap();
+  var leaflet = document.getElementById("leaflet-js");
+  if (leaflet) leaflet.addEventListener("load", startMap);
+})();
+(function () {
+  var form = document.getElementById("retry");
+  if (!form || !window.fetch) return;
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    var status = document.getElementById("retry-status");
+    var saved = 0;
+    var failed = 0;
+    var skipped = 0;
+    var done = [];
+    var rounds = 0;
+    function step() {
+      if (rounds > 40) {
+        if (status) status.textContent = "saved=" + saved + " skipped=" + skipped + " failed=" + failed;
+        return;
+      }
+      rounds += 1;
+      if (status) status.textContent = "Looking up a batch of fields with no saved coordinates...";
+      var body = new FormData();
+      body.set("action", "retry");
+      body.set("format", "json");
+      body.set("q", form.querySelector("[name=q]") ? form.querySelector("[name=q]").value : "");
+      done.forEach(function (key) { body.append("done", key); });
+      fetch("/admin/field-pins", { method: "POST", body: body, credentials: "same-origin" }).then(function (response) {
+        if (!response.ok) throw new Error("batch");
+        return response.json();
+      }).then(function (data) {
+        saved += Number(data.saved) || 0;
+        failed += Number(data.failed) || 0;
+        skipped = Number(data.skipped) || 0;
+        var tried = Array.isArray(data.tried) ? data.tried : [];
+        if (!tried.length || !data.remaining) {
+          window.location = "/admin/field-pins?notice=retry&saved=" + saved + "&failed=" + failed + "&skipped=" + skipped;
+          return;
+        }
+        tried.forEach(function (key) { done.push(key); });
+        if (status) status.textContent = "saved=" + saved + " skipped=" + skipped + " failed=" + failed;
+        step();
+      }).catch(function () {
+        if (status) status.textContent = "That batch did not finish. saved=" + saved + " skipped=" + skipped + " failed=" + failed;
+      });
+    }
+    step();
   });
 })();
 </script>`,
