@@ -11,14 +11,15 @@ function searchQuery(value: string): string {
   return value.replace(/[\n\r]/g, "").slice(0, 80);
 }
 
-function coordinatePair(value: string): { latitude: number; longitude: number } | null {
-  const match = value.trim().match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+function coordinatePair(value: string): { latitude: string; longitude: string } | null {
+  const text = value.replace(/\u00a0/g, " ").replace(/\u202f/g, " ").trim();
+  const match = text.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
   if (!match) return null;
   const latitude = Number(match[1]);
   const longitude = Number(match[2]);
   if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return null;
   if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null;
-  return { latitude, longitude };
+  return { latitude: match[1], longitude: match[2] };
 }
 
 function backHref(query: string, notice: string): string {

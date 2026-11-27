@@ -116,7 +116,7 @@ function manualForm(item: FieldPinItem, query: string): string {
 
 function savedRow(item: FieldPinItem, query: string): string {
   const where = place(item);
-  const coords = item.latitude != null && item.longitude != null ? `${item.latitude.toFixed(5)}, ${item.longitude.toFixed(5)}` : "";
+  const coords = pointText(item);
   const source = item.source ? ` · ${item.source}` : "";
   return `<div class="row">
 <span></span>

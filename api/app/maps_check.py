@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from decimal import Decimal
 from urllib.parse import urlencode
 
 NAMED_EXAMPLE = ("Clay County Regional Sports Complex", "Middleburg", "FL")
@@ -130,26 +131,46 @@ def retry_eligible(pin_rule: str | None, latitude: float | None, longitude: floa
 _COORDINATE = re.compile(r"-?\d+(?:\.\d+)?")
 
 
+def _paste_text(value: str) -> str:
+    return value.replace("\u00a0", " ").replace("\u202f", " ").strip()
+
+
+def fit_manual_coordinate(value: str, low: float, high: float) -> float | None:
+    """Store a pasted coordinate in the double-precision column.
+
+    A long Google Maps decimal is not rejected. The column keeps the value.
+    When the binary value cannot hold every pasted digit, it still matches
+    the paste to at least 6 decimal places.
+    """
+
+    text = _paste_text(value)
+    if _COORDINATE.fullmatch(text) is None:
+        return None
+    exact = Decimal(text)
+    if exact < Decimal(low) or exact > Decimal(high):
+        return None
+    stored = float(exact)
+    if abs(Decimal(stored) - exact) > Decimal("0.0000005"):
+        stored = float(round(exact, 6))
+    if stored < low or stored > high:
+        return None
+    return stored
+
+
 def manual_coordinate(value: str, low: float, high: float) -> float | None:
     """Accept a pasted latitude or longitude, including a long decimal such as a map click."""
 
-    text = value.strip()
-    if _COORDINATE.fullmatch(text) is None:
-        return None
-    number = float(text)
-    if number < low or number > high:
-        return None
-    return number
+    return fit_manual_coordinate(value, low, high)
 
 
 def manual_pair(value: str) -> tuple[float, float] | None:
     """Read one pasted box: latitude, optional space, comma, optional space, longitude."""
 
-    match = re.fullmatch(r"\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*", value.strip())
+    match = re.fullmatch(r"(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)", _paste_text(value))
     if match is None:
         return None
-    latitude = manual_coordinate(match.group(1), -90, 90)
-    longitude = manual_coordinate(match.group(2), -180, 180)
+    latitude = fit_manual_coordinate(match.group(1), -90, 90)
+    longitude = fit_manual_coordinate(match.group(2), -180, 180)
     if latitude is None or longitude is None:
         return None
     return latitude, longitude
