@@ -18,14 +18,13 @@ export function SignInButtons({ from, next }: { from: SignInFrom; next: string |
         style={{ width: "100%", height: 44 }}
         onPress={() => void run("apple")}
       />
-      <View style={{ alignItems: "center" }}>
-        <GoogleSigninButton
-          size={GoogleSigninButton.Size.Wide}
-          color={GoogleSigninButton.Color.Light}
-          disabled={busy != null}
-          onPress={() => void run("google")}
-        />
-      </View>
+      <GoogleSigninButton
+        size={GoogleSigninButton.Size.Wide}
+        color={GoogleSigninButton.Color.Light}
+        disabled={busy != null}
+        onPress={() => void run("google")}
+        style={{ width: "100%", height: 48 }}
+      />
       {error ? <Text style={{ color: colors.ink, lineHeight: 20 }}>{error}</Text> : null}
     </View>
   );

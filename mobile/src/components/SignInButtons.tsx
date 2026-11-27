@@ -14,14 +14,14 @@ const GOOGLE_MARK =
 
 /**
  * Web stand-in for the iOS controls. AppleAuthenticationButton and GoogleSigninButton render nothing here.
- * Sizes follow the official buttons: Apple at 44pt black, Google wide at 312 by 48.
+ * Both stretch to the same width. Apple stays 44pt black; Google stays the light 48pt sign-in button.
  */
 export function SignInButtons({ from, next }: { from: SignInFrom; next: string | null }) {
   const { busy, error, run } = useProviderSignIn(from, next);
   const locked = busy != null;
 
   return (
-    <View style={{ gap: 12, alignSelf: "stretch", alignItems: "center" }}>
+    <View style={{ gap: 12, alignSelf: "stretch" }}>
       <Hit
         label="Sign in with Apple"
         disabled={locked}
@@ -35,7 +35,7 @@ export function SignInButtons({ from, next }: { from: SignInFrom; next: string |
         label="Sign in with Google"
         disabled={locked}
         onPress={() => void run("google")}
-        style={{ width: 312, height: 48, borderRadius: 4, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#747775", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 10 }}
+        style={{ alignSelf: "stretch", height: 48, borderRadius: 4, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#747775", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 10 }}
       >
         <Image source={{ uri: GOOGLE_MARK }} style={{ width: 18, height: 18 }} />
         <Text style={{ color: "#1F1F1F", fontSize: 16, fontWeight: "500" }}>Sign in with Google</Text>
