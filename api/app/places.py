@@ -23,10 +23,10 @@ PROVIDER = "geoapify"
 GEOCODE_URL = "https://api.geoapify.com/v1/geocode/search"
 PLACES_URL = "https://api.geoapify.com/v2/places"
 DETAILS_URL = "https://api.geoapify.com/v2/place-details"
-SEARCH_RADIUS_METERS = 32187  # 20 miles
+SEARCH_RADIUS_METERS = 40234  # 25 miles
 SUGGEST_LIMIT = 5
 MIN_QUERY_CHARS = 3
-NEAR_MILES = 20.0
+NEAR_MILES = 25.0
 PLACE_LIMIT = 30
 PLACE_WINDOW_SECONDS = 10 * 60
 
@@ -152,7 +152,7 @@ def geocode_complex(name: str, city: str, state: str) -> GeocodeHit | None:
 
 
 def suggest_places(query: str, category: str, latitude: float, longitude: float) -> list[PlaceSuggestionHit]:
-    """Places whose names contain the typed text, inside twenty miles of the field.
+    """Places whose names contain the typed text, inside twenty-five miles of the field.
 
     Each lodging or food category is a separate request. One combined category
     list makes Geoapify's name filter return an empty collection.

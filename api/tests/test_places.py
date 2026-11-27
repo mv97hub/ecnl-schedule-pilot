@@ -283,7 +283,7 @@ class PlaceLookupTests(unittest.TestCase):
         self.assertTrue(category_fits("RESTAURANT", ("catering.cafe",)))
         self.assertTrue(category_fits("RESTAURANT", ("catering.cafe.coffee_shop",)))
         self.assertFalse(category_fits("RESTAURANT", ("commercial.supermarket",)))
-        self.assertEqual(NEAR_MILES, 20.0)
+        self.assertEqual(NEAR_MILES, 25.0)
         self.assertLess(miles_between(FIELD_LAT, FIELD_LON, HOTEL_LAT, HOTEL_LON), NEAR_MILES)
         self.assertGreater(miles_between(FIELD_LAT, FIELD_LON, 40.0, -105.0), NEAR_MILES)
 
@@ -415,7 +415,7 @@ class PlaceLookupTests(unittest.TestCase):
             self.assertEqual(params["categories"], "accommodation.hotel")
             self.assertNotIn(",", str(params["categories"]))
             self.assertEqual(params["bias"], f"proximity:{FIELD_LON:.6f},{FIELD_LAT:.6f}")
-            self.assertEqual(SEARCH_RADIUS_METERS, 32187)
+            self.assertEqual(SEARCH_RADIUS_METERS, 40234)
             self.assertEqual(params["filter"], f"circle:{FIELD_LON:.6f},{FIELD_LAT:.6f},{SEARCH_RADIUS_METERS}")
             hotel_categories = [
                 str(call["params"]["categories"])
