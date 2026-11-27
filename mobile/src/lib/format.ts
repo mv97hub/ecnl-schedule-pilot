@@ -50,6 +50,12 @@ export function teamLabel(name: string, ageGroup: string): string {
   return `${name} · ${ageGroup}`;
 }
 
+/** Schedules tab chip, for example "B U14 Bay Area Surf". */
+export function scheduleChipLabel(team: { name: string; age_group: string; gender?: "boys" | "girls" | null }): string {
+  const mark = team.gender === "girls" ? "G" : team.gender === "boys" ? "B" : "";
+  return [mark, team.age_group, team.name].filter(Boolean).join(" ");
+}
+
 export type EasternStamp = {
   year: number;
   month: number;
