@@ -50,6 +50,7 @@ from app.places import (
     clean_place_id,
     PIN_RULE_ADMIN,
     PIN_RULE_MAPS,
+    PIN_RULE_MAPS_RESULT,
     PIN_RULE_MATCH,
     PIN_RULE_MISS,
     FieldLookup,
@@ -1255,7 +1256,7 @@ def _apply_match(row: VenueRecommendation, hit: PlaceHit) -> None:
     row.place_fetched_at = datetime.now(UTC)
 
 
-_SAVED_PIN_RULES = frozenset({PIN_RULE_MATCH, PIN_RULE_MISS, PIN_RULE_ADMIN, PIN_RULE_MAPS})
+_SAVED_PIN_RULES = frozenset({PIN_RULE_MATCH, PIN_RULE_MISS, PIN_RULE_ADMIN, PIN_RULE_MAPS, PIN_RULE_MAPS_RESULT})
 
 
 def _map_from_row(bucket: ComplexBucket, row: VenueFieldPoint) -> MapFieldOut:
@@ -1303,7 +1304,7 @@ def _save_map_geocode(session: Session, bucket: ComplexBucket, lookup: FieldLook
 
     now = datetime.now(UTC)
     row = session.get(VenueFieldPoint, bucket.venue_key)
-    if row is not None and row.pin_rule in {PIN_RULE_ADMIN, PIN_RULE_MAPS}:
+    if row is not None and row.pin_rule in {PIN_RULE_ADMIN, PIN_RULE_MAPS, PIN_RULE_MAPS_RESULT}:
         return row
     if row is None:
         row = VenueFieldPoint(
