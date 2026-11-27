@@ -11,7 +11,7 @@ export type FlagRow = {
   status: "visible" | "hidden" | "auto_flagged" | "reenabled";
 };
 
-export type FlagState = "hidden" | "reenabled";
+export type FlagState = "hidden" | "reenabled" | "once";
 
 function escapeHtml(value: string): string {
   return value
@@ -60,13 +60,38 @@ export function isFlagRow(value: unknown): value is FlagRow {
 export function readFlagPage(payload: unknown): { state: FlagState; rows: FlagRow[] } | null {
   if (!payload || typeof payload !== "object") return null;
   const body = payload as { state?: unknown; rows?: unknown };
-  if (body.state !== "hidden" && body.state !== "reenabled") return null;
+  if (body.state !== "hidden" && body.state !== "reenabled" && body.state !== "once") return null;
   if (!Array.isArray(body.rows)) return null;
   return { state: body.state, rows: body.rows.filter(isFlagRow) };
 }
 
+function rowAction(row: FlagRow, state: FlagState): string {
+  if (row.status === "auto_flagged") {
+    return `<form method="post" action="/admin/flags/${row.id}">
+<input type="hidden" name="return_to" value="/admin/flags?state=${state}">
+<button class="ghost" type="submit">Mark acceptable</button>
+</form>`;
+  }
+  if (state === "once" && row.status !== "hidden") {
+    return `<form method="post" action="/admin/contributions/tip/${row.id}">
+<input type="hidden" name="action" value="hide">
+<input type="hidden" name="return_to" value="/admin/flags?state=once">
+<button class="ghost" type="submit">Hide</button>
+</form>`;
+  }
+  return "";
+}
+
+function lede(state: FlagState): string {
+  if (state === "once") {
+    return "One report and not auto-hidden. Hide removes the tip now. A second report still hides it.";
+  }
+  return "Tips that reached two reports. Mark acceptable keeps the words and leaves later reports visible to admins.";
+}
+
 export function flagsPage(rows: FlagRow[], state: FlagState, failed: boolean): string {
   const banner = failed ? `<p class="error">Could not load flagged comments.</p>` : "";
+  const onceCurrent = state === "once" ? ` aria-current="page"` : "";
   const hiddenCurrent = state === "hidden" ? ` aria-current="page"` : "";
   const reenabledCurrent = state === "reenabled" ? ` aria-current="page"` : "";
   const table = rows.length
@@ -81,20 +106,13 @@ ${rows
     const reporters = row.reporter_emails.length
       ? row.reporter_emails.map((email) => `<span class="email">${escapeHtml(email)}</span>`).join("")
       : `<span class="email">No reports on file</span>`;
-    const action =
-      row.status === "auto_flagged"
-        ? `<form method="post" action="/admin/flags/${row.id}">
-<input type="hidden" name="return_to" value="/admin/flags?state=${state}">
-<button class="ghost" type="submit">Mark acceptable</button>
-</form>`
-        : "";
     return `<tr>
 <td>${escapeHtml(row.venue_name)}</td>
 <td><p class="comment">${escapeHtml(row.comment)}</p></td>
 <td><span class="person"><span>${escapeHtml(row.author_name)}</span><span class="email">${authorEmail}</span></span></td>
 <td>${escapeHtml(formatWhen(row.auto_hidden_at))}</td>
 <td><span class="person">${reporters}</span></td>
-<td>${statusLabel(row.status)}<div class="row-actions">${action}</div></td>
+<td>${statusLabel(row.status)}<div class="row-actions">${rowAction(row, state)}</div></td>
 </tr>`;
   })
   .join("")}
@@ -107,8 +125,9 @@ ${rows
 <h1>Flagged comments</h1>
 <form method="post" action="/api/auth/logout"><button class="ghost" type="submit">Sign out</button></form>
 </div>
-<p class="lede">Tips that reached two reports. Mark acceptable keeps the words and leaves later reports visible to admins.</p>
+<p class="lede">${lede(state)}</p>
 <nav class="tabs" aria-label="Flagged comment filters">
+<a class="tab" href="/admin/flags?state=once"${onceCurrent}>Flagged once</a>
 <a class="tab" href="/admin/flags?state=hidden"${hiddenCurrent}>Hidden</a>
 <a class="tab" href="/admin/flags?state=reenabled"${reenabledCurrent}>Re-enabled after moderation</a>
 </nav>

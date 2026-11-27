@@ -6,6 +6,17 @@ function textValue(value: FormDataEntryValue | null): string {
   return typeof value === "string" ? value : "";
 }
 
+function flagsReturn(value: string): string | null {
+  if (!value.startsWith("/admin/flags?") || value.startsWith("//") || value.includes("\\") || value.includes("://") || /[\n\r]/.test(value)) {
+    return null;
+  }
+  const params = new URLSearchParams(value.slice("/admin/flags?".length));
+  const state = params.get("state");
+  if (state !== "hidden" && state !== "reenabled" && state !== "once") return null;
+  if ([...params.keys()].some((key) => key !== "state")) return null;
+  return `/admin/flags?state=${state}`;
+}
+
 function returnPath(form: FormData): string {
   const params = new URLSearchParams();
   const kind = textValue(form.get("return_kind"));
@@ -27,7 +38,7 @@ function returnPath(form: FormData): string {
 export async function POST(request: NextRequest, context: { params: Promise<{ kind: string; id: string }> }): Promise<Response> {
   const { kind, id } = await context.params;
   const form = await request.formData();
-  const back = returnPath(form);
+  const back = flagsReturn(textValue(form.get("return_to"))) ?? returnPath(form);
   const failed = `${back}${back.includes("?") ? "&" : "?"}error=update`;
   if (!["rating", "tip", "vote"].includes(kind) || !/^[0-9]+$/.test(id)) return redirectTo(failed, [], request);
   const action = textValue(form.get("action"));

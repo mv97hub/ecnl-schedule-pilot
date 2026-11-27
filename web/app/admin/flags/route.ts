@@ -4,7 +4,9 @@ import { apiOrigin, htmlResponse, openAdmin, redirectTo } from "@/lib/adminInbox
 import { flagsPage, readFlagPage, type FlagState } from "@/lib/adminFlags";
 
 function flagState(value: string | null): FlagState {
-  return value === "reenabled" ? "reenabled" : "hidden";
+  if (value === "reenabled") return "reenabled";
+  if (value === "once") return "once";
+  return "hidden";
 }
 
 export async function GET(request: NextRequest): Promise<Response> {

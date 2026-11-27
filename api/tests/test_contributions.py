@@ -543,6 +543,118 @@ class ContributionReviewTests(unittest.TestCase):
                 self.assertEqual(rating.comment, "Original family note")
                 self.assertIsNone(rating.edited_at)
 
+    def test_one_report_is_listed_until_a_second_report_or_admin_hide(self) -> None:
+        with TestClient(app) as client:
+            writer, _writer_id = _sign_in(client, "probe-review-once-writer", WRITER, "Once Family")
+            reporter, _reporter_id = _sign_in(client, "probe-review-once-reporter", "once-reporter@probe-review.test", "Once Reporter")
+            other, _other_id = _sign_in(client, "probe-review-once-other", "once-other@probe-review.test", "Once Other")
+            admin, _admin_id = _sign_in(client, "probe-review-once-admin", "myuranv97@gmail.com", "Admin")
+            stranger, _stranger_id = _sign_in(client, "probe-review-once-stranger", "once-stranger@probe-review.test", "Stranger")
+            tip = client.post(
+                "/locations/recommendations",
+                json={
+                    "venue_name": VENUE,
+                    "city": CITY,
+                    "state": "FL",
+                    "category": "RESTAURANT",
+                    "title": "Once Grill",
+                    "rating": 4,
+                    "review_text": "Still visible after one report.",
+                },
+                headers=writer,
+            )
+            self.assertEqual(tip.status_code, 200, tip.text)
+            tip_id = tip.json()["id"]
+            quiet = client.post(
+                "/locations/recommendations",
+                json={
+                    "venue_name": VENUE,
+                    "city": CITY,
+                    "state": "FL",
+                    "category": "HOTEL",
+                    "title": "Quiet Inn",
+                    "rating": 3,
+                    "review_text": "Nobody reported this.",
+                },
+                headers=writer,
+            )
+            self.assertEqual(quiet.status_code, 200, quiet.text)
+            quiet_id = quiet.json()["id"]
+
+            first = client.post(f"/locations/recommendations/{tip_id}/flag", headers=reporter)
+            self.assertEqual(first.status_code, 200, first.text)
+            self.assertFalse(first.json()["hidden"])
+            visible = client.get("/locations/detail", params={"venue_name": VENUE, "city": CITY, "state": "FL"})
+            self.assertIn(tip_id, [item["id"] for item in visible.json()["recommendations"]])
+
+            self.assertEqual(client.get("/admin/flags", params={"state": "once"}, headers=stranger).status_code, 403)
+            self.assertEqual(client.get("/admin/flags", params={"state": "later"}, headers=admin).status_code, 400)
+            once = client.get("/admin/flags", params={"state": "once"}, headers=admin)
+            self.assertEqual(once.status_code, 200, once.text)
+            self.assertEqual(once.json()["state"], "once")
+            once_ids = [row["id"] for row in once.json()["rows"]]
+            self.assertIn(tip_id, once_ids)
+            self.assertNotIn(quiet_id, once_ids)
+            once_row = next(row for row in once.json()["rows"] if row["id"] == tip_id)
+            self.assertEqual(once_row["status"], "visible")
+            self.assertIsNone(once_row["auto_hidden_at"])
+            self.assertEqual(once_row["comment"], "Still visible after one report.")
+            self.assertEqual(once_row["reporter_emails"], ["once-reporter@probe-review.test"])
+            hidden = client.get("/admin/flags", params={"state": "hidden"}, headers=admin)
+            self.assertNotIn(tip_id, [row["id"] for row in hidden.json()["rows"]])
+
+            closed = client.post(
+                f"/admin/contributions/tip/{tip_id}/edit",
+                json={"review_text": "Rewritten after one report."},
+                headers=admin,
+            )
+            self.assertEqual(closed.status_code, 405, closed.text)
+            hidden_by_admin = client.post(f"/admin/contributions/tip/{tip_id}/hide", headers=admin)
+            self.assertEqual(hidden_by_admin.status_code, 200, hidden_by_admin.text)
+            self.assertEqual(hidden_by_admin.json()["status"], "hidden")
+            self.assertEqual(hidden_by_admin.json()["comment"], "Still visible after one report.")
+            after_hide = client.get("/locations/detail", params={"venue_name": VENUE, "city": CITY, "state": "FL"})
+            self.assertNotIn(tip_id, [item["id"] for item in after_hide.json()["recommendations"]])
+            still_once = client.get("/admin/flags", params={"state": "once"}, headers=admin)
+            kept = next(row for row in still_once.json()["rows"] if row["id"] == tip_id)
+            self.assertEqual(kept["status"], "hidden")
+            self.assertIsNone(kept["auto_hidden_at"])
+            with Session(engine) as session:
+                stored = session.get(VenueRecommendation, tip_id)
+                assert stored is not None
+                self.assertEqual(stored.review_text, "Still visible after one report.")
+                self.assertIsNone(stored.auto_hidden_at)
+                self.assertIsNotNone(stored.hidden_at)
+
+            second_tip = client.post(
+                "/locations/recommendations",
+                json={
+                    "venue_name": VENUE,
+                    "city": CITY,
+                    "state": "FL",
+                    "category": "RESTAURANT",
+                    "title": "Second Grill",
+                    "rating": 5,
+                    "review_text": "Hidden after two reports.",
+                },
+                headers=writer,
+            )
+            self.assertEqual(second_tip.status_code, 200, second_tip.text)
+            second_id = second_tip.json()["id"]
+            self.assertEqual(client.post(f"/locations/recommendations/{second_id}/flag", headers=reporter).status_code, 200)
+            listed_once = client.get("/admin/flags", params={"state": "once"}, headers=admin)
+            self.assertIn(second_id, [row["id"] for row in listed_once.json()["rows"]])
+            second = client.post(f"/locations/recommendations/{second_id}/flag", headers=other)
+            self.assertEqual(second.status_code, 200, second.text)
+            self.assertTrue(second.json()["hidden"])
+            after_two = client.get("/admin/flags", params={"state": "once"}, headers=admin)
+            self.assertNotIn(second_id, [row["id"] for row in after_two.json()["rows"]])
+            auto_hidden = client.get("/admin/flags", params={"state": "hidden"}, headers=admin)
+            auto_row = next(row for row in auto_hidden.json()["rows"] if row["id"] == second_id)
+            self.assertEqual(auto_row["status"], "auto_flagged")
+            self.assertIsNotNone(auto_row["auto_hidden_at"])
+            self.assertEqual(auto_row["comment"], "Hidden after two reports.")
+
     def test_second_page_does_not_repeat_the_first_and_flagged_filter(self) -> None:
         with TestClient(app) as client:
             _headers, user_id = _sign_in(client, "probe-review-pages", PAGES, "Page Family")
