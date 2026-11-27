@@ -1,5 +1,6 @@
 import { connection, type NextRequest } from "next/server";
 
+import { upstreamAuthorization } from "@/lib/proxyAuth";
 import { SESSION_COOKIE } from "@/lib/siteAuth";
 
 const REQUEST_HEADERS = ["accept", "content-type", "x-profile-key", "x-forwarded-for"];
@@ -40,8 +41,11 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
-  const session = request.cookies.get(SESSION_COOKIE)?.value?.trim();
-  if (session) headers.set("authorization", `Bearer ${session}`);
+  const authorization = upstreamAuthorization(
+    request.cookies.get(SESSION_COOKIE)?.value,
+    request.headers.get("authorization"),
+  );
+  if (authorization) headers.set("authorization", authorization);
 
   const method = request.method.toUpperCase();
   const hasBody = method !== "GET" && method !== "HEAD";

@@ -14,6 +14,7 @@ from app.auth import (
     require_internal,
     require_user,
 )
+from app.provider_tokens import ProviderTokenError, verify_identity_token
 from app.database import get_session
 from app.favorites import read_favorites, replace_favorites
 from app.models import AppUser
@@ -48,6 +49,14 @@ class UserOut(BaseModel):
 class SessionOut(BaseModel):
     token: str
     user: UserOut
+
+
+class ProviderIn(BaseModel):
+    provider: Literal["google", "apple"]
+    identity_token: str = Field(min_length=20, max_length=20000)
+    nonce: str | None = Field(default=None, max_length=256)
+    display_name: str | None = Field(default=None, max_length=80)
+    client: str = Field(min_length=1, max_length=32)
 
 
 class MeOut(BaseModel):
@@ -105,6 +114,13 @@ def _me_out(db: Session, user: AppUser) -> MeOut:
     )
 
 
+def _optional_name(value: str | None) -> str | None:
+    text = " ".join((value or "").split())
+    if not text or "@" in text:
+        return None
+    return text[:80]
+
+
 def _user_out(db: Session, user: AppUser) -> UserOut:
     return UserOut(
         id=user.id,
@@ -128,6 +144,43 @@ def create_session(
         email_verified=body.email_verified,
         display_name=body.display_name,
         client=body.client,
+    )
+    return SessionOut(token=raw, user=_user_out(session, user))
+
+
+@router.post("/auth/provider", response_model=SessionOut)
+def create_provider_session(
+    body: ProviderIn,
+    session: Annotated[Session, Depends(get_session)],
+) -> SessionOut:
+    """Phone sign-in. The website stays on ``POST /auth/session`` and its internal secret."""
+
+    client = body.client.strip().lower()
+    if client == "web":
+        raise HTTPException(status_code=400, detail="client must be ios or android")
+    if client not in {"ios", "android"}:
+        raise HTTPException(status_code=400, detail="client must be ios or android")
+    if body.provider == "apple" and not (body.nonce or "").strip():
+        raise HTTPException(status_code=400, detail="nonce is required for Apple")
+    try:
+        verified = verify_identity_token(
+            provider=body.provider,
+            identity_token=body.identity_token,
+            nonce=body.nonce,
+        )
+    except ProviderTokenError as exc:
+        if exc.unavailable:
+            raise HTTPException(status_code=503, detail="Sign-in could not be verified") from None
+        raise HTTPException(status_code=401, detail="Sign-in could not be verified") from None
+    name = verified.display_name or _optional_name(body.display_name)
+    user, raw = open_identity(
+        session,
+        provider=body.provider,
+        subject=verified.subject,
+        email=verified.email,
+        email_verified=verified.email_verified,
+        display_name=name,
+        client=client,
     )
     return SessionOut(token=raw, user=_user_out(session, user))
 
