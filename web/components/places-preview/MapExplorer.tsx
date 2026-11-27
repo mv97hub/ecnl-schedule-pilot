@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, LoaderCircle, Search } from "lucide-react";
+import { ChevronDown, LoaderCircle, Search, Star } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -9,10 +9,78 @@ import { ClubMark } from "@/components/ClubMark";
 import { fetchClubCatalog, fetchClubLocations, fetchClubMap, fetchFieldMap, fetchLocationDetail, voteRecommendation } from "@/lib/api";
 import type { MapFieldPoint, MapTipPoint } from "@/lib/api";
 import { signInHref, useAccount } from "@/lib/useAccount";
-import type { ClubListItem, LocationCard, LocationDetail, LocationTip, TipVote } from "@/lib/types";
+import type { ClubListItem, ClubLocationTip, LocationCard, LocationDetail, LocationScores, LocationTip, TipVote } from "@/lib/types";
 
 import { FieldMap, type MapPin } from "./FieldMap";
-import { PreviewBack, TipCard, scoreText } from "./bits";
+import { Meter, PreviewBack, TipCard, scoreText } from "./bits";
+
+const SCORE_CRITERIA: { key: keyof LocationScores; label: string; short: string }[] = [
+  { key: "field_quality", label: "Field quality", short: "Field quality" },
+  { key: "referees", label: "Referees", short: "Referees" },
+  { key: "parent_vibe", label: "Parent and sideline vibe", short: "Parent vibe" },
+  { key: "parking_access", label: "Parking and walkability", short: "Parking" },
+  { key: "amenities", label: "Amenities", short: "Amenities" },
+];
+
+const HIGHLY_RATED = 4;
+
+type TipSummary = {
+  hotels: number;
+  food: number;
+  hangouts: number;
+  parking: number;
+  lines: string[];
+};
+
+function tipLine(tip: ClubLocationTip): string {
+  const name = (tip.matched_name || tip.title).trim();
+  const note = tip.review_text.trim();
+  if (!note) return name;
+  const short = note.length > 72 ? `${note.slice(0, 69)}…` : note;
+  return `${name} — ${short}`;
+}
+
+function summarizeTips(tips: ClubLocationTip[]): TipSummary {
+  const ranked = [...tips].sort((left, right) => {
+    const score = right.upvotes - right.downvotes - (left.upvotes - left.downvotes);
+    if (score !== 0) return score;
+    return right.created_at.localeCompare(left.created_at);
+  });
+  return {
+    hotels: tips.filter((tip) => tip.category === "HOTEL").length,
+    food: tips.filter((tip) => tip.category === "RESTAURANT").length,
+    hangouts: tips.filter((tip) => tip.category === "COFFEE_GAP").length,
+    parking: tips.filter((tip) => tip.category === "SIDELINE_TIP").length,
+    lines: ranked.slice(0, 2).map(tipLine),
+  };
+}
+
+function ScoreLine({ scores }: { scores: LocationScores }) {
+  return (
+    <div className="mt-1 flex items-center gap-x-3 overflow-x-auto text-xs text-stone-600">
+      {SCORE_CRITERIA.map((item) => (
+        <span key={item.key} className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap">
+          <span>{item.short}</span>
+          <span className="font-medium text-ink">{scoreText(scores[item.key])}</span>
+          <Star className={`size-3 ${scores[item.key] == null ? "text-stone-300" : "fill-amber-400 text-amber-500"}`} />
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function FilterChip({ pressed, onClick, children }: { pressed: boolean; onClick: () => void; children: string }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onClick}
+      className={`rounded-full border px-3 py-1 text-sm ${pressed ? "border-navy bg-navy text-white" : "border-stone-300 bg-white text-ink"}`}
+    >
+      {children}
+    </button>
+  );
+}
 
 function pinKind(category: string): MapPin["kind"] {
   if (category === "HOTEL") return "stay";
@@ -40,11 +108,15 @@ export function MapExplorerDirectory() {
   const [clubQuery, setClubQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [fields, setFields] = useState<LocationCard[]>([]);
+  const [tips, setTips] = useState<ClubLocationTip[]>([]);
   const [points, setPoints] = useState<MapFieldPoint[]>([]);
   const [clubName, setClubName] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [loadedClub, setLoadedClub] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [hotelTips, setHotelTips] = useState(false);
+  const [foodTips, setFoodTips] = useState(false);
+  const [highlyRated, setHighlyRated] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -67,6 +139,7 @@ export function MapExplorerDirectory() {
       .then(([directory, map]) => {
         if (!active) return;
         setFields(directory.fields);
+        setTips(directory.tips);
         setClubName(directory.club_name);
         setPoints(map.fields);
         setSelected(null);
@@ -76,6 +149,7 @@ export function MapExplorerDirectory() {
       .catch((err: unknown) => {
         if (!active) return;
         setFields([]);
+        setTips([]);
         setPoints([]);
         setLoadedClub(clubId);
         setError(err instanceof Error ? err.message : "Could not load this club");
@@ -91,20 +165,37 @@ export function MapExplorerDirectory() {
     return list.slice(0, 30);
   }, [clubQuery, clubs]);
 
-  const pins = useMemo<MapPin[]>(
-    () =>
-      points.flatMap((point) =>
-        point.latitude != null && point.longitude != null
-          ? [{ id: point.venue_key, latitude: point.latitude, longitude: point.longitude, label: point.venue_name, kind: "field" as const }]
-          : [],
-      ),
-    [points],
-  );
+  const summaries = useMemo(() => {
+    const grouped = new Map<string, ClubLocationTip[]>();
+    for (const tip of tips) {
+      const list = grouped.get(tip.venue_key) ?? [];
+      list.push(tip);
+      grouped.set(tip.venue_key, list);
+    }
+    return grouped;
+  }, [tips]);
 
   const selectedName = clubName ?? clubs.find((club) => String(club.id) === clubId)?.name ?? null;
   const loading = Boolean(clubId) && loadedClub !== clubId;
-  const visibleFields = clubId && loadedClub === clubId ? fields : [];
-  const visiblePins = clubId && loadedClub === clubId ? pins : [];
+  const ready = Boolean(clubId) && loadedClub === clubId;
+  const visibleFields = useMemo(() => {
+    if (!ready) return [];
+    return fields.filter((field) => {
+      const summary = summarizeTips(summaries.get(field.venue_key) ?? []);
+      if (hotelTips && summary.hotels < 1) return false;
+      if (foodTips && summary.food < 1) return false;
+      if (highlyRated && (field.overall == null || field.overall < HIGHLY_RATED)) return false;
+      return true;
+    });
+  }, [ready, fields, summaries, hotelTips, foodTips, highlyRated]);
+  const visiblePins = useMemo<MapPin[]>(() => {
+    const keys = new Set(visibleFields.map((field) => field.venue_key));
+    return points.flatMap((point) =>
+      point.latitude != null && point.longitude != null && keys.has(point.venue_key)
+        ? [{ id: point.venue_key, latitude: point.latitude, longitude: point.longitude, label: point.venue_name, kind: "field" as const }]
+        : [],
+    );
+  }, [points, visibleFields]);
 
   return (
     <div className="min-h-full bg-bone">
@@ -113,6 +204,17 @@ export function MapExplorerDirectory() {
         <p className="mt-3 text-xs font-medium uppercase tracking-wide text-stone-400">Preview</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight text-navy">Map explorer</h1>
         <p className="mt-1 max-w-2xl text-sm text-stone-500">Pick a club. Its fields are listed beside the map, and only those fields are geocoded. Select a field to center the map.</p>
+        <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Field filters">
+          <FilterChip pressed={hotelTips} onClick={() => setHotelTips((current) => !current)}>
+            Hotel tips
+          </FilterChip>
+          <FilterChip pressed={foodTips} onClick={() => setFoodTips((current) => !current)}>
+            Food tips
+          </FilterChip>
+          <FilterChip pressed={highlyRated} onClick={() => setHighlyRated((current) => !current)}>
+            Highly rated
+          </FilterChip>
+        </div>
         <div className="relative mt-4 max-w-sm">
           <button
             type="button"
@@ -169,23 +271,33 @@ export function MapExplorerDirectory() {
         ) : null}
         {error ? <p className="mt-4 text-sm text-ink">{error}</p> : null}
         {clubId && !loading && !error ? (
-          <div className="mt-4 grid items-start gap-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
+          <div className="mt-4 grid items-start gap-4 lg:grid-cols-[28rem_minmax(0,1fr)]">
             <ul className="max-h-[32rem] space-y-2 overflow-y-auto">
-              {visibleFields.length === 0 ? <li className="text-sm text-stone-500">No home fields stored.</li> : null}
+              {ready && fields.length === 0 ? <li className="text-sm text-stone-500">No home fields stored.</li> : null}
+              {ready && fields.length > 0 && visibleFields.length === 0 ? <li className="text-sm text-stone-500">No fields match these filters.</li> : null}
               {visibleFields.map((field) => {
                 const active = field.venue_key === selected;
+                const summary = summarizeTips(summaries.get(field.venue_key) ?? []);
                 return (
                   <li key={field.venue_key}>
                     <div className={`rounded-xl border bg-white px-3 py-2 shadow-sm ${active ? "border-gold" : "border-stone-200"}`}>
                       <button type="button" onClick={() => setSelected(field.venue_key)} className="block w-full text-left">
                         <span className="block text-sm font-semibold text-navy">{field.venue_name}</span>
-                        <span className="mt-0.5 block text-xs text-stone-500">
-                          {[field.city, field.state].filter(Boolean).join(", ")}
-                          {" · "}
-                          {field.overall == null ? "No rating" : scoreText(field.overall)}
-                          {" · "}
-                          {field.recommendations_count} {field.recommendations_count === 1 ? "tip" : "tips"}
+                        <span className="mt-0.5 block text-xs text-stone-500">{[field.city, field.state].filter(Boolean).join(", ")}</span>
+                        <span className="mt-1 block text-xs text-stone-600">
+                          {field.overall == null || field.ratings_count === 0
+                            ? "No ratings yet"
+                            : `${scoreText(field.overall)} overall · ${field.ratings_count} ${field.ratings_count === 1 ? "rating" : "ratings"}`}
                         </span>
+                        <ScoreLine scores={field} />
+                        <span className="mt-1 block text-xs text-stone-500">
+                          Hotels {summary.hotels} · Food {summary.food} · Hangouts {summary.hangouts} · Parking {summary.parking}
+                        </span>
+                        {summary.lines.map((line, index) => (
+                          <span key={`${field.venue_key}-line-${index}`} className="mt-0.5 block truncate text-xs text-ink">
+                            {line}
+                          </span>
+                        ))}
                       </button>
                       <Link href={`/locations/v3/${encodeURIComponent(field.venue_key)}`} className="mt-1 inline-flex text-xs font-medium text-navy underline-offset-4 hover:underline">
                         Open field
@@ -196,7 +308,7 @@ export function MapExplorerDirectory() {
               })}
             </ul>
             <div>
-              <FieldMap pins={visiblePins} focusId={selected ?? undefined} className="h-[32rem]" />
+              <FieldMap pins={visiblePins} focusId={selected && visibleFields.some((field) => field.venue_key === selected) ? selected : undefined} className="h-[32rem]" />
               <p className="mt-2 text-xs text-stone-400">Map tiles © OpenStreetMap contributors. Points are cached per field.</p>
             </div>
           </div>
@@ -305,6 +417,19 @@ export function MapExplorerField({ venueKey }: { venueKey: string }) {
                 </Link>
               </div>
             </div>
+            <section className="mt-4 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm" aria-label="Scorecard">
+              <h2 className="text-lg font-semibold text-navy">Scorecard</h2>
+              <p className="mt-1 text-sm text-stone-500">
+                {detail.overall == null || detail.ratings_count === 0
+                  ? "No family ratings yet"
+                  : `${detail.overall.toFixed(1)} overall · ${detail.ratings_count} ${detail.ratings_count === 1 ? "rating" : "ratings"}`}
+              </p>
+              <div className="mt-4 space-y-3">
+                {SCORE_CRITERIA.map((item) => (
+                  <Meter key={item.key} label={item.label} value={detail[item.key]} />
+                ))}
+              </div>
+            </section>
             <div className="mt-4">
               {pins.length > 0 ? <FieldMap pins={pins} focusId="field" className="h-96" /> : <p className="rounded-2xl border border-stone-200 bg-white p-4 text-sm text-stone-500">No map point for this field yet.</p>}
               <ul className="mt-2 flex flex-wrap gap-3 text-xs text-stone-500">
