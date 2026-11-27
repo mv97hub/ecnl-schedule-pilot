@@ -23,6 +23,7 @@ from app.models import (
     AppSession,
     AppUser,
     AuthIdentity,
+    ContentFlag,
     UserCalendar,
     UserFavorite,
     UserHomeAddress,
@@ -32,6 +33,7 @@ from app.models import (
 )
 
 ADMIN_EMAILS = frozenset({"myuranv97@gmail.com", "premiergamedayhq@gmail.com"})
+TERMS_VERSION = "ugc-1"
 SESSION_DAYS = 30
 RELAY_DOMAIN = "privaterelay.appleid.com"
 PROVIDERS = frozenset({"google", "apple"})
@@ -132,6 +134,12 @@ def require_admin(db: Session, raw: str) -> AppUser:
     if email not in ADMIN_EMAILS:
         raise HTTPException(status_code=403, detail="This account cannot open issue reports")
     return user
+
+
+def has_current_terms(user: AppUser) -> bool:
+    """True when this account has agreed to the terms version in force now."""
+
+    return user.terms_accepted_at is not None and user.terms_version == TERMS_VERSION
 
 
 def author_for(user: AppUser) -> tuple[str, str, str]:
@@ -295,8 +303,10 @@ def delete_account(db: Session, user: AppUser) -> None:
         elif vote.choice == "down":
             tip.downvotes = max(0, int(tip.downvotes or 0) - 1)
     if own_tip_ids:
+        db.execute(delete(ContentFlag).where(ContentFlag.kind == "tip", ContentFlag.target_id.in_(own_tip_ids)))
         db.execute(delete(VenueTipVote).where(VenueTipVote.recommendation_id.in_(own_tip_ids)))
         db.execute(delete(VenueRecommendation).where(VenueRecommendation.id.in_(own_tip_ids)))
+    db.execute(delete(ContentFlag).where(ContentFlag.user_id == user.id))
     db.execute(delete(VenueTipVote).where(VenueTipVote.author_key == author_key))
     db.execute(delete(VenueRating).where(or_(VenueRating.user_id == user_id, VenueRating.author_key == author_key)))
     db.execute(delete(UserCalendar).where(UserCalendar.user_id == user.id))

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -5,8 +6,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import (
+    TERMS_VERSION,
     bearer_token,
     delete_account,
+    has_current_terms,
     logout,
     open_identity,
     providers_for,
@@ -78,6 +81,10 @@ class CalendarIn(BaseModel):
     url: str = Field(min_length=1, max_length=2000)
 
 
+class TermsIn(BaseModel):
+    version: str = Field(min_length=1, max_length=32)
+
+
 def _auth_me_body(db: Session, user: AppUser) -> dict[str, object]:
     """The existing account fields, plus `home_address` only when one is saved."""
 
@@ -86,6 +93,7 @@ def _auth_me_body(db: Session, user: AppUser) -> dict[str, object]:
         "display_name": user.display_name,
         "email": user.email,
         "providers": providers_for(db, int(user.id)),
+        "terms_accepted": has_current_terms(user),
     }
     address = read_home_address(db, int(user.id))
     if address is not None:
@@ -130,6 +138,25 @@ def create_session(
         client=body.client,
     )
     return SessionOut(token=raw, user=_user_out(session, user))
+
+
+@router.post("/auth/terms")
+def accept_terms(
+    body: TermsIn,
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+) -> dict[str, object]:
+    """Record agreement to the current terms. The same version again leaves the timestamp as it is."""
+
+    if body.version != TERMS_VERSION:
+        raise HTTPException(status_code=400, detail="Terms version is not current")
+    user = require_user(session, token)
+    if not has_current_terms(user):
+        user.terms_accepted_at = datetime.now(UTC)
+        user.terms_version = TERMS_VERSION
+        session.commit()
+        session.refresh(user)
+    return _auth_me_body(session, user)
 
 
 @router.get("/auth/me")

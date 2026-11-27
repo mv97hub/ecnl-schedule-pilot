@@ -471,6 +471,8 @@ class VenueRecommendation(Base):
     hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     flagged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    auto_hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AppUser(Base):
@@ -483,6 +485,8 @@ class AppUser(Base):
     email: Mapped[str | None] = mapped_column(String(254), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    terms_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
 
 class AuthIdentity(Base):
@@ -577,7 +581,7 @@ class LocationWriteEvent(Base):
     __table_args__ = (
         CheckConstraint("kind IN ('rating', 'tip', 'vote')", name="ck_location_write_event_kind"),
         CheckConstraint(
-            "action IN ('create', 'update', 'hide', 'restore', 'edit')",
+            "action IN ('create', 'update', 'hide', 'restore', 'edit', 'auto_hide', 'accept')",
             name="ck_location_write_event_action",
         ),
     )
@@ -615,6 +619,22 @@ class VenueTipVote(Base):
     hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     flagged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
+
+
+class ContentFlag(Base):
+    """One report from one account on one public tip. A second report from that account is the same row."""
+
+    __tablename__ = "content_flag"
+    __table_args__ = (
+        UniqueConstraint("user_id", "kind", "target_id", name="uq_content_flag_user_target"),
+        CheckConstraint("kind IN ('tip')", name="ck_content_flag_kind"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    target_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utc_now)
 
 
 class Issue(Base):

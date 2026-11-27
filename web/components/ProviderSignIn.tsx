@@ -1,6 +1,7 @@
 "use client";
 
 import { Roboto } from "next/font/google";
+import Link from "next/link";
 
 const robotoMedium = Roboto({
   weight: "500",
@@ -71,6 +72,13 @@ export function ProviderSignIn({ nextQuery }: { nextQuery: string }) {
         </span>
         <span className="text-[17px] leading-none font-medium">Sign in with Apple</span>
       </a>
+      <p className="text-sm text-stone-500">
+        Posting a rating or a tip requires the{" "}
+        <Link href="/terms" className="font-medium text-navy underline underline-offset-4">
+          Terms of Use
+        </Link>
+        .
+      </p>
     </div>
   );
 }

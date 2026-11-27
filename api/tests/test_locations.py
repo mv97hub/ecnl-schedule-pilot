@@ -57,7 +57,10 @@ def _sign_in(client: TestClient, subject: str, email: str, name: str = "Probe Fa
     )
     assert opened.status_code == 200, opened.text
     body = opened.json()
-    return {"Authorization": f"Bearer {body['token']}"}, int(body["user"]["id"])
+    headers = {"Authorization": f"Bearer {body['token']}"}
+    accepted = client.post("/auth/terms", json={"version": "ugc-1"}, headers=headers)
+    assert accepted.status_code == 200, accepted.text
+    return headers, int(body["user"]["id"])
 
 
 class LocationGuideTests(unittest.TestCase):

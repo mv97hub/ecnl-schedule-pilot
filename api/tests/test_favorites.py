@@ -179,4 +179,4 @@ class FavoriteTests(unittest.TestCase):
             headers = _sign_in(client, "probe-favorite-shape", "shape@probe-favorite.test")
             me = client.get("/auth/me", headers=headers)
             self.assertEqual(me.status_code, 200, me.text)
-            self.assertEqual(set(me.json()), {"id", "display_name", "email", "providers"})
+            self.assertEqual(set(me.json()), {"id", "display_name", "email", "providers", "terms_accepted"})

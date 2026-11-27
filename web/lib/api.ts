@@ -161,6 +161,16 @@ export function voteRecommendation(id: number, choice: "up" | "down"): Promise<L
   return sendJson<LocationTip>(`/locations/recommendations/${id}/vote`, { choice });
 }
 
+export const TERMS_VERSION = "ugc-1";
+
+export function acceptTerms(): Promise<{ terms_accepted: boolean }> {
+  return sendJson<{ terms_accepted: boolean }>("/auth/terms", { version: TERMS_VERSION });
+}
+
+export function flagRecommendation(id: number): Promise<{ already_reported: boolean; hidden: boolean; message: string }> {
+  return sendJson<{ already_reported: boolean; hidden: boolean; message: string }>(`/locations/recommendations/${id}/flag`, {});
+}
+
 function favoritesFrom(body: { club_id?: string | null; team_ids?: unknown }): AccountFavorites {
   const teamIds = Array.isArray(body.team_ids)
     ? body.team_ids.filter((item): item is number => Number.isInteger(item) && item > 0)

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ClubMark } from "@/components/ClubMark";
+import { ReportTip } from "@/components/ReportTip";
 import { TipVotes, sortTips } from "@/components/TipVotes";
 import { fetchClubCatalog, fetchClubLocations, voteRecommendation } from "@/lib/api";
 import { easternStamp } from "@/lib/format";
@@ -410,6 +411,13 @@ function Tips({ tips, clubId }: { tips: ClubLocationTip[]; clubId: string }) {
                   signInHref={account === null ? returnHref : null}
                   onVote={(choice) => void vote(tip.id, choice)}
                 />
+                {account === undefined ? null : (
+                  <ReportTip
+                    tipId={tip.id}
+                    signInHref={account === null ? returnHref : null}
+                    onHidden={() => setRows((current) => current.filter((item) => item.id !== tip.id))}
+                  />
+                )}
               </div>
             </li>
           ))}

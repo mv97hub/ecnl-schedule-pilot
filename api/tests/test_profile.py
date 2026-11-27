@@ -98,7 +98,7 @@ class ProfileTests(unittest.TestCase):
             headers = _sign_in(client, "probe-profile-address", "address@probe-profile.test")
             before = client.get("/auth/me", headers=headers)
             self.assertEqual(before.status_code, 200, before.text)
-            self.assertEqual(set(before.json()), {"id", "display_name", "email", "providers"})
+            self.assertEqual(set(before.json()), {"id", "display_name", "email", "providers", "terms_accepted"})
             self.assertEqual(before.json()["display_name"], "Probe Profile")
             self.assertEqual(before.json()["email"], "address@probe-profile.test")
             self.assertEqual(before.json()["providers"], ["google"])
@@ -109,7 +109,7 @@ class ProfileTests(unittest.TestCase):
             saved = client.put("/me/home-address", json=ADDRESS, headers=headers)
             self.assertEqual(saved.status_code, 200, saved.text)
             self.assertEqual(saved.json()["home_address"], ADDRESS)
-            self.assertEqual(set(saved.json()) - {"home_address"}, {"id", "display_name", "email", "providers"})
+            self.assertEqual(set(saved.json()) - {"home_address"}, {"id", "display_name", "email", "providers", "terms_accepted"})
 
             again = client.get("/auth/me", headers=headers)
             self.assertEqual(again.status_code, 200, again.text)
@@ -129,7 +129,7 @@ class ProfileTests(unittest.TestCase):
             after = client.get("/auth/me", headers=headers)
             self.assertEqual(after.status_code, 200, after.text)
             self.assertNotIn("home_address", after.json())
-            self.assertEqual(set(after.json()), {"id", "display_name", "email", "providers"})
+            self.assertEqual(set(after.json()), {"id", "display_name", "email", "providers", "terms_accepted"})
 
     def test_calendar_link_one_per_team_rejected_link_and_delete_account(self) -> None:
         ids = self._seed_teams()

@@ -6,6 +6,7 @@ export type WebsiteAccount = {
   display_name: string;
   email: string | null;
   providers: string[];
+  terms_accepted: boolean;
 };
 
 export function useAccount(): WebsiteAccount | null | undefined {
@@ -14,7 +15,7 @@ export function useAccount(): WebsiteAccount | null | undefined {
     let active = true;
     fetch("/api/auth/me", { cache: "no-store" })
       .then((response) => (response.ok ? response.json() : { signed_in: false }))
-      .then((body: { signed_in?: boolean; display_name?: string; email?: string | null; providers?: unknown }) => {
+      .then((body: { signed_in?: boolean; display_name?: string; email?: string | null; providers?: unknown; terms_accepted?: boolean }) => {
         if (!active) return;
         if (!body.signed_in) {
           setAccount(null);
@@ -24,6 +25,7 @@ export function useAccount(): WebsiteAccount | null | undefined {
           display_name: body.display_name ?? "",
           email: body.email ?? null,
           providers: Array.isArray(body.providers) ? body.providers.filter((item): item is string => typeof item === "string") : [],
+          terms_accepted: body.terms_accepted === true,
         });
       })
       .catch(() => {

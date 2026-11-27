@@ -31,7 +31,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ki
   const failed = `${back}${back.includes("?") ? "&" : "?"}error=update`;
   if (!["rating", "tip", "vote"].includes(kind) || !/^[0-9]+$/.test(id)) return redirectTo(failed, [], request);
   const action = textValue(form.get("action"));
-  if (action !== "hide" && action !== "restore" && action !== "edit") return redirectTo(failed, [], request);
+  if (action !== "hide" && action !== "restore") return redirectTo(failed, [], request);
   const gate = await openAdmin(request, back);
   if (gate instanceof Response) return gate;
 
@@ -39,17 +39,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ki
     accept: "application/json",
     authorization: `Bearer ${gate.token}`,
   });
-  let body: string | undefined;
-  if (action === "edit") {
-    headers.set("content-type", "application/json");
-    body = JSON.stringify({ comment: textValue(form.get("comment")) });
-  }
   let upstream: Response;
   try {
     upstream = await fetch(`${await apiOrigin()}/admin/contributions/${kind}/${id}/${action}`, {
       method: "POST",
       headers,
-      body,
       cache: "no-store",
     });
   } catch {
