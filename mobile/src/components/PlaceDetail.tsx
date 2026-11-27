@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useRouter, type Href } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { ScrollView, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { CommentGuidance, RATING_PLACEHOLDER, TIP_PLACEHOLDER, TermsAgreement } from "@/components/CommentNotice";
 import { Card, Chip, GoldButton, Hit, Loading, Notice, OutlineButton } from "@/components/ui";
@@ -459,11 +460,22 @@ function TipCard({
 }
 
 function GameList({ title, games }: { title: string; games: LocationGame[] }) {
+  const [open, setOpen] = useState(false);
   return (
-    <View style={{ gap: 8 }}>
-      <Text style={{ color: colors.ink, fontSize: 18, fontWeight: "800" }}>{title}</Text>
-      {games.length === 0 ? <Text style={{ color: colors.secondary }}>None on the schedule.</Text> : null}
-      {games.map((game) => {
+    <View style={{ gap: open ? 8 : 0 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        aria-expanded={open}
+        accessibilityLabel={title}
+        onPress={() => setOpen((current) => !current)}
+        style={{ minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
+      >
+        <Text style={{ color: colors.ink, fontSize: 18, fontWeight: "800" }}>{title}</Text>
+        <FontAwesome name={open ? "chevron-down" : "chevron-right"} size={14} color={colors.navy} />
+      </Pressable>
+      {open && games.length === 0 ? <Text style={{ color: colors.secondary }}>None on the schedule.</Text> : null}
+      {open ? games.map((game) => {
         const scored = game.home_score != null && game.away_score != null;
         const when = formatKickoff(game.starts_at);
         return (
@@ -476,7 +488,7 @@ function GameList({ title, games }: { title: string; games: LocationGame[] }) {
             </Text>
           </Card>
         );
-      })}
+      }) : null}
     </View>
   );
 }
