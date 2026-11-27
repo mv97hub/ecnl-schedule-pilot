@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { fetchClubLocations, postRecommendation } from "@/lib/api";
+import { CommentBox, TIP_PLACEHOLDER, TermsCheckbox } from "@/components/CommentFields";
+import { acceptTerms, fetchClubLocations, postRecommendation } from "@/lib/api";
 import type { LocationCard, TipCategory } from "@/lib/types";
 import { signInHref, useAccount } from "@/lib/useAccount";
 
@@ -48,6 +49,9 @@ export function AddFamilyTip() {
   const account = useAccount();
   const [tipError, setTipError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const needsTerms = Boolean(account && !account.terms_accepted && !termsAccepted);
 
   useEffect(() => {
     if (!clubId) return;
@@ -101,9 +105,17 @@ export function AddFamilyTip() {
       setTipError("Add a place name, stars, and a note.");
       return;
     }
+    if (needsTerms && !agreed) {
+      setTipError("Agree to the Terms of Use.");
+      return;
+    }
     setSaving(true);
     setTipError(null);
     try {
+      if (needsTerms) {
+        await acceptTerms();
+        setTermsAccepted(true);
+      }
       await postRecommendation({
         venue_name: selected.venue_name,
         city: selected.city,
@@ -224,18 +236,16 @@ export function AddFamilyTip() {
                 ))}
               </div>
             </fieldset>
-            <label htmlFor="club-tip-review" className="mt-3 block text-[10px] font-medium uppercase tracking-wide text-stone-400">
-              Review
-              <textarea
-                id="club-tip-review"
-                value={review}
-                onChange={(event) => setReview(event.target.value)}
-                rows={3}
-                className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-navy"
-              />
-            </label>
+            <CommentBox
+              id="club-tip-review"
+              label="Review"
+              placeholder={TIP_PLACEHOLDER}
+              value={review}
+              onChange={setReview}
+            />
+            {needsTerms ? <TermsCheckbox id="club-tip-terms" checked={agreed} onChange={setAgreed} /> : null}
             {tipError ? <p className="mt-3 text-sm text-ink">{tipError}</p> : null}
-            <button type="submit" disabled={saving} className="mt-4 rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy disabled:opacity-60">
+            <button type="submit" disabled={saving || (needsTerms && !agreed)} className="mt-4 rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy disabled:opacity-60">
               {saving ? "Saving" : "Add tip"}
             </button>
           </form>

@@ -31,6 +31,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       email?: string | null;
       providers?: string[];
       home_address?: unknown;
+      terms_accepted?: boolean;
     };
     return Response.json({
       signed_in: true,
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       email: user.email ?? null,
       providers: Array.isArray(user.providers) ? user.providers : [],
       home_address: homeAddress(user.home_address),
+      terms_accepted: user.terms_accepted === true,
     });
   } catch {
     return Response.json({ signed_in: false });

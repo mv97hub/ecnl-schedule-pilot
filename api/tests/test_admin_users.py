@@ -66,7 +66,10 @@ def _sign_in(client: TestClient, subject: str, email: str, name: str, provider: 
     assert opened.status_code == 200, opened.text
     body = opened.json()
     assert "last_login_at" not in body["user"]
-    return {"Authorization": f"Bearer {body['token']}"}, int(body["user"]["id"])
+    headers = {"Authorization": f"Bearer {body['token']}"}
+    accepted = client.post("/auth/terms", json={"version": "ugc-1"}, headers=headers)
+    assert accepted.status_code == 200, accepted.text
+    return headers, int(body["user"]["id"])
 
 
 def _rating(comment: str, venue: str = VENUE) -> dict[str, object]:
@@ -183,6 +186,7 @@ class AdminUserTests(unittest.TestCase):
     def test_backfill_copies_newest_session_once(self) -> None:
         older = datetime(2024, 1, 1, tzinfo=UTC)
         newer = datetime(2024, 6, 1, tzinfo=UTC)
+        ensure_account_columns()
         with Session(engine) as session:
             signed_in = AppUser(display_name="Backfill Family", email="backfill@probe-users.test", created_at=older, last_login_at=None)
             quiet = AppUser(display_name="Quiet Family", email="quiet@probe-users.test", created_at=older, last_login_at=None)
@@ -383,7 +387,7 @@ class AdminUserTests(unittest.TestCase):
                 json={"comment": "Rewritten family note"},
                 headers=admin,
             )
-            self.assertEqual(edited.status_code, 200, edited.text)
+            self.assertEqual(edited.status_code, 405, edited.text)
             hidden = client.post(f"/admin/contributions/rating/{rating_id}/hide", headers=admin)
             self.assertEqual(hidden.status_code, 200, hidden.text)
             restored = client.post(f"/admin/contributions/rating/{rating_id}/restore", headers=admin)
@@ -398,7 +402,8 @@ class AdminUserTests(unittest.TestCase):
             page = table.json()
             self.assertEqual(set(page), {"page", "total", "rows"})
             self.assertNotIn("history", page)
-            self.assertNotIn("Original family note", table.text)
+            self.assertIn("Original family note", table.text)
+            self.assertNotIn("Rewritten family note", table.text)
             self.assertGreaterEqual(len(page["rows"]), 1)
             current = next(row for row in page["rows"] if row["id"] == rating_id)
             self.assertEqual(
@@ -417,7 +422,7 @@ class AdminUserTests(unittest.TestCase):
                     "status",
                 },
             )
-            self.assertEqual(current["comment"], "Rewritten family note")
+            self.assertEqual(current["comment"], "Original family note")
             self.assertNotIn("events", current)
             self.assertNotIn("previous", current)
             self.assertNotIn("action", current)
@@ -427,10 +432,8 @@ class AdminUserTests(unittest.TestCase):
             history = client.get(f"/admin/contributions/rating/{rating_id}/history", headers=admin)
             self.assertEqual(history.status_code, 200, history.text)
             rows = history.json()
-            self.assertEqual([row["action"] for row in rows], ["create", "edit", "hide", "restore"])
+            self.assertEqual([row["action"] for row in rows], ["create", "hide", "restore"])
             self.assertEqual(rows[0]["new"]["comment"], "Original family note")
-            self.assertEqual(rows[1]["previous"]["comment"], "Original family note")
-            self.assertEqual(rows[1]["new"]["comment"], "Rewritten family note")
             self.assertNotIn("Other park note", history.text)
 
             public = client.get("/locations/detail", params={"venue_name": VENUE, "city": CITY, "state": "FL"})
@@ -444,6 +447,6 @@ class AdminUserTests(unittest.TestCase):
                 params={"venue_name": VENUE, "city": CITY, "state": "FL"},
                 headers=writer,
             )
-            self.assertEqual(visible.json()["my_rating"]["comment"], "Rewritten family note")
+            self.assertEqual(visible.json()["my_rating"]["comment"], "Original family note")
             self.assertNotIn("email", visible.json()["my_rating"])
             self.assertNotIn("history", visible.json())

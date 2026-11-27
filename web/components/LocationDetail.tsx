@@ -5,8 +5,10 @@ import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { CommentBox, RATING_PLACEHOLDER, TIP_PLACEHOLDER, TermsCheckbox } from "@/components/CommentFields";
+import { ReportTip } from "@/components/ReportTip";
 import { TipVotes, sortTips } from "@/components/TipVotes";
-import { fetchLocationDetail, postRating, postRecommendation, voteRecommendation } from "@/lib/api";
+import { acceptTerms, fetchLocationDetail, postRating, postRecommendation, voteRecommendation } from "@/lib/api";
 import { easternStamp } from "@/lib/format";
 import type { HomeAddress } from "@/lib/homeAddress";
 import type { LocationDetail, LocationGame, SurfaceVote, TipCategory, TipVote } from "@/lib/types";
@@ -206,6 +208,9 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
   const [tipError, setTipError] = useState<string | null>(null);
   const [savingTip, setSavingTip] = useState(false);
   const [pendingVote, setPendingVote] = useState<number | null>(null);
+  const [agreed, setAgreed] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const needsTerms = Boolean(account && !account.terms_accepted && !termsAccepted);
 
   useEffect(() => {
     if (!venueKey) {
@@ -264,10 +269,18 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
       setRatingError("Choose 1 to 5 for each part of the complex.");
       return;
     }
+    if (needsTerms && !agreed) {
+      setRatingError("Agree to the Terms of Use.");
+      return;
+    }
     setSavingRating(true);
     setRatingError(null);
     setRatingMessage(null);
     try {
+      if (needsTerms) {
+        await acceptTerms();
+        setTermsAccepted(true);
+      }
       await postRating({
         venue_name: detail.venue_name,
         city: detail.city,
@@ -292,9 +305,17 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
       setTipError("Add a place name, stars, and a note.");
       return;
     }
+    if (needsTerms && !agreed) {
+      setTipError("Agree to the Terms of Use.");
+      return;
+    }
     setSavingTip(true);
     setTipError(null);
     try {
+      if (needsTerms) {
+        await acceptTerms();
+        setTermsAccepted(true);
+      }
       await postRecommendation({
         venue_name: detail.venue_name,
         city: detail.city,
@@ -434,23 +455,23 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                       <option value="MIXED">Mixed</option>
                     </select>
                   </label>
-                  <label htmlFor="rating-note" className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
-                    Note
-                    {detail.my_rating?.edited ? (
-                      <span className="ml-2 text-[10px] font-medium normal-case tracking-normal text-stone-400">Edited</span>
-                    ) : null}
-                    <textarea
-                      id="rating-note"
-                      value={comment}
-                      onChange={(event) => setComment(event.target.value)}
-                      rows={3}
-                      className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-navy"
-                    />
-                  </label>
+                  <CommentBox
+                    id="rating-note"
+                    label="Note"
+                    placeholder={RATING_PLACEHOLDER}
+                    value={comment}
+                    onChange={setComment}
+                    extra={
+                      detail.my_rating?.edited ? (
+                        <span className="ml-2 text-[10px] font-medium normal-case tracking-normal text-stone-400">Edited</span>
+                      ) : null
+                    }
+                  />
                 </div>
+                {needsTerms ? <TermsCheckbox id="rating-terms" checked={agreed} onChange={setAgreed} /> : null}
                 {ratingError ? <p className="mt-3 text-sm text-ink">{ratingError}</p> : null}
                 {ratingMessage ? <p className="mt-3 text-sm text-navy">{ratingMessage}</p> : null}
-                <button type="submit" disabled={savingRating} className="mt-4 rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy disabled:opacity-60">
+                <button type="submit" disabled={savingRating || (needsTerms && !agreed)} className="mt-4 rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy disabled:opacity-60">
                   {savingRating ? "Saving" : "Save rating"}
                 </button>
               </form>
@@ -530,6 +551,21 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                           signInHref={account === null ? returnHref : null}
                           onVote={(choice) => void vote(tip.id, choice)}
                         />
+                        {account === undefined ? null : (
+                          <ReportTip
+                            tipId={tip.id}
+                            signInHref={account === null ? returnHref : null}
+                            onHidden={() => {
+                              setDetail((current) => {
+                                if (!current) return current;
+                                return {
+                                  ...current,
+                                  recommendations: current.recommendations.filter((item) => item.id !== tip.id),
+                                };
+                              });
+                            }}
+                          />
+                        )}
                       </div>
                     </li>
                   ))}
@@ -575,18 +611,16 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                     ))}
                   </div>
                 </fieldset>
-                <label htmlFor="tip-review" className="mt-3 block text-[10px] font-medium uppercase tracking-wide text-stone-400">
-                  Review
-                  <textarea
-                    id="tip-review"
-                    value={review}
-                    onChange={(event) => setReview(event.target.value)}
-                    rows={3}
-                    className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-navy"
-                  />
-                </label>
+                <CommentBox
+                  id="tip-review"
+                  label="Review"
+                  placeholder={TIP_PLACEHOLDER}
+                  value={review}
+                  onChange={setReview}
+                />
+                {needsTerms ? <TermsCheckbox id="tip-terms" checked={agreed} onChange={setAgreed} /> : null}
                 {tipError ? <p className="mt-3 text-sm text-ink">{tipError}</p> : null}
-                <button type="submit" disabled={savingTip} className="mt-4 rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy disabled:opacity-60">
+                <button type="submit" disabled={savingTip || (needsTerms && !agreed)} className="mt-4 rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy disabled:opacity-60">
                   {savingTip ? "Saving" : "Add tip"}
                 </button>
               </form>

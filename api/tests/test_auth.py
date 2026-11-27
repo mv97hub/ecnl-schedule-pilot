@@ -190,6 +190,8 @@ class AccountTests(unittest.TestCase):
             _other, other_token = self._open(client, subject="probe-auth-other", email="other-family@probe-auth.test", name="Other Family")
             owner_headers = {"Authorization": f"Bearer {owner_token}"}
             other_headers = {"Authorization": f"Bearer {other_token}"}
+            self.assertEqual(client.post("/auth/terms", json={"version": "ugc-1"}, headers=owner_headers).status_code, 200)
+            self.assertEqual(client.post("/auth/terms", json={"version": "ugc-1"}, headers=other_headers).status_code, 200)
             rated = client.post(
                 "/locations/rate",
                 json={

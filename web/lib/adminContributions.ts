@@ -11,7 +11,7 @@ export type ContributionRow = {
   score: string;
   comment: string | null;
   flagged: boolean;
-  status: "visible" | "hidden";
+  status: "visible" | "hidden" | "auto_flagged" | "reenabled";
 };
 
 export type ContributionFilters = {
@@ -107,7 +107,7 @@ export function isContributionRow(value: unknown): value is ContributionRow {
     typeof row.display_name === "string" &&
     typeof row.score === "string" &&
     typeof row.flagged === "boolean" &&
-    (row.status === "visible" || row.status === "hidden")
+    (row.status === "visible" || row.status === "hidden" || row.status === "auto_flagged" || row.status === "reenabled")
   );
 }
 
@@ -154,21 +154,6 @@ function pager(filters: ContributionFilters, total: number): string {
   return `<nav class="pager" aria-label="Pages">${previous}<span>Page ${page} of ${pages}</span>${next}</nav>`;
 }
 
-function editForm(row: ContributionRow, filters: ContributionFilters): string {
-  if (row.kind === "vote") return "";
-  return `<details>
-<summary>Edit</summary>
-<form method="post" action="/admin/contributions/${escapeHtml(row.kind)}/${row.id}">
-<input type="hidden" name="action" value="edit">
-${hiddenFields(filters)}
-<label class="field">Comment
-<textarea name="comment">${escapeHtml(row.comment ?? "")}</textarea>
-</label>
-<button class="primary" type="submit">Save comment</button>
-</form>
-</details>`;
-}
-
 function historyHref(row: ContributionRow): string {
   return `/admin/contributions/${encodeURIComponent(row.kind)}/${row.id}/history`;
 }
@@ -185,6 +170,8 @@ function actionLabel(action: string): string {
   if (action === "update" || action === "edit") return "Edit";
   if (action === "hide") return "Hide";
   if (action === "restore") return "Restore";
+  if (action === "auto_hide") return "Hidden after two reports";
+  if (action === "accept") return "Marked acceptable";
   return action;
 }
 
@@ -340,7 +327,21 @@ const HISTORY_POPUP = `<dialog class="history-popup" id="history-popup" aria-lab
 })();
 </script>`;
 
+function statusLabel(status: ContributionRow["status"]): string {
+  if (status === "hidden") return "Hidden";
+  if (status === "auto_flagged") return "Auto-flagged";
+  if (status === "reenabled") return "Re-enabled";
+  return "Visible";
+}
+
 function statusForm(row: ContributionRow, filters: ContributionFilters): string {
+  if (row.kind === "tip" && row.status === "auto_flagged") {
+    const back = pageHref(filters, filters.page);
+    return `<form method="post" action="/admin/flags/${row.id}">
+<input type="hidden" name="return_to" value="${escapeHtml(back)}">
+<button class="ghost" type="submit">Mark acceptable</button>
+</form>`;
+  }
   const action = row.status === "hidden" ? "restore" : "hide";
   const label = row.status === "hidden" ? "Restore" : "Hide";
   return `<form method="post" action="/admin/contributions/${escapeHtml(row.kind)}/${row.id}">
@@ -372,9 +373,9 @@ ${rows
 <td>${escapeHtml(row.venue_name)}</td>
 <td><span class="person"><span>${escapeHtml(row.display_name)}</span><span class="email">${email}</span></span></td>
 <td>${escapeHtml(row.score)}</td>
-<td><p class="comment">${escapeHtml(row.comment || "—")}</p>${editForm(row, filters)}${historyControl(row)}</td>
+<td><p class="comment">${escapeHtml(row.comment || "—")}</p>${historyControl(row)}</td>
 <td>${row.flagged ? "Yes" : "No"}</td>
-<td>${row.status === "hidden" ? "Hidden" : "Visible"}<div class="row-actions">${statusForm(row, filters)}</div></td>
+<td>${statusLabel(row.status)}<div class="row-actions">${statusForm(row, filters)}</div></td>
 </tr>`;
   })
   .join("")}

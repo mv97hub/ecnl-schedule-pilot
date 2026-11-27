@@ -4,13 +4,13 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
-from sqlalchemy import Integer, String, Text, cast, func, literal, or_, select, union_all
+from pydantic import BaseModel
+from sqlalchemy import Boolean, Integer, String, Text, cast, false, func, literal, or_, select, union_all
 from sqlalchemy.orm import Session
 
 from app.auth import require_admin, require_bearer
 from app.database import get_session
-from app.models import AppUser, LocationWriteEvent, VenueRating, VenueRecommendation, VenueTipVote
+from app.models import AppUser, ContentFlag, LocationWriteEvent, VenueRating, VenueRecommendation, VenueTipVote
 
 router = APIRouter(tags=["contributions"])
 
@@ -31,7 +31,7 @@ class ContributionOut(BaseModel):
     score: str
     comment: str | None
     flagged: bool
-    status: Literal["visible", "hidden"]
+    status: Literal["visible", "hidden", "auto_flagged", "reenabled"]
 
 
 class ContributionPage(BaseModel):
@@ -40,8 +40,20 @@ class ContributionPage(BaseModel):
     rows: list[ContributionOut]
 
 
-class EditIn(BaseModel):
-    comment: str = Field(default="", max_length=4000)
+class AdminFlagOut(BaseModel):
+    id: int
+    venue_name: str
+    comment: str
+    author_name: str
+    author_email: str | None
+    auto_hidden_at: datetime | None
+    reporter_emails: list[str]
+    status: Literal["visible", "hidden", "auto_flagged", "reenabled"]
+
+
+class AdminFlagPage(BaseModel):
+    state: Literal["hidden", "reenabled"]
+    rows: list[AdminFlagOut]
 
 
 def _like(value: str) -> str:
@@ -87,6 +99,31 @@ def _status(hidden_at: datetime | None) -> Literal["visible", "hidden"]:
     return "hidden" if hidden_at is not None else "visible"
 
 
+def _tip_status(row: VenueRecommendation) -> Literal["visible", "hidden", "auto_flagged", "reenabled"]:
+    hidden = row.hidden_at is not None
+    auto_hidden = row.auto_hidden_at is not None
+    accepted = row.accepted_at is not None
+    if hidden and auto_hidden and not accepted:
+        return "auto_flagged"
+    if hidden:
+        return "hidden"
+    if accepted:
+        return "reenabled"
+    return "visible"
+
+
+def _listed_status(kind: str, hidden: bool, auto_hidden: bool, accepted: bool) -> Literal["visible", "hidden", "auto_flagged", "reenabled"]:
+    if kind == "tip":
+        if hidden and auto_hidden and not accepted:
+            return "auto_flagged"
+        if hidden:
+            return "hidden"
+        if accepted:
+            return "reenabled"
+        return "visible"
+    return "hidden" if hidden else "visible"
+
+
 def _rating_score(row: VenueRating) -> str:
     overall = (row.field_quality + row.referees + row.parent_vibe + row.parking_access + row.amenities) / 5
     return f"{overall:.2f}"
@@ -120,7 +157,7 @@ def _tip_out(row: VenueRecommendation, user: AppUser | None) -> ContributionOut:
         score=str(row.rating),
         comment=row.review_text,
         flagged=row.flagged_at is not None,
-        status=_status(row.hidden_at),
+        status=_tip_status(row),
     )
 
 
@@ -222,6 +259,8 @@ def _rating_select(venue: str, email: str, hidden: str, flagged: str):
             _null_text().label("vote_choice"),
             VenueRating.flagged_at.is_not(None).label("flagged"),
             VenueRating.hidden_at.is_not(None).label("hidden"),
+            cast(false(), Boolean).label("auto_hidden"),
+            cast(false(), Boolean).label("accepted"),
         )
         .select_from(VenueRating)
         .outerjoin(AppUser, VenueRating.user_id == cast(AppUser.id, String))
@@ -260,6 +299,8 @@ def _tip_select(venue: str, email: str, hidden: str, flagged: str):
             _null_text().label("vote_choice"),
             VenueRecommendation.flagged_at.is_not(None).label("flagged"),
             VenueRecommendation.hidden_at.is_not(None).label("hidden"),
+            VenueRecommendation.auto_hidden_at.is_not(None).label("auto_hidden"),
+            VenueRecommendation.accepted_at.is_not(None).label("accepted"),
         )
         .select_from(VenueRecommendation)
         .outerjoin(AppUser, VenueRecommendation.user_id == cast(AppUser.id, String))
@@ -298,6 +339,8 @@ def _vote_select(venue: str, email: str, hidden: str, flagged: str):
             VenueTipVote.choice.label("vote_choice"),
             VenueTipVote.flagged_at.is_not(None).label("flagged"),
             VenueTipVote.hidden_at.is_not(None).label("hidden"),
+            cast(false(), Boolean).label("auto_hidden"),
+            cast(false(), Boolean).label("accepted"),
         )
         .select_from(VenueTipVote)
         .join(VenueRecommendation, VenueTipVote.recommendation_id == VenueRecommendation.id)
@@ -338,7 +381,7 @@ def _row_out(row) -> ContributionOut:
         score=_score(row),
         comment=row.comment,
         flagged=bool(row.flagged),
-        status="hidden" if row.hidden else "visible",
+        status=_listed_status(row.kind, bool(row.hidden), bool(row.auto_hidden), bool(row.accepted)),
     )
 
 
@@ -429,6 +472,8 @@ def _set_hidden(session: Session, admin: AppUser, kind: str, item_id: int, hide:
         payload = _rating_out(row, _user_by_id(session, row.user_id))
     elif kind == "tip":
         row = _load_tip(session, item_id)
+        if not hide and row.auto_hidden_at is not None and row.accepted_at is None:
+            raise HTTPException(status_code=409, detail="Mark this tip acceptable to show it again")
         already = row.hidden_at is not None
         if already != hide:
             _append(
@@ -499,63 +544,114 @@ def restore_contribution(
     return _set_hidden(session, admin, _kind(kind), item_id, False)
 
 
-@router.post("/admin/contributions/{kind}/{item_id}/edit", response_model=ContributionOut)
+@router.post("/admin/contributions/{kind}/{item_id}/edit")
 def edit_contribution(
     kind: str,
     item_id: int,
-    payload: EditIn,
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+) -> None:
+    """Closed. A saved request does not change comment, review_text, or edited_at."""
+
+    require_admin(session, token)
+    _ = (kind, item_id)
+    raise HTTPException(status_code=405, detail="Comments cannot be rewritten")
+
+
+@router.post("/admin/contributions/tip/{item_id}/accept", response_model=ContributionOut)
+def accept_contribution(
+    item_id: int,
     session: Annotated[Session, Depends(get_session)],
     token: Annotated[str, Depends(require_bearer)],
 ) -> ContributionOut:
-    """Replace the comment. The star score and the vote stay as submitted."""
+    """Show an auto-hidden tip again. The words stay. Later reports do not hide it."""
 
     admin = require_admin(session, token)
-    chosen = _kind(kind)
-    if chosen == "vote":
-        raise HTTPException(status_code=400, detail="A vote has no comment")
-    if chosen == "rating":
-        row = _load_rating(session, item_id)
-        text = payload.comment.strip()
-        if len(text) > 2000:
-            raise HTTPException(status_code=400, detail="comment is too long")
-        stored = text or None
-        if stored != row.comment:
-            _append(
-                session,
-                admin,
-                kind="rating",
-                venue_key=row.venue_key,
-                venue_name=row.venue_name,
-                rating_id=row.id,
-                tip_id=None,
-                action="edit",
-                previous={"comment": row.comment},
-                new={"comment": stored},
-            )
-            row.comment = stored
-            row.edited_at = datetime.now(UTC)
-            row.updated_at = datetime.now(UTC)
-        body = _rating_out(row, _user_by_id(session, row.user_id))
-    else:
-        row = _load_tip(session, item_id)
-        text = payload.comment.strip()
-        if not text:
-            raise HTTPException(status_code=400, detail="comment is required")
-        if text != row.review_text:
-            _append(
-                session,
-                admin,
-                kind="tip",
-                venue_key=row.venue_key,
-                venue_name=row.venue_name,
-                rating_id=None,
-                tip_id=row.id,
-                action="edit",
-                previous={"review_text": row.review_text},
-                new={"review_text": text},
-            )
-            row.review_text = text
-            row.edited_at = datetime.now(UTC)
-        body = _tip_out(row, _user_by_id(session, row.user_id))
+    row = _load_tip(session, item_id)
+    if row.accepted_at is not None and row.hidden_at is None:
+        return _tip_out(row, _user_by_id(session, row.user_id))
+    if row.accepted_at is not None and row.hidden_at is not None:
+        raise HTTPException(status_code=409, detail="Use restore for an admin hide")
+    hidden = row.hidden_at is not None
+    _append(
+        session,
+        admin,
+        kind="tip",
+        venue_key=row.venue_key,
+        venue_name=row.venue_name,
+        rating_id=None,
+        tip_id=row.id,
+        action="accept",
+        previous={"review_text": row.review_text, "hidden": hidden},
+        new={"review_text": row.review_text, "hidden": False},
+    )
+    row.hidden_at = None
+    row.accepted_at = datetime.now(UTC)
     session.commit()
-    return body
+    return _tip_out(row, _user_by_id(session, row.user_id))
+
+
+def _reporter_emails(session: Session, tip_ids: list[int]) -> dict[int, list[str]]:
+    if not tip_ids:
+        return {}
+    rows = session.execute(
+        select(ContentFlag.target_id, AppUser.email)
+        .join(AppUser, AppUser.id == ContentFlag.user_id)
+        .where(ContentFlag.kind == "tip", ContentFlag.target_id.in_(tip_ids))
+        .order_by(ContentFlag.created_at, ContentFlag.id)
+    ).all()
+    grouped: dict[int, list[str]] = {}
+    for target_id, email in rows:
+        grouped.setdefault(int(target_id), []).append(email or "No email")
+    return grouped
+
+
+@router.get("/admin/flags", response_model=AdminFlagPage)
+def list_flags(
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+    state: Annotated[str | None, Query(description="hidden or reenabled")] = None,
+) -> AdminFlagPage:
+    """Tips that reached two reports. Hidden means auto-hidden and not yet accepted."""
+
+    require_admin(session, token)
+    chosen = (state or "").strip().lower()
+    if chosen not in {"hidden", "reenabled"}:
+        raise HTTPException(status_code=400, detail="state must be hidden or reenabled")
+    report_count = (
+        select(func.count(ContentFlag.id))
+        .where(ContentFlag.kind == "tip", ContentFlag.target_id == VenueRecommendation.id)
+        .correlate(VenueRecommendation)
+        .scalar_subquery()
+    )
+    reached = or_(VenueRecommendation.auto_hidden_at.is_not(None), report_count >= 2)
+    statement = select(VenueRecommendation).where(reached)
+    if chosen == "hidden":
+        statement = statement.where(
+            VenueRecommendation.auto_hidden_at.is_not(None),
+            VenueRecommendation.accepted_at.is_(None),
+        )
+    else:
+        statement = statement.where(VenueRecommendation.accepted_at.is_not(None))
+    statement = statement.order_by(
+        VenueRecommendation.auto_hidden_at.desc().nulls_last(),
+        VenueRecommendation.id.desc(),
+    )
+    tips = list(session.scalars(statement).all())
+    emails = _reporter_emails(session, [int(row.id) for row in tips])
+    rows = []
+    for row in tips:
+        user = _user_by_id(session, row.user_id)
+        rows.append(
+            AdminFlagOut(
+                id=int(row.id),
+                venue_name=row.venue_name,
+                comment=row.review_text,
+                author_name=(user.display_name if user is not None else None) or row.author_name or "ECNL Family",
+                author_email=None if user is None else user.email,
+                auto_hidden_at=None if row.auto_hidden_at is None else _utc(row.auto_hidden_at),
+                reporter_emails=emails.get(int(row.id), []),
+                status=_tip_status(row),
+            )
+        )
+    return AdminFlagPage(state=chosen, rows=rows)  # type: ignore[arg-type]

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { LegalArticle } from "@/components/LegalArticle";
 
@@ -33,6 +34,13 @@ export default function PrivacyPage() {
       </p>
       <p>
         On the website, you can sign in with Google or Apple. Google or Apple supplies your name and email. The website stores a session cookie. Location ratings and tips are stored with the account. Your email is not shown on the location page.
+      </p>
+      <p>
+        Posting a rating or a tip requires the{" "}
+        <Link href="/terms" className="font-medium text-navy underline underline-offset-4">
+          Terms of Use
+        </Link>
+        .
       </p>
       <p>A home address you save is stored on the account. It is not public. A PlayMetrics or TeamSnap calendar link for a favorite team is stored on the account. It is not public.</p>
       <p>The two admin accounts can see account email on the users page and on a contribution’s history. Location pages do not show email or that history.</p>

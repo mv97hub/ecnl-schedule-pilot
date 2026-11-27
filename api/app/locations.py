@@ -19,11 +19,19 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.auth import author_for, bearer_token, require_bearer, require_user, user_from_token
+from app.auth import author_for, bearer_token, has_current_terms, require_bearer, require_user, user_from_token
 from app.clubs import club_location_source
 from app.database import get_session
 from app.ingestion.normalizer import split_venue
-from app.models import AppUser, LocationWriteEvent, ScheduleGame, VenueRating, VenueRecommendation, VenueTipVote
+from app.models import (
+    AppUser,
+    ContentFlag,
+    LocationWriteEvent,
+    ScheduleGame,
+    VenueRating,
+    VenueRecommendation,
+    VenueTipVote,
+)
 
 router = APIRouter(tags=["locations"])
 
@@ -457,6 +465,12 @@ class VoteIn(BaseModel):
     choice: VoteChoice
 
 
+class FlagOut(BaseModel):
+    already_reported: bool
+    hidden: bool
+    message: str
+
+
 def _profile_key(x_profile_key: Annotated[str | None, Header()] = None) -> str | None:
     if x_profile_key is None:
         return None
@@ -884,6 +898,11 @@ def _record_write(
     )
 
 
+def _require_terms(user: AppUser) -> None:
+    if not has_current_terms(user):
+        raise HTTPException(status_code=403, detail="Agree to the Terms of Use before posting")
+
+
 def _averages_out(session: Session, venue_key: str, venue_name: str, city: str, state: str) -> AveragesOut:
     rows = list(
         session.scalars(
@@ -914,6 +933,7 @@ def rate_location(
     token: Annotated[str, Depends(require_bearer)],
 ) -> AveragesOut:
     user = require_user(session, token)
+    _require_terms(user)
     user_id, author_key, author_name = author_for(user)
     venue_key, venue_name, city, state = _place_from_body(payload.venue_name, payload.city, payload.state)
     existing = session.scalar(
@@ -983,6 +1003,7 @@ def add_recommendation(
     token: Annotated[str, Depends(require_bearer)],
 ) -> RecommendationOut:
     user = require_user(session, token)
+    _require_terms(user)
     user_id, author_key, author_name = author_for(user)
     venue_key, venue_name, city, state = _place_from_body(payload.venue_name, payload.city, payload.state)
     title = " ".join(payload.title.split())
@@ -1048,6 +1069,7 @@ def vote_recommendation(
     """One vote per account. The same choice again changes nothing; the other choice moves the counts."""
 
     user = require_user(session, token)
+    _require_terms(user)
     _user_id, author_key, _author_name = author_for(user)
     row = session.scalar(
         select(VenueRecommendation).where(VenueRecommendation.id == recommendation_id).with_for_update()
@@ -1095,3 +1117,76 @@ def vote_recommendation(
     session.commit()
     session.refresh(row)
     return _recommendation_out(row, payload.choice)
+
+
+def _owns_tip(user: AppUser, row: VenueRecommendation) -> bool:
+    user_id, author_key, _author_name = author_for(user)
+    return row.user_id == user_id or row.author_key == author_key
+
+
+@router.post("/locations/recommendations/{recommendation_id}/flag", response_model=FlagOut)
+def flag_recommendation(
+    recommendation_id: int,
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+) -> FlagOut:
+    """One report per account. The second distinct report hides the tip until an admin accepts it."""
+
+    user = require_user(session, token)
+    row = session.scalar(
+        select(VenueRecommendation).where(VenueRecommendation.id == recommendation_id).with_for_update()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Tip not found")
+    if row.hidden_at is not None:
+        raise HTTPException(status_code=409, detail="This tip is no longer visible")
+    if _owns_tip(user, row):
+        raise HTTPException(status_code=403, detail="You cannot report your own tip")
+    existing = session.scalar(
+        select(ContentFlag).where(
+            ContentFlag.user_id == int(user.id),
+            ContentFlag.kind == "tip",
+            ContentFlag.target_id == row.id,
+        )
+    )
+    if existing is not None:
+        return FlagOut(already_reported=True, hidden=False, message="You already reported this tip.")
+    now = datetime.now(UTC)
+    session.add(
+        ContentFlag(
+            user_id=int(user.id),
+            kind="tip",
+            target_id=row.id,
+            created_at=now,
+        )
+    )
+    if row.flagged_at is None:
+        row.flagged_at = now
+    session.flush()
+    count = int(
+        session.scalar(
+            select(func.count())
+            .select_from(ContentFlag)
+            .where(ContentFlag.kind == "tip", ContentFlag.target_id == row.id)
+        )
+        or 0
+    )
+    hidden = False
+    if count >= 2 and row.accepted_at is None and row.hidden_at is None:
+        row.hidden_at = now
+        row.auto_hidden_at = now
+        hidden = True
+        _record_write(
+            session,
+            user,
+            kind="tip",
+            venue_key=row.venue_key,
+            venue_name=row.venue_name,
+            rating_id=None,
+            tip_id=row.id,
+            action="auto_hide",
+            previous={"review_text": row.review_text, "hidden": False},
+            new={"review_text": row.review_text, "hidden": True},
+        )
+    session.commit()
+    return FlagOut(already_reported=False, hidden=hidden, message="Reported.")

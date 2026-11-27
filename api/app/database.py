@@ -290,12 +290,14 @@ def ensure_location_columns() -> None:
             _add_timestamp(connection, table, "flagged_at", nullable=True)
         for table in ("venue_rating", "venue_recommendation"):
             _add_timestamp(connection, table, "edited_at", nullable=True)
+        _add_timestamp(connection, "venue_recommendation", "auto_hidden_at", nullable=True)
+        _add_timestamp(connection, "venue_recommendation", "accepted_at", nullable=True)
         _add_timestamp(connection, "venue_tip_vote", "updated_at", nullable=False)
         if not _table_exists(connection, "location_write_event"):
             return
         name = "ck_location_write_event_action"
         definition = _constraint_definition(connection, "location_write_event", name)
-        if definition is not None and "hide" not in definition:
+        if definition is not None and ("auto_hide" not in definition or "'accept'" not in definition):
             connection.execute(text(f"ALTER TABLE location_write_event DROP CONSTRAINT {name}"))
             definition = None
         if definition is None:
@@ -303,7 +305,7 @@ def ensure_location_columns() -> None:
                 connection,
                 "location_write_event",
                 name,
-                "action IN ('create', 'update', 'hide', 'restore', 'edit')",
+                "action IN ('create', 'update', 'hide', 'restore', 'edit', 'auto_hide', 'accept')",
             )
 
 
@@ -329,6 +331,10 @@ def ensure_account_columns() -> None:
             return
         if not _column_exists(connection, "app_user", "last_login_at"):
             connection.execute(text("ALTER TABLE app_user ADD COLUMN last_login_at timestamp with time zone"))
+        if not _column_exists(connection, "app_user", "terms_accepted_at"):
+            connection.execute(text("ALTER TABLE app_user ADD COLUMN terms_accepted_at timestamp with time zone"))
+        if not _column_exists(connection, "app_user", "terms_version"):
+            connection.execute(text("ALTER TABLE app_user ADD COLUMN terms_version varchar(32)"))
         if not _table_exists(connection, "app_session"):
             return
         connection.execute(

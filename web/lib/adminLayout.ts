@@ -1,4 +1,4 @@
-export type AdminSection = "issues" | "contributions" | "users";
+export type AdminSection = "issues" | "contributions" | "flags" | "users";
 
 export const ADMIN_SHELL_STYLE = `
 .shell { display: flex; flex-direction: column; gap: 24px; align-items: stretch; }
@@ -16,6 +16,7 @@ export const ADMIN_SHELL_STYLE = `
 const LINKS: ReadonlyArray<readonly [AdminSection, string, string]> = [
   ["issues", "/admin", "Issue reports"],
   ["contributions", "/admin/contributions", "Contributions"],
+  ["flags", "/admin/flags", "Flagged comments"],
   ["users", "/admin/users", "Users"],
 ];
 
