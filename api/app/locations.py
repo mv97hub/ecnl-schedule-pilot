@@ -506,6 +506,42 @@ class PlaceSuggestionOut(BaseModel):
     city: str = ""
     state: str = ""
     postal_code: str = ""
+    latitude: float | None = None
+    longitude: float | None = None
+
+
+class MapFieldOut(BaseModel):
+    venue_key: str
+    venue_name: str
+    city: str
+    state: str
+    status: str
+    latitude: float | None = None
+    longitude: float | None = None
+    formatted_address: str | None = None
+
+
+class MapTipOut(BaseModel):
+    id: int
+    venue_key: str
+    category: str
+    title: str
+    rating: int
+    formatted_address: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    distance_miles: float | None = None
+    map_url: str
+
+
+class FieldMapOut(MapFieldOut):
+    tips: list[MapTipOut] = []
+
+
+class ClubMapOut(BaseModel):
+    club_id: int | str
+    club_name: str
+    fields: list[MapFieldOut] = []
 
 
 class PlaceSuggestionsOut(BaseModel):
@@ -1092,13 +1128,18 @@ def _insert_field_point(session: Session, row: VenueFieldPoint) -> VenueFieldPoi
 
 def ensure_field_point(
     session: Session,
-    user_id: int,
+    user_id: int | None,
     venue_key: str,
     venue_name: str,
     city: str,
     state: str,
 ) -> VenueFieldPoint:
-    """Return the cached field point, geocoding once when this complex has none."""
+    """Return the cached field point, geocoding once when this complex has none.
+
+    ``user_id`` is ``None`` for the map previews: the lookup is charged to no
+    account, but the result is still cached per complex so each field is
+    geocoded at most once.
+    """
 
     existing = session.get(VenueFieldPoint, venue_key)
     if existing is not None:
@@ -1119,7 +1160,8 @@ def ensure_field_point(
             ),
         )
     try:
-        claim_place_slot(user_id)
+        if user_id is not None:
+            claim_place_slot(user_id)
         hit: GeocodeHit | None = geocode_complex(venue_name, city, state)
     except (PlacesBusy, PlacesUnavailable) as exc:
         raise _place_failure(exc) from None
@@ -1207,6 +1249,113 @@ def _apply_match(row: VenueRecommendation, hit: PlaceHit) -> None:
     row.place_fetched_at = datetime.now(UTC)
 
 
+def _resolve_map_field(session: Session, bucket: ComplexBucket) -> MapFieldOut:
+    """Coordinates for one complex: schedule data, then the geocode cache, then one cached geocode.
+
+    Only the requested field or club is resolved here. There is deliberately
+    no endpoint that geocodes every complex at once.
+    """
+
+    base = {"venue_key": bucket.venue_key, "venue_name": bucket.venue_name, "city": bucket.city, "state": bucket.state}
+    if bucket.latitudes and bucket.longitudes:
+        return MapFieldOut(
+            **base,
+            status="found",
+            latitude=sum(bucket.latitudes) / len(bucket.latitudes),
+            longitude=sum(bucket.longitudes) / len(bucket.longitudes),
+        )
+    cached = session.get(VenueFieldPoint, bucket.venue_key)
+    if cached is not None:
+        return MapFieldOut(
+            venue_key=bucket.venue_key,
+            venue_name=bucket.venue_name if bucket.names else cached.venue_name,
+            city=bucket.city or cached.city,
+            state=bucket.state or cached.state,
+            status=cached.status,
+            latitude=cached.latitude if cached.status == "found" else None,
+            longitude=cached.longitude if cached.status == "found" else None,
+            formatted_address=(cached.formatted_address or "").strip() or None,
+        )
+    if not bucket.city or not bucket.state or _is_tbd(bucket.venue_name):
+        return MapFieldOut(**base, status="skipped")
+    try:
+        row = ensure_field_point(session, None, bucket.venue_key, bucket.venue_name, bucket.city, bucket.state)
+    except HTTPException:
+        session.rollback()
+        return MapFieldOut(**base, status="unavailable")
+    return MapFieldOut(
+        **base,
+        status=row.status,
+        latitude=row.latitude if row.status == "found" else None,
+        longitude=row.longitude if row.status == "found" else None,
+        formatted_address=(row.formatted_address or "").strip() or None,
+    )
+
+
+def _map_tip(row: VenueRecommendation, field: MapFieldOut) -> MapTipOut:
+    distance = None
+    if field.latitude is not None and field.longitude is not None and row.latitude is not None and row.longitude is not None:
+        distance = round(miles_between(field.latitude, field.longitude, row.latitude, row.longitude), 1)
+    return MapTipOut(
+        id=row.id,
+        venue_key=row.venue_key,
+        category=row.category,
+        title=(row.matched_name or "").strip() or row.title,
+        rating=row.rating,
+        formatted_address=row.formatted_address,
+        latitude=row.latitude,
+        longitude=row.longitude,
+        distance_miles=distance,
+        map_url=_maps_search(_tip_map_query(row)),
+    )
+
+
+@router.get("/locations/map/field", response_model=FieldMapOut)
+def read_field_map(
+    session: Annotated[Session, Depends(get_session)],
+    venue_key: str = Query(min_length=1, max_length=300),
+) -> FieldMapOut:
+    """Map point for one field plus its pinned tips, nearest first. Geocodes only this field, once, cached."""
+
+    key = venue_key.strip()
+    place = _key_place(key)
+    grouped = _complexes(session, datetime.now(UTC), city=place[0], state=place[1]) if place else {}
+    bucket = grouped.get(key)
+    tips = list(
+        session.scalars(
+            select(VenueRecommendation).where(VenueRecommendation.venue_key == key, VenueRecommendation.hidden_at.is_(None))
+        ).all()
+    )
+    if bucket is None:
+        if session.get(VenueFieldPoint, key) is None and not tips:
+            raise HTTPException(status_code=404, detail="Complex not found")
+        bucket = ComplexBucket(key)
+        if tips:
+            bucket.names[tips[0].venue_name] += 1
+            bucket.cities[tips[0].city] += 1
+            bucket.states[tips[0].state] += 1
+    field = _resolve_map_field(session, bucket)
+    packed = [_map_tip(row, field) for row in tips]
+    packed.sort(key=lambda tip: (tip.distance_miles is None, tip.distance_miles or 0.0, -tip.rating, tip.id))
+    return FieldMapOut(**field.model_dump(), tips=packed)
+
+
+@router.get("/locations/map/club", response_model=ClubMapOut)
+def read_club_map(
+    session: Annotated[Session, Depends(get_session)],
+    club: str = Query(description="Club id, or the split id used on the club page"),
+) -> ClubMapOut:
+    """Map points for one club's home fields only, resolved and cached field by field."""
+
+    source = club_location_source(session, club)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Club not found")
+    grouped = _buckets_from_rows(source.games, datetime.now(UTC), require_name=True)
+    fields = [_resolve_map_field(session, bucket) for bucket in grouped.values()]
+    fields.sort(key=lambda item: (item.venue_name.casefold(), item.city.casefold(), item.state, item.venue_key))
+    return ClubMapOut(club_id=source.id, club_name=source.name, fields=fields)
+
+
 @router.get("/locations/field-point", response_model=FieldPointOut)
 def read_field_point(
     session: Annotated[Session, Depends(get_session)],
@@ -1264,6 +1413,8 @@ def read_place_suggestions(
                 city=hit.city,
                 state=hit.state,
                 postal_code=hit.postal_code,
+                latitude=hit.latitude,
+                longitude=hit.longitude,
             )
             for hit in hits
         ]
