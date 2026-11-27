@@ -1232,7 +1232,7 @@ def read_place_suggestions(
     category: str = Query(min_length=1, max_length=16),
     q: str = Query(default="", max_length=80),
 ) -> PlaceSuggestionsOut:
-    """Suggest hotels or restaurants within twenty miles of the cached field point. Short queries do not call Geoapify."""
+    """Suggest hotels or restaurants within twenty-five miles of the cached field point. Short queries do not call Geoapify."""
 
     user = require_user(session, token)
     _require_terms(user)

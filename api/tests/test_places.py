@@ -20,7 +20,7 @@ from app.database import engine, ensure_location_columns
 from app.locations import make_venue_key
 from app.main import app
 from app.models import Base, LocationWriteEvent, VenueFieldPoint, VenueRecommendation
-from app.places import NEAR_MILES, SEARCH_RADIUS_METERS, category_fits, miles_between, reset_place_rate_limit
+from app.places import NEAR_MILES, SEARCH_RADIUS_METERS, category_fits, miles_between, reset_place_rate_limit, suggest_places
 
 SECRET = "probe-place-secret"
 KEY = "super-secret-geoapify-key"
@@ -30,6 +30,8 @@ FIELD = "Veterans Park"
 FIELD_ID = "a1b2c3d4e5f67890"
 HOTEL_ID = "b1b2c3d4e5f67890"
 FOOD_ID = "c1b2c3d4e5f67890"
+CAFE_ID = "e1b2c3d4e5f67890"
+MOTEL_ID = "f1b2c3d4e5f67890"
 ADDRESS = "100 Main Street, Probeplace, FL 32000, United States"
 FIELD_ADDRESS = "Veterans Park, Probeplace, FL, United States of America"
 FIELD_LAT = 30.33
@@ -187,6 +189,32 @@ class PlaceLookupTests(unittest.TestCase):
                 return _Response({"features": [_place_feature(place_id, "Far Inn", ["accommodation.hotel"], 40.0, -105.0)]})
             return _Response({"features": [_place_feature(HOTEL_ID, "Hilton Probeplace", ["accommodation.hotel"])]})
         if url.endswith("/places") or "/v2/places" in url:
+            categories = str(query.get("categories") or "")
+            if "," in categories:
+                return _Response({"features": []})
+            if str(query.get("name") or "") == "Starbucks":
+                if categories != "catering.cafe":
+                    return _Response({"features": []})
+                return _Response(
+                    {
+                        "features": [
+                            {
+                                "properties": {
+                                    "name": "Starbucks",
+                                    "formatted": ADDRESS,
+                                    "address_line1": "100 Main Street",
+                                    "city": "Probeplace",
+                                    "state_code": "fl",
+                                    "postcode": "32000",
+                                    "place_id": CAFE_ID,
+                                    "lat": HOTEL_LAT,
+                                    "lon": HOTEL_LON,
+                                    "categories": ["catering.cafe", "catering.cafe.coffee_shop"],
+                                }
+                            }
+                        ]
+                    }
+                )
             if str(query.get("name") or "") == "Named":
                 return _Response(
                     {
@@ -252,7 +280,10 @@ class PlaceLookupTests(unittest.TestCase):
         self.assertTrue(category_fits("HOTEL", ("accommodation.hotel",)))
         self.assertFalse(category_fits("HOTEL", ("catering.cafe",)))
         self.assertTrue(category_fits("RESTAURANT", ("catering.fast_food",)))
-        self.assertEqual(NEAR_MILES, 20.0)
+        self.assertTrue(category_fits("RESTAURANT", ("catering.cafe",)))
+        self.assertTrue(category_fits("RESTAURANT", ("catering.cafe.coffee_shop",)))
+        self.assertFalse(category_fits("RESTAURANT", ("commercial.supermarket",)))
+        self.assertEqual(NEAR_MILES, 25.0)
         self.assertLess(miles_between(FIELD_LAT, FIELD_LON, HOTEL_LAT, HOTEL_LON), NEAR_MILES)
         self.assertGreater(miles_between(FIELD_LAT, FIELD_LON, 40.0, -105.0), NEAR_MILES)
 
@@ -381,9 +412,20 @@ class PlaceLookupTests(unittest.TestCase):
             params = places_call["params"]
             self.assertIsInstance(params, dict)
             self.assertEqual(params["name"], "Hilton")
+            self.assertEqual(params["categories"], "accommodation.hotel")
+            self.assertNotIn(",", str(params["categories"]))
             self.assertEqual(params["bias"], f"proximity:{FIELD_LON:.6f},{FIELD_LAT:.6f}")
-            self.assertEqual(SEARCH_RADIUS_METERS, 32187)
+            self.assertEqual(SEARCH_RADIUS_METERS, 40234)
             self.assertEqual(params["filter"], f"circle:{FIELD_LON:.6f},{FIELD_LAT:.6f},{SEARCH_RADIUS_METERS}")
+            hotel_categories = [
+                str(call["params"]["categories"])
+                for call in self.calls
+                if "/v2/places" in str(call["url"]) and isinstance(call["params"], dict)
+            ]
+            self.assertEqual(
+                hotel_categories,
+                ["accommodation.hotel", "accommodation.motel", "accommodation.guest_house"],
+            )
 
             named = client.get(
                 "/locations/places",
@@ -465,6 +507,55 @@ class PlaceLookupTests(unittest.TestCase):
             assert sideline is not None
             self.assertIsNone(sideline.place_id)
             self.assertIsNone(sideline.latitude)
+
+    def test_restaurant_search_includes_a_cafe_and_keeps_each_category_separate(self) -> None:
+        with TestClient(app) as client, patch("app.places.httpx.get", side_effect=self._fake_get):
+            headers = _sign_in(client, "probe-place-cafe")
+            point = client.get(
+                "/locations/field-point",
+                params={"venue_name": FIELD, "city": CITY, "state": STATE},
+                headers=headers,
+            )
+            self.assertEqual(point.status_code, 200, point.text)
+            found = client.get(
+                "/locations/places",
+                params={"venue_key": point.json()["venue_key"], "category": "RESTAURANT", "q": "Starbucks"},
+                headers=headers,
+            )
+            self.assertEqual(found.status_code, 200, found.text)
+            suggestions = found.json()["suggestions"]
+            self.assertEqual([item["name"] for item in suggestions], ["Starbucks"])
+            self.assertEqual(suggestions[0]["place_id"], CAFE_ID)
+            self._assert_key_stays_out(found.text)
+            categories = [
+                str(call["params"]["categories"])
+                for call in self.calls
+                if "/v2/places" in str(call["url"]) and isinstance(call["params"], dict)
+            ]
+            self.assertEqual(categories, ["catering.restaurant", "catering.fast_food", "catering.cafe"])
+
+    def test_nearer_place_from_a_later_category_is_listed_first(self) -> None:
+        def fake(url: str, params: dict | None = None, timeout: float | None = None) -> _Response:
+            query = dict(params or {})
+            self.calls.append({"url": url, "params": query, "timeout": timeout})
+            categories = str(query.get("categories") or "")
+            if categories == "accommodation.hotel":
+                feature = _place_feature(HOTEL_ID, "Farther Hyatt", ["accommodation.hotel"])
+                feature["properties"]["distance"] = 8000
+                return _Response({"features": [feature]})
+            if categories == "accommodation.motel":
+                feature = _place_feature(MOTEL_ID, "Nearer Hyatt", ["accommodation.motel"])
+                feature["properties"]["distance"] = 400
+                return _Response({"features": [feature]})
+            return _Response({"features": []})
+
+        with patch("app.places.httpx.get", side_effect=fake):
+            hits = suggest_places("Hyatt", "HOTEL", FIELD_LAT, FIELD_LON)
+        self.assertEqual([hit.name for hit in hits], ["Nearer Hyatt", "Farther Hyatt"])
+        self.assertEqual(
+            [str(call["params"]["categories"]) for call in self.calls],
+            ["accommodation.hotel", "accommodation.motel", "accommodation.guest_house"],
+        )
 
     def test_a_hand_typed_address_is_saved_for_a_hotel_only(self) -> None:
         with TestClient(app) as client:
