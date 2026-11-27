@@ -1,7 +1,7 @@
-import { GoogleSigninButton } from "@react-native-google-signin/google-signin";
 import { AppleAuthenticationButton, AppleAuthenticationButtonStyle, AppleAuthenticationButtonType } from "expo-apple-authentication";
 import { Text, View } from "react-native";
 
+import { StandardGoogleButton } from "@/components/StandardGoogleButton";
 import { useProviderSignIn } from "@/components/useProviderSignIn";
 import type { SignInFrom } from "@/lib/finishSignIn";
 import { colors } from "@/theme";
@@ -18,13 +18,7 @@ export function SignInButtons({ from, next }: { from: SignInFrom; next: string |
         style={{ width: "100%", height: 44 }}
         onPress={() => void run("apple")}
       />
-      <GoogleSigninButton
-        size={GoogleSigninButton.Size.Wide}
-        color={GoogleSigninButton.Color.Light}
-        disabled={busy != null}
-        onPress={() => void run("google")}
-        style={{ width: "100%", height: 48 }}
-      />
+      <StandardGoogleButton disabled={busy != null} onPress={() => void run("google")} />
       {error ? <Text style={{ color: colors.ink, lineHeight: 20 }}>{error}</Text> : null}
     </View>
   );

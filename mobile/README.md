@@ -8,7 +8,7 @@ The app lives in this folder so the Render web build under `web/` stays unchange
 
 Requests go to `EXPO_PUBLIC_API_URL` when that variable is set at build time. Otherwise they use `extra.apiUrl` in `app.json`, then the fallback in `src/lib/api.ts`:
 
-`https://www.premiergamedayhq.com/backend`
+`https://premiergamedayhq.com/backend`
 
 `/backend` is a proxy on the website. It forwards to the FastAPI service (`NEXT_PUBLIC_API_URL`).
 

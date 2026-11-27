@@ -22,7 +22,8 @@ import type {
 } from "@/lib/types";
 
 /** Website proxy. The Next.js route forwards to the FastAPI service. */
-const FALLBACK_API = "https://www.premiergamedayhq.com/backend";
+// Apex host. www 301s here, and iOS drops Authorization when it follows that redirect.
+const FALLBACK_API = "https://premiergamedayhq.com/backend";
 
 export class ApiError extends Error {
   status: number;

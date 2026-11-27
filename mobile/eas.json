@@ -11,7 +11,7 @@
         "simulator": true
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://www.premiergamedayhq.com/backend"
+        "EXPO_PUBLIC_API_URL": "https://premiergamedayhq.com/backend"
       }
     },
     "preview": {
@@ -23,13 +23,13 @@
         "simulator": true
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://www.premiergamedayhq.com/backend"
+        "EXPO_PUBLIC_API_URL": "https://premiergamedayhq.com/backend"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://www.premiergamedayhq.com/backend"
+        "EXPO_PUBLIC_API_URL": "https://premiergamedayhq.com/backend"
       }
     }
   }
