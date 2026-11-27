@@ -713,7 +713,7 @@ export function HeadToHeadBoard() {
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-navy sm:text-3xl">Head-to-Head</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-navy sm:text-3xl">Match Up</h1>
             {!finished && <p className="mt-1 text-sm text-stone-500">Direct meetings and how each club did against the same opponents.</p>}
           </div>
           {report && !loading && teamA && teamB && report.team_a_stats.team_id === teamA && report.team_b_stats.team_id === teamB ? (

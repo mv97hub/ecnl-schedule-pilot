@@ -64,7 +64,7 @@ function AppHeaderBar({ path, query, view = null, scheduleBoard = false }: { pat
               aria-current={schedules ? "page" : undefined}
               className={`rounded-full px-3 py-1.5 ${schedules ? "bg-gold text-navy" : "text-bone/80 hover:bg-white/10"}`}
             >
-              Team Schedules
+              Schedules
             </Link>
             <Link
               href="/clubs"
@@ -78,14 +78,14 @@ function AppHeaderBar({ path, query, view = null, scheduleBoard = false }: { pat
               aria-current={standings ? "page" : undefined}
               className={`rounded-full px-3 py-1.5 ${standings ? "bg-gold text-navy" : "text-bone/80 hover:bg-white/10"}`}
             >
-              Conference Standings
+              Standings
             </Link>
             <Link
               href="/head-to-head"
               aria-current={headToHead ? "page" : undefined}
               className={`rounded-full px-3 py-1.5 ${headToHead ? "bg-gold text-navy" : "text-bone/80 hover:bg-white/10"}`}
             >
-              Head-to-Head
+              Match Up
             </Link>
             <Link
               href="/locations"

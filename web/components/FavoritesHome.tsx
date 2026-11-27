@@ -267,7 +267,7 @@ function TeamCard({ team, now }: { team: MobileTeamCard; now: number }) {
           Schedule
         </Link>
         <Link href={headToHead} className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-ink">
-          Head-to-head
+          Match Up
         </Link>
         {game && venueKnown ? (
           <Link href={venueGuideHref(game.venue_name, game.city, game.state)} className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-ink">
