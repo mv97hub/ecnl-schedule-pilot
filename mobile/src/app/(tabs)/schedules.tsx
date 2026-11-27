@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Chip, Crest, GoldButton, Hit, Loading, Notice, OutlineButton, PreferencesButton, ResultBadge, SavedDataNote, Segmented } from "@/components/ui";
 import { fetchSchedule, fetchTeams } from "@/lib/api";
-import { formatKickoff } from "@/lib/format";
+import { formatKickoff, scheduleChipLabel } from "@/lib/format";
 import { CONFERENCES, TIERS, ageGroupsFor, type LeagueGender } from "@/lib/leagues";
 import { countdown, kickoffStillAhead, placeLabel, shortConference, teamScoreline, wdlFromSummary } from "@/lib/present";
 import { useFavorites } from "@/store/favorites";
@@ -128,9 +128,9 @@ export default function SchedulesScreen() {
         <SavedDataNote query={schedule} style={{ paddingHorizontal: 16, paddingTop: 12 }} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, padding: 16 }}>
           {chips.map((item) => (
-            <Chip key={item.id} label={`${item.age_group} ${item.name}`} selected={item.id === teamId} onPress={() => { setActive(item.id); setShowAll(false); }} />
+            <Chip key={item.id} label={scheduleChipLabel(item)} selected={item.id === teamId} onPress={() => { setActive(item.id); setShowAll(false); }} />
           ))}
-          {team && !chipIds.has(team.id) ? <Chip label={team.name} selected onPress={() => undefined} /> : null}
+          {team && !chipIds.has(team.id) ? <Chip label={scheduleChipLabel(team)} selected onPress={() => undefined} /> : null}
           <Chip label="Browse" onPress={() => setBrowsing(true)} />
         </ScrollView>
 
