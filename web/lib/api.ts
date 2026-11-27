@@ -177,6 +177,10 @@ export type PlaceSuggestion = {
   place_id: string;
   name: string;
   formatted_address: string;
+  street: string;
+  city: string;
+  state: string;
+  postal_code: string;
 };
 
 export function fetchPlaceSuggestions(

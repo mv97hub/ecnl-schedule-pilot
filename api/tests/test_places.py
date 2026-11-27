@@ -20,7 +20,7 @@ from app.database import engine, ensure_location_columns
 from app.locations import make_venue_key
 from app.main import app
 from app.models import Base, LocationWriteEvent, VenueFieldPoint, VenueRecommendation
-from app.places import category_fits, miles_between, reset_place_rate_limit
+from app.places import SEARCH_RADIUS_METERS, category_fits, miles_between, reset_place_rate_limit
 
 SECRET = "probe-place-secret"
 KEY = "super-secret-geoapify-key"
@@ -59,7 +59,12 @@ def _sign_in(client: TestClient, subject: str) -> dict[str, str]:
     return headers
 
 
-def _tip(title: str, category: str = "HOTEL", place_id: str | None = None) -> dict[str, object]:
+def _tip(
+    title: str,
+    category: str = "HOTEL",
+    place_id: str | None = None,
+    formatted_address: str | None = None,
+) -> dict[str, object]:
     body: dict[str, object] = {
         "venue_name": FIELD,
         "city": CITY,
@@ -72,6 +77,8 @@ def _tip(title: str, category: str = "HOTEL", place_id: str | None = None) -> di
     }
     if place_id is not None:
         body["place_id"] = place_id
+    if formatted_address is not None:
+        body["formatted_address"] = formatted_address
     return body
 
 
@@ -187,6 +194,10 @@ class PlaceLookupTests(unittest.TestCase):
                             "properties": {
                                 "name": "Hilton Probeplace",
                                 "formatted": ADDRESS,
+                                "address_line1": "100 Main Street",
+                                "city": "Probeplace",
+                                "state_code": "fl",
+                                "postcode": "32000",
                                 "place_id": HOTEL_ID,
                                 "lat": HOTEL_LAT,
                                 "lon": HOTEL_LON,
@@ -338,6 +349,10 @@ class PlaceLookupTests(unittest.TestCase):
             self.assertEqual(len(suggestions), 1)
             self.assertEqual(suggestions[0]["name"], "Hilton Probeplace")
             self.assertEqual(suggestions[0]["formatted_address"], ADDRESS)
+            self.assertEqual(suggestions[0]["street"], "100 Main Street")
+            self.assertEqual(suggestions[0]["city"], "Probeplace")
+            self.assertEqual(suggestions[0]["state"], "FL")
+            self.assertEqual(suggestions[0]["postal_code"], "32000")
             self.assertNotIn("latitude", suggestions[0])
             self._assert_key_stays_out(found.text)
             places_call = next(call for call in self.calls if "/v2/places" in str(call["url"]))
@@ -345,7 +360,8 @@ class PlaceLookupTests(unittest.TestCase):
             self.assertIsInstance(params, dict)
             self.assertEqual(params["name"], "Hilton")
             self.assertEqual(params["bias"], f"proximity:{FIELD_LON:.6f},{FIELD_LAT:.6f}")
-            self.assertEqual(params["filter"], f"circle:{FIELD_LON:.6f},{FIELD_LAT:.6f},8047")
+            self.assertEqual(SEARCH_RADIUS_METERS, 16093)
+            self.assertEqual(params["filter"], f"circle:{FIELD_LON:.6f},{FIELD_LAT:.6f},{SEARCH_RADIUS_METERS}")
             self.assertIn("accommodation.hotel", str(params["categories"]))
             self.assertNotIn("1.000000", str(params["filter"]))
 
@@ -377,6 +393,15 @@ class PlaceLookupTests(unittest.TestCase):
             saved_query = parse_qs(urlparse(body["map_url"]).query)
             self.assertEqual(saved_query["query"], [ADDRESS])
 
+            overridden = client.post(
+                "/locations/recommendations",
+                json=_tip("hilton typed", place_id=HOTEL_ID, formatted_address="999 Fake Street"),
+                headers=headers,
+            )
+            self.assertEqual(overridden.status_code, 200, overridden.text)
+            self.assertEqual(overridden.json()["formatted_address"], ADDRESS)
+            self.assertEqual(overridden.json()["place_provider"], "geoapify")
+
             ignored = client.post(
                 "/locations/recommendations",
                 json=_tip("Sideline note", category="SIDELINE_TIP", place_id=HOTEL_ID),
@@ -384,7 +409,7 @@ class PlaceLookupTests(unittest.TestCase):
             )
             self.assertEqual(ignored.status_code, 200, ignored.text)
             self.assertIsNone(ignored.json()["place_provider"])
-            self.assertEqual(sum("place-details" in url for url in self._urls()), 1)
+            self.assertEqual(sum("place-details" in url for url in self._urls()), 2)
 
         with Session(engine) as session:
             matched = session.scalar(select(VenueRecommendation).where(VenueRecommendation.title == "hilton"))
@@ -407,6 +432,61 @@ class PlaceLookupTests(unittest.TestCase):
             assert sideline is not None
             self.assertIsNone(sideline.place_id)
             self.assertIsNone(sideline.latitude)
+
+    def test_a_hand_typed_address_is_saved_for_a_hotel_only(self) -> None:
+        with TestClient(app) as client:
+            headers = _sign_in(client, "probe-place-manual")
+            saved = client.post(
+                "/locations/recommendations",
+                json=_tip("Typed Inn", formatted_address="  12 Oak St, Probeplace, FL 32000  "),
+                headers=headers,
+            )
+            self.assertEqual(saved.status_code, 200, saved.text)
+            body = saved.json()
+            self.assertEqual(body["formatted_address"], "12 Oak St, Probeplace, FL 32000")
+            self.assertIsNone(body["matched_name"])
+            self.assertIsNone(body["place_provider"])
+            self.assertNotIn("place_id", body)
+            self.assertNotIn("latitude", body)
+            self._assert_key_stays_out(saved.text)
+            saved_query = parse_qs(urlparse(body["map_url"]).query)
+            self.assertEqual(saved_query["query"], ["12 Oak St, Probeplace, FL 32000"])
+
+            blank = client.post(
+                "/locations/recommendations",
+                json=_tip("No Address", formatted_address="   "),
+                headers=headers,
+            )
+            self.assertEqual(blank.status_code, 200, blank.text)
+            self.assertIsNone(blank.json()["formatted_address"])
+
+            sideline = client.post(
+                "/locations/recommendations",
+                json=_tip("Bench", category="SIDELINE_TIP", formatted_address="12 Oak St, Probeplace, FL 32000"),
+                headers=headers,
+            )
+            self.assertEqual(sideline.status_code, 200, sideline.text)
+            self.assertIsNone(sideline.json()["formatted_address"])
+            self.assertEqual(self.calls, [])
+
+        with Session(engine) as session:
+            row = session.scalar(select(VenueRecommendation).where(VenueRecommendation.title == "Typed Inn"))
+            self.assertIsNotNone(row)
+            assert row is not None
+            self.assertEqual(row.formatted_address, "12 Oak St, Probeplace, FL 32000")
+            self.assertIsNone(row.place_provider)
+            self.assertIsNone(row.place_id)
+            self.assertIsNone(row.latitude)
+            self.assertIsNone(row.longitude)
+            history = session.scalar(select(LocationWriteEvent).where(LocationWriteEvent.tip_id == row.id))
+            self.assertIsNotNone(history)
+            assert history is not None
+            self.assertEqual(history.new_values["formatted_address"], "12 Oak St, Probeplace, FL 32000")
+            self.assertNotIn("place_id", history.new_values)
+            parked = session.scalar(select(VenueRecommendation).where(VenueRecommendation.title == "Bench"))
+            self.assertIsNotNone(parked)
+            assert parked is not None
+            self.assertIsNone(parked.formatted_address)
 
     def test_a_far_or_wrong_place_is_not_stored(self) -> None:
         with TestClient(app) as client, patch("app.places.httpx.get", side_effect=self._fake_get):

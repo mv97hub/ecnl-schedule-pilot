@@ -488,6 +488,7 @@ class RecommendationIn(BaseModel):
     tags: list[str] = Field(default_factory=list)
     author_name: str | None = Field(default=None, max_length=80)
     place_id: str | None = Field(default=None, max_length=512)
+    formatted_address: str | None = Field(default=None, max_length=500)
 
 
 class FieldPointOut(BaseModel):
@@ -501,6 +502,10 @@ class PlaceSuggestionOut(BaseModel):
     place_id: str
     name: str
     formatted_address: str
+    street: str = ""
+    city: str = ""
+    state: str = ""
+    postal_code: str = ""
 
 
 class PlaceSuggestionsOut(BaseModel):
@@ -926,6 +931,8 @@ def _tip_values(row: VenueRecommendation) -> dict[str, object]:
         values["formatted_address"] = row.formatted_address
         values["latitude"] = row.latitude
         values["longitude"] = row.longitude
+    elif row.formatted_address:
+        values["formatted_address"] = row.formatted_address
     return values
 
 
@@ -1181,6 +1188,15 @@ def _matched_place(
     return hit
 
 
+def _manual_address(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = " ".join(value.split())
+    if not text:
+        return None
+    return text[:500]
+
+
 def _apply_match(row: VenueRecommendation, hit: PlaceHit) -> None:
     row.place_provider = PROVIDER
     row.place_id = hit.place_id
@@ -1216,7 +1232,7 @@ def read_place_suggestions(
     category: str = Query(min_length=1, max_length=16),
     q: str = Query(default="", max_length=80),
 ) -> PlaceSuggestionsOut:
-    """Suggest hotels or restaurants near the cached field point. Short queries do not call Geoapify."""
+    """Suggest hotels or restaurants within ten miles of the cached field point. Short queries do not call Geoapify."""
 
     user = require_user(session, token)
     _require_terms(user)
@@ -1240,7 +1256,15 @@ def read_place_suggestions(
         raise _place_failure(exc) from None
     return PlaceSuggestionsOut(
         suggestions=[
-            PlaceSuggestionOut(place_id=hit.place_id, name=hit.name, formatted_address=hit.formatted_address)
+            PlaceSuggestionOut(
+                place_id=hit.place_id,
+                name=hit.name,
+                formatted_address=hit.formatted_address,
+                street=hit.street,
+                city=hit.city,
+                state=hit.state,
+                postal_code=hit.postal_code,
+            )
             for hit in hits
         ]
     )
@@ -1268,6 +1292,7 @@ def add_recommendation(
     match: PlaceHit | None = None
     if place_id and payload.category in MATCH_CATEGORIES:
         match = _matched_place(session, account_id, payload.category, place_id, venue_key)
+    manual = _manual_address(payload.formatted_address) if payload.category in MATCH_CATEGORIES and match is None else None
     row = VenueRecommendation(
         venue_key=venue_key,
         venue_name=venue_name,
@@ -1287,6 +1312,8 @@ def add_recommendation(
     )
     if match is not None:
         _apply_match(row, match)
+    elif manual:
+        row.formatted_address = manual
     session.add(row)
     session.flush()
     _record_write(

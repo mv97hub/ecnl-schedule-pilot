@@ -20,7 +20,7 @@ PROVIDER = "geoapify"
 GEOCODE_URL = "https://api.geoapify.com/v1/geocode/search"
 PLACES_URL = "https://api.geoapify.com/v2/places"
 DETAILS_URL = "https://api.geoapify.com/v2/place-details"
-SEARCH_RADIUS_METERS = 8047
+SEARCH_RADIUS_METERS = 16093  # 10 miles
 SUGGEST_LIMIT = 5
 MIN_QUERY_CHARS = 3
 NEAR_MILES = 10.0
@@ -57,6 +57,10 @@ class PlaceSuggestionHit:
     place_id: str
     name: str
     formatted_address: str
+    street: str
+    city: str
+    state: str
+    postal_code: str
 
 
 @dataclass(frozen=True)
@@ -145,7 +149,7 @@ def geocode_complex(name: str, city: str, state: str) -> GeocodeHit | None:
 
 
 def suggest_places(query: str, category: str, latitude: float, longitude: float) -> list[PlaceSuggestionHit]:
-    """Places whose names contain the typed text, inside a few miles of the field."""
+    """Places whose names contain the typed text, inside ten miles of the field."""
 
     categories = _HOTEL_CATEGORIES if category == "HOTEL" else _FOOD_CATEGORIES if category == "RESTAURANT" else ""
     if not categories:
@@ -275,7 +279,20 @@ def _suggestions(payload: dict) -> list[PlaceSuggestionHit]:
         if cleaned is None or cleaned in seen:
             continue
         seen.add(cleaned)
-        found.append(PlaceSuggestionHit(place_id=cleaned, name=name[:200], formatted_address=address[:500]))
+        street, city, state, postal = _address_parts(props)
+        if not street:
+            street = address[:160]
+        found.append(
+            PlaceSuggestionHit(
+                place_id=cleaned,
+                name=name[:200],
+                formatted_address=address[:500],
+                street=street,
+                city=city,
+                state=state,
+                postal_code=postal,
+            )
+        )
         if len(found) >= SUGGEST_LIMIT:
             break
     return found
@@ -297,6 +314,18 @@ def _details_feature(payload: dict) -> dict | None:
         if props.get("feature_type") == "details":
             return feature
     return fallback
+
+
+def _address_parts(props: dict) -> tuple[str, str, str, str]:
+    line1 = _text(props.get("address_line1"))
+    housenumber = _text(props.get("housenumber"))
+    street_name = _text(props.get("street"))
+    street = line1 or " ".join(part for part in (housenumber, street_name) if part)
+    city = _text(props.get("city")) or _text(props.get("town")) or _text(props.get("village"))
+    code = _text(props.get("state_code"))
+    state = code.upper() if code else _text(props.get("state"))
+    postal = _text(props.get("postcode"))
+    return street[:160], city[:80], state[:40], postal[:20]
 
 
 def _formatted(props: dict) -> str:

@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { CommentBox, TIP_PLACEHOLDER, TermsCheckbox } from "@/components/CommentFields";
-import { PlaceNameInput } from "@/components/PlaceNameInput";
+import { EMPTY_ADDRESS, PlaceNameInput, StaticFieldName, formatTipAddress, type PlaceAddressDraft } from "@/components/PlaceNameInput";
 import { acceptTerms, fetchClubLocations, postRecommendation } from "@/lib/api";
 import type { LocationCard, TipCategory } from "@/lib/types";
 import { signInHref, useAccount } from "@/lib/useAccount";
@@ -53,6 +53,7 @@ export function AddFamilyTip() {
   const [agreed, setAgreed] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [placeId, setPlaceId] = useState<string | null>(null);
+  const [address, setAddress] = useState<PlaceAddressDraft>(EMPTY_ADDRESS);
   const needsTerms = Boolean(account && !account.terms_accepted && !termsAccepted);
 
   useEffect(() => {
@@ -66,7 +67,7 @@ export function AddFamilyTip() {
         setFields(payload.fields);
         const first = payload.fields[0];
         setVenueKey(first?.venue_key ?? "");
-        setTitle(first?.venue_name ?? "");
+        setTitle("");
         setError(payload.fields.length === 0 ? "This club has no home fields." : null);
       })
       .catch((err: unknown) => {
@@ -87,14 +88,7 @@ export function AddFamilyTip() {
   const backHref = clubId ? `/locations?club=${encodeURIComponent(clubId)}` : "/locations";
 
   function chooseField(nextKey: string) {
-    const next = fields.find((item) => item.venue_key === nextKey);
-    const previous = fields.find((item) => item.venue_key === venueKey);
     setVenueKey(nextKey);
-    setTitle((current) => {
-      if (!next) return current;
-      if (!current.trim() || current === previous?.venue_name) return next.venue_name;
-      return current;
-    });
   }
 
   function toggleTag(tag: string) {
@@ -104,7 +98,7 @@ export function AddFamilyTip() {
   async function saveTip() {
     if (!selected) return;
     if (!title.trim() || tipStars < 1 || !review.trim()) {
-      setTipError("Add a place name, stars, and a note.");
+      setTipError("Add a name, stars, and a note.");
       return;
     }
     if (needsTerms && !agreed) {
@@ -128,6 +122,8 @@ export function AddFamilyTip() {
         review_text: review.trim(),
         tags,
         place_id: category === "HOTEL" || category === "RESTAURANT" ? placeId : null,
+        formatted_address:
+          (category === "HOTEL" || category === "RESTAURANT") && !placeId ? formatTipAddress(address) || null : null,
       });
       router.push(backHref);
     } catch (err: unknown) {
@@ -171,42 +167,48 @@ export function AddFamilyTip() {
               void saveTip();
             }}
           >
-            <label htmlFor="tip-field" className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
-              Field
-              <select
-                id="tip-field"
-                value={venueKey}
-                onChange={(event) => chooseField(event.target.value)}
-                className={fieldClass}
-              >
-                {fields.map((item) => (
-                  <option key={item.venue_key} value={item.venue_key}>
-                    {item.venue_name}
-                    {item.city ? `, ${item.city}` : ""}
-                    {item.state ? `, ${item.state}` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label htmlFor="club-tip-category" className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
-                Category
+            {fields.length > 1 ? (
+              <label htmlFor="tip-field" className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
+                Field
                 <select
-                  id="club-tip-category"
-                  value={category}
-                  onChange={(event) => {
-                    setCategory(event.target.value as TipCategory);
-                    setPlaceId(null);
-                  }}
+                  id="tip-field"
+                  value={venueKey}
+                  onChange={(event) => chooseField(event.target.value)}
+                  data-tip-field
                   className={fieldClass}
                 >
-                  {CATEGORIES.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
+                  {fields.map((item) => (
+                    <option key={item.venue_key} value={item.venue_key}>
+                      {item.venue_name}
+                      {item.city ? `, ${item.city}` : ""}
+                      {item.state ? `, ${item.state}` : ""}
                     </option>
                   ))}
                 </select>
               </label>
+            ) : selected ? (
+              <StaticFieldName name={selected.venue_name} city={selected.city} state={selected.state} />
+            ) : null}
+            <label htmlFor="club-tip-category" className="mt-3 block max-w-sm text-[10px] font-medium uppercase tracking-wide text-stone-400">
+              Category
+              <select
+                id="club-tip-category"
+                value={category}
+                onChange={(event) => {
+                  setCategory(event.target.value as TipCategory);
+                  setPlaceId(null);
+                  setAddress(EMPTY_ADDRESS);
+                }}
+                className={fieldClass}
+              >
+                {CATEGORIES.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="mt-3">
               <PlaceNameInput
                 id="club-tip-title"
                 category={category}
@@ -215,6 +217,8 @@ export function AddFamilyTip() {
                 onChange={setTitle}
                 placeId={placeId}
                 onPlaceId={setPlaceId}
+                address={address}
+                onAddress={setAddress}
                 className={fieldClass}
               />
             </div>

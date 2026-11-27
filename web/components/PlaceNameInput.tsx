@@ -24,6 +24,40 @@ type PointState =
   | { kind: "ready"; status: "found" | "miss" | "skipped"; formatted_address: string | null; map_url: string | null }
   | { kind: "unavailable" };
 
+export type PlaceAddressDraft = {
+  street: string;
+  city: string;
+  state: string;
+  postalCode: string;
+};
+
+export const EMPTY_ADDRESS: PlaceAddressDraft = { street: "", city: "", state: "", postalCode: "" };
+
+export function formatTipAddress(address: PlaceAddressDraft): string {
+  const street = address.street.trim();
+  const city = address.city.trim();
+  const region = [address.state.trim(), address.postalCode.trim()].filter(Boolean).join(" ");
+  return [street, city, region].filter(Boolean).join(", ").slice(0, 500);
+}
+
+export function StaticFieldName({ name, city, state }: { name: string; city: string; state: string }) {
+  const line = [name, city, state].map((part) => part.trim()).filter(Boolean).join(", ");
+  return (
+    <div>
+      <p className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Field</p>
+      <p className="mt-1 text-sm font-medium text-navy" data-tip-field>
+        {line}
+      </p>
+    </div>
+  );
+}
+
+function nameLabel(category: TipCategory): string {
+  if (category === "HOTEL") return "Hotel name";
+  if (category === "RESTAURANT") return "Restaurant name";
+  return "Name";
+}
+
 export function PlaceNameInput({
   id,
   category,
@@ -32,6 +66,8 @@ export function PlaceNameInput({
   onChange,
   placeId,
   onPlaceId,
+  address,
+  onAddress,
   className,
 }: {
   id: string;
@@ -41,6 +77,8 @@ export function PlaceNameInput({
   onChange: (value: string) => void;
   placeId: string | null;
   onPlaceId: (placeId: string | null) => void;
+  address: PlaceAddressDraft;
+  onAddress: (address: PlaceAddressDraft) => void;
   className: string;
 }) {
   const listId = `${id}-suggestions`;
@@ -48,7 +86,6 @@ export function PlaceNameInput({
   const [confirmed, setConfirmed] = useState(false);
   const [declined, setDeclined] = useState(false);
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
-  const [pickedAddress, setPickedAddress] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [looking, setLooking] = useState(false);
   const searchable = MATCHED.has(category);
@@ -56,14 +93,15 @@ export function PlaceNameInput({
   const venueName = venue?.venue_name ?? "";
   const city = venue?.city ?? "";
   const state = venue?.state ?? "";
+  const locked = Boolean(placeId);
 
   useEffect(() => {
     setConfirmed(false);
     setDeclined(false);
     setSuggestions([]);
-    setPickedAddress(null);
     setNote(null);
     onPlaceId(null);
+    onAddress(EMPTY_ADDRESS);
     if (!searchable || !venueKey || !venueName || !city || !state) {
       setPoint({ kind: "hidden" });
       return;
@@ -86,13 +124,7 @@ export function PlaceNameInput({
     return () => {
       active = false;
     };
-  }, [searchable, venueKey, venueName, city, state, onPlaceId]);
-
-  useEffect(() => {
-    setPickedAddress(null);
-    setSuggestions([]);
-    onPlaceId(null);
-  }, [category, onPlaceId]);
+  }, [searchable, venueKey, venueName, city, state, onPlaceId, onAddress]);
 
   useEffect(() => {
     if (!searchable || !confirmed || declined || placeId || !venueKey) {
@@ -101,7 +133,7 @@ export function PlaceNameInput({
       return;
     }
     const query = value.trim();
-    if (query.length < MIN_CHARS || query === venueName.trim()) {
+    if (query.length < MIN_CHARS) {
       setSuggestions([]);
       setLooking(false);
       setNote(null);
@@ -130,40 +162,49 @@ export function PlaceNameInput({
       active = false;
       window.clearTimeout(handle);
     };
-  }, [searchable, confirmed, declined, placeId, venueKey, venueName, category, value]);
+  }, [searchable, confirmed, declined, placeId, venueKey, category, value]);
 
   function edit(next: string) {
     onChange(next);
-    if (placeId) {
-      onPlaceId(null);
-      setPickedAddress(null);
-    }
+    if (placeId) onPlaceId(null);
+  }
+
+  function editAddress(key: keyof PlaceAddressDraft, next: string) {
+    if (locked) return;
+    onAddress({ ...address, [key]: next });
   }
 
   function choose(item: PlaceSuggestion) {
     onChange(item.name);
     onPlaceId(item.place_id);
-    setPickedAddress(item.formatted_address);
+    onAddress({
+      street: item.street || item.formatted_address,
+      city: item.city,
+      state: item.state,
+      postalCode: item.postal_code,
+    });
     setSuggestions([]);
     setNote(null);
   }
 
   const found = point.kind === "ready" && point.status === "found" && point.formatted_address;
-  const showCredit = Boolean(found || suggestions.length > 0 || pickedAddress);
+  const showCredit = Boolean(searchable && (found || suggestions.length > 0 || placeId));
+  const addressClass = `${className} read-only:bg-stone-50`;
 
   return (
     <div>
       <label htmlFor={id} className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
-        Place name
+        {nameLabel(category)}
         <input
           id={id}
           value={value}
           onChange={(event) => edit(event.target.value)}
           autoComplete="off"
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={suggestions.length > 0}
-          aria-controls={listId}
+          data-place-name
+          role={searchable ? "combobox" : undefined}
+          aria-autocomplete={searchable ? "list" : undefined}
+          aria-expanded={searchable ? suggestions.length > 0 : undefined}
+          aria-controls={searchable ? listId : undefined}
           className={className}
         />
       </label>
@@ -210,7 +251,7 @@ export function PlaceNameInput({
           Place search is unavailable. The name is saved as you type it.
         </p>
       ) : null}
-      {confirmed && !placeId && value.trim() === venueName.trim() ? (
+      {confirmed && !placeId && value.trim().length < MIN_CHARS ? (
         <p className="mt-2 text-xs text-stone-500">Type a hotel or restaurant name to see nearby places.</p>
       ) : null}
       {looking ? <p className="mt-2 text-xs text-stone-500">Looking up places</p> : null}
@@ -226,20 +267,71 @@ export function PlaceNameInput({
           ))}
         </ul>
       ) : null}
-      {placeId && pickedAddress ? (
-        <div className="mt-2">
-          <p className="text-sm text-stone-600">{pickedAddress}</p>
-          <button
-            type="button"
-            onClick={() => {
-              onPlaceId(null);
-              setPickedAddress(null);
-            }}
-            className="mt-1 text-sm font-medium text-navy underline-offset-4 hover:underline"
-          >
-            Clear match
-          </button>
-        </div>
+      {searchable ? (
+        <fieldset className="mt-3" data-place-address>
+          <legend className="text-[10px] font-medium uppercase tracking-wide text-stone-400">Address</legend>
+          <label htmlFor={`${id}-street`} className="mt-2 block text-[10px] font-medium uppercase tracking-wide text-stone-400">
+            Street
+            <input
+              id={`${id}-street`}
+              value={address.street}
+              onChange={(event) => editAddress("street", event.target.value)}
+              readOnly={locked}
+              autoComplete="off"
+              maxLength={160}
+              className={addressClass}
+            />
+          </label>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <label htmlFor={`${id}-city`} className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
+              City
+              <input
+                id={`${id}-city`}
+                value={address.city}
+                onChange={(event) => editAddress("city", event.target.value)}
+                readOnly={locked}
+                autoComplete="off"
+                maxLength={80}
+                className={addressClass}
+              />
+            </label>
+            <label htmlFor={`${id}-state`} className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
+              State
+              <input
+                id={`${id}-state`}
+                value={address.state}
+                onChange={(event) => editAddress("state", event.target.value)}
+                readOnly={locked}
+                autoComplete="off"
+                maxLength={40}
+                className={addressClass}
+              />
+            </label>
+            <label htmlFor={`${id}-postal`} className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
+              Postal code
+              <input
+                id={`${id}-postal`}
+                value={address.postalCode}
+                onChange={(event) => editAddress("postalCode", event.target.value)}
+                readOnly={locked}
+                autoComplete="off"
+                maxLength={20}
+                className={addressClass}
+              />
+            </label>
+          </div>
+          {locked ? (
+            <button
+              type="button"
+              onClick={() => onPlaceId(null)}
+              className="mt-2 text-sm font-medium text-navy underline-offset-4 hover:underline"
+            >
+              Clear match
+            </button>
+          ) : (
+            <p className="mt-2 text-xs text-stone-500">Type an address when the place is not in the list. It is saved with the tip.</p>
+          )}
+        </fieldset>
       ) : null}
       {note ? <p className="mt-2 text-xs text-stone-500">{note}</p> : null}
       {showCredit ? <PlaceCredit /> : null}
