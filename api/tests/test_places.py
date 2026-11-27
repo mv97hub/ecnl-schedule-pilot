@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
@@ -406,7 +407,8 @@ class PlaceLookupTests(unittest.TestCase):
             self.assertEqual(suggestions[0]["city"], "Probeplace")
             self.assertEqual(suggestions[0]["state"], "FL")
             self.assertEqual(suggestions[0]["postal_code"], "32000")
-            self.assertNotIn("latitude", suggestions[0])
+            self.assertEqual(suggestions[0]["latitude"], HOTEL_LAT)
+            self.assertEqual(suggestions[0]["longitude"], HOTEL_LON)
             self._assert_key_stays_out(found.text)
             places_call = next(call for call in self.calls if "/v2/places" in str(call["url"]))
             params = places_call["params"]
@@ -698,3 +700,54 @@ class PlaceLookupTests(unittest.TestCase):
             )
             self.assertEqual(cached.status_code, 200, cached.text)
             self.assertEqual(len(self.calls), 1)
+
+    def test_field_map_uses_the_cached_point_and_hides_the_key(self) -> None:
+        key = make_venue_key(FIELD, CITY, STATE)
+        with Session(engine) as session:
+            session.add(
+                VenueFieldPoint(
+                    venue_key=key,
+                    venue_name=FIELD,
+                    city=CITY,
+                    state=STATE,
+                    status="found",
+                    formatted_address=FIELD_ADDRESS,
+                    latitude=FIELD_LAT,
+                    longitude=FIELD_LON,
+                    fetched_at=datetime.now(UTC),
+                )
+            )
+            session.add(
+                VenueRecommendation(
+                    venue_key=key,
+                    venue_name=FIELD,
+                    city=CITY,
+                    state=STATE,
+                    category="HOTEL",
+                    title="Hilton Probeplace",
+                    rating=4,
+                    review_text="Close to the fields.",
+                    author_name="Probe Place",
+                    author_key="probe-place-map",
+                    latitude=HOTEL_LAT,
+                    longitude=HOTEL_LON,
+                )
+            )
+            session.commit()
+        with TestClient(app) as client, patch("app.places.httpx.get", side_effect=self._fake_get):
+            found = client.get("/locations/map/field", params={"venue_key": key})
+            self.assertEqual(found.status_code, 200, found.text)
+            body = found.json()
+            self.assertEqual(body["venue_name"], FIELD)
+            self.assertEqual(body["latitude"], FIELD_LAT)
+            self.assertEqual(body["longitude"], FIELD_LON)
+            self.assertEqual(body["tips"][0]["title"], "Hilton Probeplace")
+            self.assertIsNotNone(body["tips"][0]["distance_miles"])
+            self.assertEqual(self.calls, [])
+            self._assert_key_stays_out(found.text)
+            self.assertNotIn("place_id", found.text)
+            missing = client.get("/locations/map/field", params={"venue_key": "missing park|probeplace|fl"})
+            self.assertEqual(missing.status_code, 404, missing.text)
+            self.assertEqual(self.calls, [])
+            club = client.get("/locations/map/club", params={"club": "not-a-real-club"})
+            self.assertEqual(club.status_code, 404, club.text)

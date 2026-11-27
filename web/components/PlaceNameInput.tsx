@@ -68,6 +68,7 @@ export function PlaceNameInput({
   onPlaceId,
   address,
   onAddress,
+  onPoint,
   className,
 }: {
   id: string;
@@ -79,6 +80,7 @@ export function PlaceNameInput({
   onPlaceId: (placeId: string | null) => void;
   address: PlaceAddressDraft;
   onAddress: (address: PlaceAddressDraft) => void;
+  onPoint?: (point: { latitude: number; longitude: number } | null) => void;
   className: string;
 }) {
   const listId = `${id}-suggestions`;
@@ -166,7 +168,10 @@ export function PlaceNameInput({
 
   function edit(next: string) {
     onChange(next);
-    if (placeId) onPlaceId(null);
+    if (placeId) {
+      onPlaceId(null);
+      onPoint?.(null);
+    }
   }
 
   function editAddress(key: keyof PlaceAddressDraft, next: string) {
@@ -185,6 +190,7 @@ export function PlaceNameInput({
       state: item.state,
       postalCode: item.postal_code,
     });
+    onPoint?.(item.latitude != null && item.longitude != null ? { latitude: item.latitude, longitude: item.longitude } : null);
     setSuggestions([]);
     setNote(null);
   }
@@ -325,7 +331,10 @@ export function PlaceNameInput({
           {locked ? (
             <button
               type="button"
-              onClick={() => onPlaceId(null)}
+              onClick={() => {
+                onPlaceId(null);
+                onPoint?.(null);
+              }}
               className="mt-2 text-sm font-medium text-navy underline-offset-4 hover:underline"
             >
               Clear match

@@ -507,6 +507,16 @@ export function LocationsDirectory() {
         <p className="mt-1 max-w-2xl text-sm text-stone-500">
           Choose a club to see its fields. Scores and family tips are combined across those fields. Ratings are entered on each field.
         </p>
+        <p className="mt-2 text-sm text-stone-500">
+          Compare previews:{" "}
+          <Link href="/locations/v2" className="font-medium text-navy underline underline-offset-4">
+            Field Hub
+          </Link>
+          {" · "}
+          <Link href="/locations/v3" className="font-medium text-navy underline underline-offset-4">
+            Map explorer
+          </Link>
+        </p>
         <div className="mt-4">
           <ClubFilter selectedId={selectedId} selectedName={selectedName} selectedLogo={selectedLogo} onSelect={selectClub} />
         </div>

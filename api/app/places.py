@@ -64,6 +64,8 @@ class PlaceSuggestionHit:
     city: str
     state: str
     postal_code: str
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 @dataclass(frozen=True)
@@ -312,6 +314,8 @@ def _suggestions(payload: dict) -> list[PlaceSuggestionHit]:
                 city=city,
                 state=state,
                 postal_code=postal,
+                latitude=_number(props.get("lat")),
+                longitude=_number(props.get("lon")),
             )
         )
         if len(found) >= SUGGEST_LIMIT:

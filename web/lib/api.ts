@@ -126,8 +126,12 @@ export function fetchClubLocations(
   return siteRequest<ClubLocations>(`/locations/club?${params.toString()}`);
 }
 
-export function fetchLocations(home?: { latitude: number | null; longitude: number | null } | null): Promise<LocationCard[]> {
+export function fetchLocations(
+  home?: { latitude: number | null; longitude: number | null } | null,
+  search?: string,
+): Promise<LocationCard[]> {
   const params = new URLSearchParams();
+  if (search?.trim()) params.set("search", search.trim());
   if (home?.latitude != null && home.longitude != null) {
     params.set("home_lat", String(home.latitude));
     params.set("home_lng", String(home.longitude));
@@ -181,7 +185,51 @@ export type PlaceSuggestion = {
   city: string;
   state: string;
   postal_code: string;
+  latitude?: number | null;
+  longitude?: number | null;
 };
+
+export type MapFieldPoint = {
+  venue_key: string;
+  venue_name: string;
+  city: string;
+  state: string;
+  status: string;
+  latitude: number | null;
+  longitude: number | null;
+  formatted_address: string | null;
+};
+
+export type MapTipPoint = {
+  id: number;
+  venue_key: string;
+  category: string;
+  title: string;
+  rating: number;
+  formatted_address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  distance_miles: number | null;
+  map_url: string;
+};
+
+export type FieldMapPayload = MapFieldPoint & { tips: MapTipPoint[] };
+
+export type ClubMapPayload = {
+  club_id: number | string;
+  club_name: string;
+  fields: MapFieldPoint[];
+};
+
+export function fetchFieldMap(venueKey: string): Promise<FieldMapPayload> {
+  const params = new URLSearchParams({ venue_key: venueKey });
+  return siteRequest<FieldMapPayload>(`/locations/map/field?${params.toString()}`);
+}
+
+export function fetchClubMap(clubId: string): Promise<ClubMapPayload> {
+  const params = new URLSearchParams({ club: clubId });
+  return siteRequest<ClubMapPayload>(`/locations/map/club?${params.toString()}`);
+}
 
 export function fetchPlaceSuggestions(
   venueKey: string,
