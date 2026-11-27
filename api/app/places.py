@@ -3,6 +3,9 @@
 The key is read from GEOAPIFY_API_KEY. Requests send the query and the field
 point. The account id, email, display name, and home address are not sent.
 The key is not logged and is not returned.
+
+A name search uses one category per request. Geoapify's name filter returns
+no places when several categories are sent together.
 """
 
 from __future__ import annotations
@@ -27,10 +30,10 @@ NEAR_MILES = 20.0
 PLACE_LIMIT = 30
 PLACE_WINDOW_SECONDS = 10 * 60
 
-_HOTEL_CATEGORIES = "accommodation.hotel,accommodation.motel,accommodation.guest_house"
-_FOOD_CATEGORIES = "catering.restaurant,catering.fast_food"
-_HOTEL_PREFIXES = ("accommodation.hotel", "accommodation.motel", "accommodation.guest_house")
-_FOOD_PREFIXES = ("catering.restaurant", "catering.fast_food")
+_HOTEL_CATEGORIES = ("accommodation.hotel", "accommodation.motel", "accommodation.guest_house")
+_FOOD_CATEGORIES = ("catering.restaurant", "catering.fast_food", "catering.cafe")
+_HOTEL_PREFIXES = _HOTEL_CATEGORIES
+_FOOD_PREFIXES = _FOOD_CATEGORIES
 _PLACE_ID = re.compile(r"^[A-Za-z0-9]{8,512}$")
 _LOCK = threading.Lock()
 _HITS: dict[int, list[float]] = {}
@@ -149,24 +152,44 @@ def geocode_complex(name: str, city: str, state: str) -> GeocodeHit | None:
 
 
 def suggest_places(query: str, category: str, latitude: float, longitude: float) -> list[PlaceSuggestionHit]:
-    """Places whose names contain the typed text, inside twenty miles of the field."""
+    """Places whose names contain the typed text, inside twenty miles of the field.
 
-    categories = _HOTEL_CATEGORIES if category == "HOTEL" else _FOOD_CATEGORIES if category == "RESTAURANT" else ""
-    if not categories:
+    Each lodging or food category is a separate request. One combined category
+    list makes Geoapify's name filter return an empty collection.
+    """
+
+    labels = _HOTEL_CATEGORIES if category == "HOTEL" else _FOOD_CATEGORIES if category == "RESTAURANT" else ()
+    if not labels:
         return []
     point = f"{longitude:.6f},{latitude:.6f}"
-    payload = _get(
-        PLACES_URL,
-        {
-            "categories": categories,
-            "name": query,
-            "filter": f"circle:{point},{SEARCH_RADIUS_METERS}",
-            "bias": f"proximity:{point}",
-            "limit": str(SUGGEST_LIMIT),
-            "lang": "en",
-        },
-    )
-    return _suggestions(payload)
+    circle = f"circle:{point},{SEARCH_RADIUS_METERS}"
+    bias = f"proximity:{point}"
+    ranked: list[tuple[float, int, dict]] = []
+    order = 0
+    for label in labels:
+        payload = _get(
+            PLACES_URL,
+            {
+                "categories": label,
+                "name": query,
+                "filter": circle,
+                "bias": bias,
+                "limit": str(SUGGEST_LIMIT),
+                "lang": "en",
+            },
+        )
+        features = payload.get("features")
+        if not isinstance(features, list):
+            continue
+        for feature in features:
+            if not isinstance(feature, dict):
+                continue
+            props = feature.get("properties")
+            distance = _number(props.get("distance")) if isinstance(props, dict) else None
+            ranked.append((distance if distance is not None else 1e12, order, feature))
+            order += 1
+    ranked.sort(key=lambda item: (item[0], item[1]))
+    return _suggestions({"features": [feature for _, _, feature in ranked]})
 
 
 def retrieve_place(place_id: str) -> PlaceHit | None:
