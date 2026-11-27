@@ -156,7 +156,7 @@ export function Notice({ title, body, action, onAction }: { title: string; body:
   );
 }
 
-function openSitePage(path: string): void {
+export function openSitePage(path: string): void {
   Linking.openURL(`${websiteOrigin()}${path}`).catch(() => undefined);
 }
 

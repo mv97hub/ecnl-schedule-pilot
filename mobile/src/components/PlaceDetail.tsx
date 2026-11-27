@@ -3,8 +3,9 @@ import { useRouter, type Href } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, TextInput, View } from "react-native";
 
+import { CommentGuidance, RATING_PLACEHOLDER, TIP_PLACEHOLDER, TermsAgreement } from "@/components/CommentNotice";
 import { Card, Chip, GoldButton, Hit, Loading, Notice, OutlineButton } from "@/components/ui";
-import { ApiError, fetchLocationDetail, postRating, postRecommendation, postVote } from "@/lib/api";
+import { ApiError, acceptTerms, fetchAuthMe, fetchLocationDetail, flagRecommendation, postRating, postRecommendation, postVote } from "@/lib/api";
 import { formatKickoff } from "@/lib/format";
 import { placePath, signInPath } from "@/lib/finishSignIn";
 import { openMaps } from "@/lib/maps";
@@ -34,12 +35,13 @@ export function PlaceDetail({
 }) {
   const token = useAccount((state) => state.token);
   const signedIn = Boolean(token);
+  const sessionToken = token && token !== "preview" ? token : null;
   const router = useRouter();
   const client = useQueryClient();
   const queryKey = ["locations", "detail", venueKey ?? "", venueName ?? "", city ?? "", state ?? "", signedIn] as const;
   const detail = useQuery({
     queryKey,
-    queryFn: () => fetchLocationDetail({ venueKey, venueName, city, state }, token),
+    queryFn: () => fetchLocationDetail({ venueKey, venueName, city, state }, sessionToken),
     enabled: Boolean(venueKey || (venueName && city && state)),
   });
   const [scores, setScores] = useState<Record<ScoreKey, number>>(EMPTY);
@@ -56,6 +58,30 @@ export function PlaceDetail({
   const [tipError, setTipError] = useState<string | null>(null);
   const [savingTip, setSavingTip] = useState(false);
   const [tab, setTab] = useState("all");
+  const [agreed, setAgreed] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!sessionToken) {
+      setTermsAccepted(token === "preview" ? false : null);
+      return;
+    }
+    let active = true;
+    setTermsAccepted(null);
+    fetchAuthMe(sessionToken)
+      .then((me) => {
+        if (active) setTermsAccepted(me.terms_accepted === true);
+      })
+      .catch(() => {
+        if (active) setTermsAccepted(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [sessionToken, token]);
+
+  const termsReady = !signedIn || termsAccepted !== null;
+  const needsTerms = signedIn && termsAccepted === false;
 
   useEffect(() => {
     const mine = detail.data?.my_rating;
@@ -95,10 +121,18 @@ export function PlaceDetail({
       setRatingError("Choose 1 to 5 for each part of the complex.");
       return;
     }
+    if (needsTerms && !agreed) {
+      setRatingError("Agree to the Terms of Use.");
+      return;
+    }
     setSavingRating(true);
     setRatingError(null);
     setRatingMessage(null);
     try {
+      if (needsTerms) {
+        await acceptTerms(token);
+        setTermsAccepted(true);
+      }
       await postRating(token, {
         venue_name: place.venue_name,
         city: place.city,
@@ -122,9 +156,17 @@ export function PlaceDetail({
       setTipError("Add a place name, stars, and a note.");
       return;
     }
+    if (needsTerms && !agreed) {
+      setTipError("Agree to the Terms of Use.");
+      return;
+    }
     setSavingTip(true);
     setTipError(null);
     try {
+      if (needsTerms) {
+        await acceptTerms(token);
+        setTermsAccepted(true);
+      }
       await postRecommendation(token, {
         venue_name: place.venue_name,
         city: place.city,
@@ -145,6 +187,13 @@ export function PlaceDetail({
     } finally {
       setSavingTip(false);
     }
+  }
+
+  function dropTip(id: number) {
+    client.setQueryData<LocationDetail>(queryKey, (current) => {
+      if (!current) return current;
+      return { ...current, recommendations: current.recommendations.filter((item) => item.id !== id) };
+    });
   }
 
   async function vote(place: LocationDetail, tip: LocationTip, choice: "up" | "down") {
@@ -220,17 +269,19 @@ export function PlaceDetail({
             <Text style={{ color: colors.secondary, fontWeight: "700" }}>
               Note{place.my_rating?.edited ? " · Edited" : ""}
             </Text>
+            <CommentGuidance />
             <TextInput
               value={note}
               onChangeText={setNote}
               multiline
-              placeholder="Optional"
-              placeholderTextColor={colors.secondary}
+              placeholder={RATING_PLACEHOLDER}
+              placeholderTextColor="#A8A29E"
               style={inputStyle}
             />
+            {needsTerms ? <TermsAgreement checked={agreed} onChange={setAgreed} /> : null}
             {ratingError ? <Text style={{ color: colors.ink }}>{ratingError}</Text> : null}
             {ratingMessage ? <Text style={{ color: colors.navy, fontWeight: "700" }}>{ratingMessage}</Text> : null}
-            <GoldButton label={savingRating ? "Saving" : "Save rating"} disabled={savingRating} onPress={() => void saveRating(place)} />
+            <GoldButton label={savingRating ? "Saving" : "Save rating"} disabled={savingRating || !termsReady || (needsTerms && !agreed)} onPress={() => void saveRating(place)} />
           </View>
         ) : (
           <View style={{ marginTop: 12 }}>
@@ -248,7 +299,15 @@ export function PlaceDetail({
         </ScrollView>
         {visibleTips.length === 0 ? <Text style={{ color: colors.secondary }}>No things to do in this tab yet.</Text> : null}
         {visibleTips.map((tip) => (
-          <TipCard key={tip.id} tip={tip} signedIn={signedIn} onSignIn={() => askSignIn(place)} onVote={(choice) => void vote(place, tip, choice)} />
+          <TipCard
+            key={tip.id}
+            tip={tip}
+            signedIn={signedIn}
+            token={sessionToken}
+            onSignIn={() => askSignIn(place)}
+            onVote={(choice) => void vote(place, tip, choice)}
+            onHidden={() => dropTip(tip.id)}
+          />
         ))}
         {tipError ? <Text style={{ color: colors.ink }}>{tipError}</Text> : null}
         <Card>
@@ -274,8 +333,10 @@ export function PlaceDetail({
                   />
                 ))}
               </View>
-              <TextInput value={review} onChangeText={setReview} multiline placeholder="Review" placeholderTextColor={colors.secondary} style={inputStyle} />
-              <GoldButton label={savingTip ? "Saving" : "Add comment"} disabled={savingTip} onPress={() => void saveTip(place)} />
+              <CommentGuidance />
+              <TextInput value={review} onChangeText={setReview} multiline placeholder={TIP_PLACEHOLDER} placeholderTextColor="#A8A29E" style={inputStyle} />
+              {needsTerms ? <TermsAgreement checked={agreed} onChange={setAgreed} /> : null}
+              <GoldButton label={savingTip ? "Saving" : "Add comment"} disabled={savingTip || !termsReady || (needsTerms && !agreed)} onPress={() => void saveTip(place)} />
             </View>
           ) : (
             <View style={{ marginTop: 12 }}>
@@ -324,15 +385,44 @@ function ScorePicker({ label, value, onChange }: { label: string; value: number;
 function TipCard({
   tip,
   signedIn,
+  token,
   onSignIn,
   onVote,
+  onHidden,
 }: {
   tip: LocationTip;
   signedIn: boolean;
+  token: string | null;
   onSignIn: () => void;
   onVote: (choice: "up" | "down") => void;
+  onHidden: () => void;
 }) {
   const posted = formatKickoff(tip.created_at).day;
+  const [reporting, setReporting] = useState(false);
+  const [reportNote, setReportNote] = useState<string | null>(null);
+
+  async function report() {
+    if (!token) return;
+    setReporting(true);
+    setReportNote(null);
+    try {
+      const result = await flagRecommendation(token, tip.id);
+      if (result.already_reported) {
+        setReportNote("You already reported this tip.");
+        return;
+      }
+      if (result.hidden) {
+        onHidden();
+        return;
+      }
+      setReportNote("Reported.");
+    } catch (error) {
+      setReportNote(error instanceof ApiError ? error.message : "Could not report that tip.");
+    } finally {
+      setReporting(false);
+    }
+  }
+
   return (
     <Card>
       <Text style={{ color: colors.secondary, fontWeight: "700" }}>{categoryLabel(tip.category)}</Text>
@@ -361,6 +451,18 @@ function TipCard({
           <GoldButton label="Sign in" onPress={onSignIn} />
         </View>
       )}
+      <View style={{ marginTop: 8 }}>
+        {signedIn ? (
+          <Hit label="Report" disabled={reporting || !token} onPress={() => void report()}>
+            <Text style={{ color: colors.navy, fontWeight: "700", opacity: reporting ? 0.6 : 1 }}>Report</Text>
+          </Hit>
+        ) : (
+          <Hit label="Sign in to report" onPress={onSignIn}>
+            <Text style={{ color: colors.navy, fontWeight: "700", textDecorationLine: "underline" }}>Sign in to report</Text>
+          </Hit>
+        )}
+        {reportNote ? <Text style={{ color: colors.secondary, marginTop: 4 }}>{reportNote}</Text> : null}
+      </View>
     </Card>
   );
 }

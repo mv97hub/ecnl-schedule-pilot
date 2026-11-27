@@ -4,6 +4,7 @@ import { Alert, ScrollView, Text, View } from "react-native";
 
 import { FavoritesEditor } from "@/components/FavoritesEditor";
 import { ReportIssue } from "@/components/ReportIssue";
+import { TermsSignInNote } from "@/components/CommentNotice";
 import { SignInButtons } from "@/components/SignInButtons";
 import { GoldButton, Hit, LegalLinks, Loading, OutlineButton } from "@/components/ui";
 import { deleteAccount, logoutSession } from "@/lib/api";
@@ -80,6 +81,7 @@ export default function FavoritesScreen() {
       {ready && !token ? (
         <View style={{ gap: 8 }}>
           <SignInButtons from="profile" next={null} />
+          <TermsSignInNote />
           <Text style={{ color: colors.secondary, lineHeight: 20 }}>Ratings and comments need an account.</Text>
         </View>
       ) : null}

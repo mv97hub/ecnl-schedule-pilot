@@ -284,11 +284,29 @@ export type AuthMe = {
   display_name: string;
   email: string | null;
   providers: string[];
+  terms_accepted?: boolean;
   home_address?: AccountHomeAddress;
 };
 
 export function fetchAuthMe(token: string): Promise<AuthMe> {
   return request<AuthMe>("/auth/me", { token });
+}
+
+/** The current terms text. The same version again does not move the stored timestamp. */
+export const TERMS_VERSION = "ugc-1";
+
+export function acceptTerms(token: string): Promise<AuthMe> {
+  return request<AuthMe>("/auth/terms", { method: "POST", token, body: { version: TERMS_VERSION } });
+}
+
+export type TipFlag = {
+  already_reported: boolean;
+  hidden: boolean;
+  message: string;
+};
+
+export function flagRecommendation(token: string, id: number): Promise<TipFlag> {
+  return request<TipFlag>(`/locations/recommendations/${id}/flag`, { method: "POST", token, body: {} });
 }
 
 export function putHomeAddress(token: string, address: AccountHomeAddress): Promise<AuthMe> {

@@ -2,6 +2,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { TermsSignInNote } from "@/components/CommentNotice";
 import { SignInButtons } from "@/components/SignInButtons";
 import { OutlineButton } from "@/components/ui";
 import { safeNext, type SignInFrom } from "@/lib/finishSignIn";
@@ -29,6 +30,7 @@ export default function SignInScreen() {
         <Text style={{ color: colors.ink, fontSize: 18, fontWeight: "700" }}>Sign in</Text>
         <SignInButtons from={from} next={next} />
         {from === "gate" ? <OutlineButton label="Skip" onPress={skip} /> : <OutlineButton label="Back" onPress={() => router.back()} />}
+        <TermsSignInNote />
         <Text style={{ color: colors.secondary, fontSize: 16, lineHeight: 22 }}>
           You can use the app without an account. Sign in to rate a field, write a things-to-do comment, or vote.
         </Text>
