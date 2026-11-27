@@ -8,7 +8,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.maps_check import accept_result, field_query, is_named_example, maps_search_link, parse_first_maps_result
+from app.maps_check import (
+    accept_result,
+    field_query,
+    is_named_example,
+    lookup_skips,
+    maps_point_link,
+    maps_search_link,
+    parse_first_maps_result,
+    pin_list_name,
+    pin_source,
+)
 
 CLAY = "Clay County Regional Sports Complex"
 MIDDLEBURG = (29.9994006, -81.8938394)
@@ -83,6 +93,25 @@ class MapsCheckTests(unittest.TestCase):
         self.assertAlmostEqual(place.latitude, 32.9832707)
         self.assertAlmostEqual(place.longitude, -96.9912703)
         self.assertTrue(accept_result("TX", place).keep)
+
+    def test_lists_split_saved_failed_and_untagged(self) -> None:
+        self.assertEqual(pin_list_name(29.99940, -81.89384, "maps-result"), "saved")
+        self.assertEqual(pin_list_name(29.99940, -81.89384, "manual"), "saved")
+        self.assertEqual(pin_source("manual"), "Manual")
+        self.assertEqual(pin_source("admin"), "Manual")
+        self.assertEqual(pin_list_name(None, None, "maps-failed"), "failed")
+        self.assertEqual(pin_list_name(None, None, "maps-mismatch"), "failed")
+        self.assertEqual(pin_list_name(None, None, None), "untagged")
+        self.assertEqual(pin_list_name(None, None, "miss"), "untagged")
+
+    def test_manual_pin_is_not_looked_up_again(self) -> None:
+        self.assertTrue(lookup_skips("manual", 29.99940, -81.89384))
+        self.assertTrue(lookup_skips("admin", None, None))
+        self.assertTrue(lookup_skips("maps-result", 29.99940, -81.89384))
+        self.assertFalse(lookup_skips("maps-failed", None, None))
+        self.assertFalse(lookup_skips(None, None, None))
+        link = maps_point_link(29.99940, -81.89384)
+        self.assertIn("query=29.99940%2C-81.89384", link)
 
 
 if __name__ == "__main__":

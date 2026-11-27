@@ -96,6 +96,65 @@ def accept_result(field_state: str, place: MapsPlace | None) -> PinComparison:
     return PinComparison(True, "saved")
 
 
+MANUAL_PIN_RULES = frozenset({"manual", "admin"})
+FAILED_PIN_RULES = frozenset({"maps-mismatch", "maps-failed"})
+
+
+def pin_list_name(latitude: float | None, longitude: float | None, pin_rule: str | None) -> str:
+    """Saved when coordinates are stored. Failed after a Maps miss or a clear. Otherwise untagged."""
+
+    if latitude is not None and longitude is not None:
+        return "saved"
+    if (pin_rule or "") in FAILED_PIN_RULES:
+        return "failed"
+    return "untagged"
+
+
+def lookup_skips(pin_rule: str | None, latitude: float | None, longitude: float | None) -> bool:
+    """A manual pin, and any pin that already has coordinates, is not looked up again."""
+
+    if (pin_rule or "") in MANUAL_PIN_RULES:
+        return True
+    return latitude is not None and longitude is not None
+
+
+def pin_source(pin_rule: str | None) -> str:
+    if (pin_rule or "") in MANUAL_PIN_RULES:
+        return "Manual"
+    if pin_rule == "maps-result":
+        return "Maps"
+    if pin_rule == "name-state-city-v1":
+        return "Saved"
+    return ""
+
+
+def maps_point_link(latitude: float, longitude: float) -> str:
+    """Open this exact point. This is not the name search the site uses to find a field."""
+
+    return "https://www.google.com/maps/search/?" + urlencode({"api": "1", "query": f"{latitude:.5f},{longitude:.5f}"})
+
+
+def read_maps_result(name: str, city: str, state: str, timeout: float = 12.0) -> MapsPlace | None:
+    """First Maps result for the site's query, or None when it cannot be read."""
+
+    import urllib.error
+    import urllib.request
+
+    request = urllib.request.Request(
+        maps_result_url(field_query(name, city, state)),
+        headers={
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read().decode("utf-8", errors="replace")
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return None
+    return parse_first_maps_result(body)
+
+
 def _city_line(value: str) -> tuple[str, str] | None:
     match = _CITY_LINE.match(value.strip())
     if match is None:

@@ -30,9 +30,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.database import SessionLocal
 from app.locations import _complexes, _is_tbd, _save_map_geocode
 from app.models import VenueFieldPoint
-from app.places import PIN_RULE_ADMIN, PIN_RULE_MAPS, PIN_RULE_MAPS_RESULT, PIN_RULE_MATCH, PIN_RULE_MISS, PlacesUnavailable, lookup_field_pin
+from app.places import (
+    PIN_RULE_ADMIN,
+    PIN_RULE_MANUAL,
+    PIN_RULE_MAPS,
+    PIN_RULE_MAPS_FAILED,
+    PIN_RULE_MAPS_RESULT,
+    PIN_RULE_MATCH,
+    PIN_RULE_MISS,
+    PlacesUnavailable,
+    lookup_field_pin,
+)
 
-_DECIDED = frozenset({PIN_RULE_MATCH, PIN_RULE_MISS, PIN_RULE_ADMIN, PIN_RULE_MAPS, PIN_RULE_MAPS_RESULT})
+_DECIDED = frozenset({PIN_RULE_MATCH, PIN_RULE_MISS, PIN_RULE_ADMIN, PIN_RULE_MANUAL, PIN_RULE_MAPS, PIN_RULE_MAPS_FAILED, PIN_RULE_MAPS_RESULT})
 
 
 def main() -> int:
