@@ -52,7 +52,7 @@ class AdminFlagOut(BaseModel):
 
 
 class AdminFlagPage(BaseModel):
-    state: Literal["hidden", "reenabled"]
+    state: Literal["hidden", "reenabled", "once"]
     rows: list[AdminFlagOut]
 
 
@@ -610,33 +610,48 @@ def _reporter_emails(session: Session, tip_ids: list[int]) -> dict[int, list[str
 def list_flags(
     session: Annotated[Session, Depends(get_session)],
     token: Annotated[str, Depends(require_bearer)],
-    state: Annotated[str | None, Query(description="hidden or reenabled")] = None,
+    state: Annotated[str | None, Query(description="hidden, reenabled, or once")] = None,
 ) -> AdminFlagPage:
-    """Tips that reached two reports. Hidden means auto-hidden and not yet accepted."""
+    """Flagged tips.
+
+    hidden: auto-hidden and not yet accepted.
+    reenabled: an admin marked the tip acceptable.
+    once: one report and not auto-hidden. A second report still hides the tip.
+    """
 
     require_admin(session, token)
     chosen = (state or "").strip().lower()
-    if chosen not in {"hidden", "reenabled"}:
-        raise HTTPException(status_code=400, detail="state must be hidden or reenabled")
+    if chosen not in {"hidden", "reenabled", "once"}:
+        raise HTTPException(status_code=400, detail="state must be hidden, reenabled, or once")
     report_count = (
         select(func.count(ContentFlag.id))
         .where(ContentFlag.kind == "tip", ContentFlag.target_id == VenueRecommendation.id)
         .correlate(VenueRecommendation)
         .scalar_subquery()
     )
-    reached = or_(VenueRecommendation.auto_hidden_at.is_not(None), report_count >= 2)
-    statement = select(VenueRecommendation).where(reached)
-    if chosen == "hidden":
-        statement = statement.where(
-            VenueRecommendation.auto_hidden_at.is_not(None),
-            VenueRecommendation.accepted_at.is_(None),
+    if chosen == "once":
+        statement = select(VenueRecommendation).where(
+            report_count == 1,
+            VenueRecommendation.auto_hidden_at.is_(None),
+        )
+        statement = statement.order_by(
+            VenueRecommendation.flagged_at.desc().nulls_last(),
+            VenueRecommendation.id.desc(),
         )
     else:
-        statement = statement.where(VenueRecommendation.accepted_at.is_not(None))
-    statement = statement.order_by(
-        VenueRecommendation.auto_hidden_at.desc().nulls_last(),
-        VenueRecommendation.id.desc(),
-    )
+        reached = or_(VenueRecommendation.auto_hidden_at.is_not(None), report_count >= 2)
+        statement = select(VenueRecommendation).where(reached)
+        if chosen == "hidden":
+            statement = statement.where(
+                VenueRecommendation.auto_hidden_at.is_not(None),
+                VenueRecommendation.accepted_at.is_(None),
+            )
+        else:
+            statement = statement.where(VenueRecommendation.accepted_at.is_not(None))
+        statement = statement.order_by(
+            VenueRecommendation.auto_hidden_at.desc().nulls_last(),
+            VenueRecommendation.id.desc(),
+        )
     tips = list(session.scalars(statement).all())
     emails = _reporter_emails(session, [int(row.id) for row in tips])
     rows = []
