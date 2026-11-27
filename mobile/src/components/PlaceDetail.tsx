@@ -252,10 +252,19 @@ export function PlaceDetail({
         </View>
       </Card>
 
+      {!signedIn ? (
+        <Card>
+          <Text style={{ color: colors.ink, lineHeight: 22 }}>Sign in to rate this field, write a comment, or vote.</Text>
+          <View style={{ marginTop: 12 }}>
+            <GoldButton label="Sign in" onPress={() => askSignIn(place)} />
+          </View>
+        </Card>
+      ) : null}
+
+      {signedIn ? (
       <Card>
         <Text style={{ color: colors.navy, fontSize: 18, fontWeight: "800" }}>Rate this complex</Text>
         <Text style={{ color: colors.secondary, marginTop: 4 }}>One rating for this account. Saving again updates it.</Text>
-        {signedIn ? (
           <View style={{ gap: 12, marginTop: 12 }}>
             {SCORE_ROWS.map(([key, label]) => (
               <ScorePicker key={key} label={label} value={scores[key]} onChange={(value) => setScores((current) => ({ ...current, [key]: value }))} />
@@ -283,12 +292,8 @@ export function PlaceDetail({
             {ratingMessage ? <Text style={{ color: colors.navy, fontWeight: "700" }}>{ratingMessage}</Text> : null}
             <GoldButton label={savingRating ? "Saving" : "Save rating"} disabled={savingRating || !termsReady || (needsTerms && !agreed)} onPress={() => void saveRating(place)} />
           </View>
-        ) : (
-          <View style={{ marginTop: 12 }}>
-            <GoldButton label="Sign in" onPress={() => askSignIn(place)} />
-          </View>
-        )}
       </Card>
+      ) : null}
 
       <View style={{ gap: 10 }}>
         <Text style={{ color: colors.navy, fontSize: 22, fontWeight: "800" }}>Things to do</Text>
@@ -304,15 +309,14 @@ export function PlaceDetail({
             tip={tip}
             signedIn={signedIn}
             token={sessionToken}
-            onSignIn={() => askSignIn(place)}
             onVote={(choice) => void vote(place, tip, choice)}
             onHidden={() => dropTip(tip.id)}
           />
         ))}
         {tipError ? <Text style={{ color: colors.ink }}>{tipError}</Text> : null}
+        {signedIn ? (
         <Card>
           <Text style={{ color: colors.navy, fontSize: 18, fontWeight: "800" }}>Add a things-to-do comment</Text>
-          {signedIn ? (
             <View style={{ gap: 12, marginTop: 12 }}>
               <Text style={{ color: colors.secondary, fontWeight: "700" }}>Category</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
@@ -338,12 +342,8 @@ export function PlaceDetail({
               {needsTerms ? <TermsAgreement checked={agreed} onChange={setAgreed} /> : null}
               <GoldButton label={savingTip ? "Saving" : "Add comment"} disabled={savingTip || !termsReady || (needsTerms && !agreed)} onPress={() => void saveTip(place)} />
             </View>
-          ) : (
-            <View style={{ marginTop: 12 }}>
-              <GoldButton label="Sign in" onPress={() => askSignIn(place)} />
-            </View>
-          )}
         </Card>
+        ) : null}
       </View>
 
       <GameList title="Upcoming games" games={place.upcoming} />
@@ -386,14 +386,12 @@ function TipCard({
   tip,
   signedIn,
   token,
-  onSignIn,
   onVote,
   onHidden,
 }: {
   tip: LocationTip;
   signedIn: boolean;
   token: string | null;
-  onSignIn: () => void;
   onVote: (choice: "up" | "down") => void;
   onHidden: () => void;
 }) {
@@ -446,23 +444,16 @@ function TipCard({
           </View>
         </View>
       ) : (
-        <View style={{ gap: 8, marginTop: 8 }}>
-          <Text style={{ color: colors.secondary }}>Up {tip.upvotes} · Down {tip.downvotes}</Text>
-          <GoldButton label="Sign in" onPress={onSignIn} />
-        </View>
+        <Text style={{ color: colors.secondary, marginTop: 8 }}>Up {tip.upvotes} · Down {tip.downvotes}</Text>
       )}
-      <View style={{ marginTop: 8 }}>
-        {signedIn ? (
+      {signedIn ? (
+        <View style={{ marginTop: 8 }}>
           <Hit label="Report" disabled={reporting || !token} onPress={() => void report()}>
             <Text style={{ color: colors.navy, fontWeight: "700", opacity: reporting ? 0.6 : 1 }}>Report</Text>
           </Hit>
-        ) : (
-          <Hit label="Sign in to report" onPress={onSignIn}>
-            <Text style={{ color: colors.navy, fontWeight: "700", textDecorationLine: "underline" }}>Sign in to report</Text>
-          </Hit>
-        )}
-        {reportNote ? <Text style={{ color: colors.secondary, marginTop: 4 }}>{reportNote}</Text> : null}
-      </View>
+          {reportNote ? <Text style={{ color: colors.secondary, marginTop: 4 }}>{reportNote}</Text> : null}
+        </View>
+      ) : null}
     </Card>
   );
 }

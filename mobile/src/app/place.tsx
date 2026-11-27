@@ -14,7 +14,7 @@ export default function PlaceScreen() {
   const params = useLocalSearchParams<{ venue_key?: string; venue_name?: string; city?: string; state?: string }>();
   return (
     <>
-      <Stack.Screen options={{ title: "Field" }} />
+      <Stack.Screen options={{ title: "Field", headerBackTitle: "Back" }} />
       <ScrollView style={{ flex: 1, backgroundColor: colors.bone }} contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 40 }}>
         <PlaceDetail venueKey={one(params.venue_key)} venueName={one(params.venue_name)} city={one(params.city)} state={one(params.state)} />
       </ScrollView>

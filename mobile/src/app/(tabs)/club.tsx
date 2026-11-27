@@ -1,13 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { useRouter, type Href } from "expo-router";
+import { useRouter } from "expo-router";
 import { useState, type ReactNode } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Card, Crest, Hit, Loading, Notice, PreferencesButton, ResultBadge, SavedDataNote } from "@/components/ui";
 import { fetchClub, fetchClubs, fetchTeams } from "@/lib/api";
-import { placePath } from "@/lib/finishSignIn";
 import { openMaps } from "@/lib/maps";
 import { ordinal, signed, wdl } from "@/lib/present";
 import { useFavorites } from "@/store/favorites";
@@ -117,7 +116,6 @@ export default function ClubScreen() {
 }
 
 function ClubBody({ detail, onSquad, onYourClub }: { detail: ClubDetail; onSquad: (squad: ClubSquad) => void; onYourClub?: () => void }) {
-  const router = useRouter();
   const [open, setOpen] = useState({ teams: false, past: false, next: false, fields: false });
   function toggle(key: keyof typeof open) {
     setOpen((current) => ({ ...current, [key]: !current[key] }));
@@ -202,17 +200,9 @@ function ClubBody({ detail, onSquad, onYourClub }: { detail: ClubDetail; onSquad
           <Card key={`${venue.venue_name}-${venue.city}`}>
             <Text style={{ color: colors.ink, fontWeight: "800" }}>{venue.venue_name}</Text>
             <Text style={{ color: colors.secondary, marginBottom: 8 }}>{venue.city}, {venue.state}</Text>
-            <View style={{ flexDirection: "row", gap: 16 }}>
-              <Hit label={`Directions to ${venue.venue_name}`} onPress={() => openMaps({ name: venue.venue_name, city: venue.city, state: venue.state, latitude: venue.latitude, longitude: venue.longitude })}>
-                <Text style={{ color: colors.navy, fontWeight: "800" }}>Directions</Text>
-              </Hit>
-              <Hit
-                label={`Ratings for ${venue.venue_name}`}
-                onPress={() => router.push(placePath({ venueName: venue.venue_name, city: venue.city, state: venue.state }) as Href)}
-              >
-                <Text style={{ color: colors.navy, fontWeight: "800" }}>Ratings</Text>
-              </Hit>
-            </View>
+            <Hit label={`Directions to ${venue.venue_name}`} onPress={() => openMaps({ name: venue.venue_name, city: venue.city, state: venue.state, latitude: venue.latitude, longitude: venue.longitude })}>
+              <Text style={{ color: colors.navy, fontWeight: "800" }}>Directions</Text>
+            </Hit>
           </Card>
         ))}
       </Fold>

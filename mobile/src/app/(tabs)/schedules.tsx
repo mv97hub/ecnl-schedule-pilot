@@ -1,19 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { useRouter, type Href } from "expo-router";
 import { useMemo, useState } from "react";
 import { Modal, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { VenueLine } from "@/components/VenueLine";
 import { Chip, Crest, GoldButton, Hit, Loading, Notice, OutlineButton, PreferencesButton, ResultBadge, SavedDataNote, Segmented } from "@/components/ui";
 import { fetchSchedule, fetchTeams } from "@/lib/api";
 import { formatKickoff } from "@/lib/format";
 import { CONFERENCES, TIERS, ageGroupsFor, type LeagueGender } from "@/lib/leagues";
-import { countdown, kickoffStillAhead, shortConference, teamScoreline, wdlFromSummary } from "@/lib/present";
+import { countdown, kickoffStillAhead, placeLabel, shortConference, teamScoreline, wdlFromSummary } from "@/lib/present";
 import { useFavorites } from "@/store/favorites";
 import { useSession } from "@/store/session";
 import { colors } from "@/theme";
-import type { Game, ScheduleFilter } from "@/lib/types";
+import type { Game, ScheduleFilter, Team } from "@/lib/types";
 
 export default function SchedulesScreen() {
   const insets = useSafeAreaInsets();
@@ -81,6 +81,15 @@ export default function SchedulesScreen() {
     setMatchup("a", teamId);
     setMatchup("b", game.opponent.id);
     router.push("/matchup");
+  }
+
+  function openFieldClub(game: Game) {
+    const ownerId = game.side === "away" ? game.opponent.id : teamId;
+    if (ownerId == null) return;
+    void clubKeyFor(ownerId, team).then((club) => {
+      if (!club) return;
+      router.push(`/places?club=${encodeURIComponent(club)}` as Href);
+    });
   }
 
   return (
@@ -166,9 +175,12 @@ export default function SchedulesScreen() {
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <Crest uri={game.opponent.logo_url} name={game.opponent.name} size={28} />
                     <Text style={{ color: colors.ink, fontWeight: "800", flex: 1 }}>{game.side === "home" ? "Home" : "Away"} · {game.opponent.name}</Text>
+                    <FontAwesome name="exchange" size={14} color={colors.navy} />
                   </View>
                 </Hit>
-                <VenueLine name={game.venue_name} city={game.city} state={game.state} field={game.field_name} />
+                <Hit label={`Open ${game.venue_name} on Places`} onPress={() => openFieldClub(game)}>
+                  <Text style={{ color: colors.navy, fontWeight: "700" }}>{placeLabel(game.venue_name, game.city, game.state, game.field_name)}</Text>
+                </Hit>
                 {game.status === "POSTPONED" ? <Text style={{ color: colors.draw, fontWeight: "800" }}>Postponed</Text> : null}
               </View>
             </View>
@@ -182,7 +194,10 @@ export default function SchedulesScreen() {
                 <Hit key={game.id} label={`Open matchup against ${game.opponent.name}`} onPress={() => openMatchup(game)} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                   <Crest uri={game.opponent.logo_url} name={game.opponent.name} size={28} />
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.ink, fontWeight: "800" }}>{game.side === "home" ? "Home" : "Away"} · {game.opponent.name}</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <Text style={{ color: colors.ink, fontWeight: "800", flex: 1 }}>{game.side === "home" ? "Home" : "Away"} · {game.opponent.name}</Text>
+                      <FontAwesome name="exchange" size={14} color={colors.navy} />
+                    </View>
                     <Text style={{ color: colors.secondary }}>{formatKickoff(game.starts_at, game.timezone).day}</Text>
                   </View>
                 </Hit>
@@ -201,7 +216,10 @@ export default function SchedulesScreen() {
                 <ResultBadge result={mark} score={teamScoreline(game)} />
                 <Crest uri={game.opponent.logo_url} name={game.opponent.name} size={32} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.ink, fontWeight: "800" }}>{game.opponent.name}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={{ color: colors.ink, fontWeight: "800", flex: 1 }}>{game.opponent.name}</Text>
+                  <FontAwesome name="exchange" size={14} color={colors.navy} />
+                </View>
                   <Text style={{ color: colors.secondary }}>{game.side === "home" ? "Home" : "Away"} · {formatKickoff(game.starts_at, game.timezone).day}</Text>
                 </View>
               </Hit>
@@ -221,6 +239,17 @@ export default function SchedulesScreen() {
       />
     </View>
   );
+}
+
+async function clubKeyFor(id: number, known: Team | null | undefined): Promise<string | null> {
+  if (known && known.id === id) {
+    if (known.club_key) return known.club_key;
+    if (known.club_id != null) return String(known.club_id);
+  }
+  const rows = await fetchTeams({ ids: [id] });
+  const row = rows[0];
+  if (!row) return null;
+  return row.club_key ?? (row.club_id != null ? String(row.club_id) : null);
 }
 
 function BrowseSheet({ visible, onClose, onPick }: { visible: boolean; onClose: () => void; onPick: (id: number) => void }) {

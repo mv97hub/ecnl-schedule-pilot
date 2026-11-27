@@ -84,7 +84,7 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="favorites" options={{ presentation: "modal", title: "Preferences" }} />
           <Stack.Screen name="favorites-choice" options={{ title: "Favorites" }} />
-          <Stack.Screen name="place" options={{ title: "Field" }} />
+          <Stack.Screen name="place" options={{ title: "Field", headerBackTitle: "Back" }} />
           <Stack.Screen name="profile-favorites" options={{ title: "Favorites" }} />
           <Stack.Screen name="home-address" options={{ title: "Home address" }} />
           <Stack.Screen name="team-calendar" options={{ title: "Team calendar" }} />
