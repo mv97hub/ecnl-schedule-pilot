@@ -1,4 +1,4 @@
-export type AdminSection = "issues" | "contributions" | "flags" | "users" | "terms";
+export type AdminSection = "issues" | "contributions" | "flags" | "users" | "terms" | "field-pins";
 
 export const ADMIN_SHELL_STYLE = `
 .shell { display: flex; flex-direction: column; gap: 24px; align-items: stretch; }
@@ -19,6 +19,7 @@ const LINKS: ReadonlyArray<readonly [AdminSection, string, string]> = [
   ["flags", "/admin/flags", "Flagged comments"],
   ["users", "/admin/users", "Users"],
   ["terms", "/admin/terms", "Terms"],
+  ["field-pins", "/admin/field-pins", "Field pins"],
 ];
 
 export function adminMenu(current: AdminSection | null): string {

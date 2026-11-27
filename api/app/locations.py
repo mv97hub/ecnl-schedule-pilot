@@ -11,6 +11,7 @@ server. Hangout, activity, and sideline tips stay free text.
 
 from __future__ import annotations
 
+import time
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from math import asin, cos, radians, sin, sqrt
@@ -37,6 +38,15 @@ from app.models import (
     VenueRecommendation,
     VenueTipVote,
 )
+from app.maps_check import (
+    accept_result,
+    maps_point_link,
+    maps_search_link,
+    pin_list_name,
+    pin_source,
+    lookup_skips,
+    read_maps_result,
+)
 from app.places import (
     MIN_QUERY_CHARS,
     NEAR_MILES,
@@ -50,7 +60,9 @@ from app.places import (
     clean_place_id,
     PIN_RULE_ADMIN,
     PIN_RULE_MAPS,
+    PIN_RULE_MAPS_FAILED,
     PIN_RULE_MAPS_RESULT,
+    PIN_RULE_MANUAL,
     PIN_RULE_MATCH,
     PIN_RULE_MISS,
     FieldLookup,
@@ -1256,7 +1268,15 @@ def _apply_match(row: VenueRecommendation, hit: PlaceHit) -> None:
     row.place_fetched_at = datetime.now(UTC)
 
 
-_SAVED_PIN_RULES = frozenset({PIN_RULE_MATCH, PIN_RULE_MISS, PIN_RULE_ADMIN, PIN_RULE_MAPS, PIN_RULE_MAPS_RESULT})
+_SAVED_PIN_RULES = frozenset({
+    PIN_RULE_MATCH,
+    PIN_RULE_MISS,
+    PIN_RULE_ADMIN,
+    PIN_RULE_MANUAL,
+    PIN_RULE_MAPS,
+    PIN_RULE_MAPS_FAILED,
+    PIN_RULE_MAPS_RESULT,
+})
 
 
 def _map_from_row(bucket: ComplexBucket, row: VenueFieldPoint) -> MapFieldOut:
@@ -1304,7 +1324,7 @@ def _save_map_geocode(session: Session, bucket: ComplexBucket, lookup: FieldLook
 
     now = datetime.now(UTC)
     row = session.get(VenueFieldPoint, bucket.venue_key)
-    if row is not None and row.pin_rule in {PIN_RULE_ADMIN, PIN_RULE_MAPS, PIN_RULE_MAPS_RESULT}:
+    if row is not None and row.pin_rule in {PIN_RULE_ADMIN, PIN_RULE_MANUAL, PIN_RULE_MAPS, PIN_RULE_MAPS_FAILED, PIN_RULE_MAPS_RESULT}:
         return row
     if row is None:
         row = VenueFieldPoint(
@@ -1424,6 +1444,9 @@ class AdminFieldPinIn(BaseModel):
     venue_key: str = Field(min_length=1, max_length=300)
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
+    venue_name: str | None = Field(default=None, max_length=160)
+    city: str | None = Field(default=None, max_length=80)
+    state: str | None = Field(default=None, max_length=2)
 
 
 class AdminFieldPinClear(BaseModel):
@@ -1491,7 +1514,10 @@ def replace_admin_field_pin(
 
     require_admin(session, token)
     key = _admin_pin_key(body.venue_key)
-    name, city, state = key.rsplit("|", 2)
+    key_name, key_city, key_state = key.rsplit("|", 2)
+    name = (body.venue_name or key_name).strip()[:160]
+    city = (body.city or key_city).strip()[:80]
+    state = (body.state or key_state).strip().upper()[:2]
     now = datetime.now(UTC)
     row = session.get(VenueFieldPoint, key)
     if row is None:
@@ -1499,7 +1525,7 @@ def replace_admin_field_pin(
             venue_key=key,
             venue_name=name,
             city=city,
-            state=state.upper(),
+            state=state,
             status="found",
             fetched_at=now,
         )
@@ -1509,12 +1535,13 @@ def replace_admin_field_pin(
     row.longitude = body.longitude
     row.provider = None
     row.place_id = None
-    row.geocode_kind = "admin"
-    row.pin_rule = PIN_RULE_ADMIN
+    row.formatted_address = None
+    row.geocode_kind = "manual"
+    row.pin_rule = PIN_RULE_MANUAL
     row.fetched_at = now
     session.commit()
     session.refresh(row)
-    return _admin_pin_out(row, "Saved pin replaced. This does not mark the location as verified.")
+    return _admin_pin_out(row, "Manual pin saved. This does not mark the location as verified, and a later lookup will not replace it.")
 
 
 @router.post("/admin/field-pins/clear", response_model=AdminFieldPinOut)
@@ -1523,23 +1550,233 @@ def clear_admin_field_pin(
     session: Annotated[Session, Depends(get_session)],
     token: Annotated[str, Depends(require_bearer)],
 ) -> AdminFieldPinOut:
-    """Drop a saved pin so the next visit can look the field up again."""
+    """Drop the coordinates and keep the field in Failed. A manual pin can be cleared too."""
 
     require_admin(session, token)
     key = _admin_pin_key(body.venue_key)
     row = session.get(VenueFieldPoint, key)
     if row is None:
         raise HTTPException(status_code=404, detail="No saved pin for that field.")
-    name, city, state = row.venue_name, row.city, row.state
-    session.delete(row)
+    now = datetime.now(UTC)
+    row.status = "miss"
+    row.provider = None
+    row.place_id = None
+    row.formatted_address = None
+    row.latitude = None
+    row.longitude = None
+    row.geocode_kind = "maps-failed"
+    row.pin_rule = PIN_RULE_MAPS_FAILED
+    row.fetched_at = now
     session.commit()
-    return AdminFieldPinOut(
-        venue_key=key,
+    session.refresh(row)
+    return _admin_pin_out(row, "Pin removed. This field is in Failed. That is not a verification.")
+
+
+_PIN_LIST_LIMIT = 40
+_PIN_LOOKUP_LIMIT = 25
+
+
+class FieldPinItem(BaseModel):
+    venue_key: str
+    venue_name: str
+    city: str
+    state: str
+    latitude: float | None = None
+    longitude: float | None = None
+    pin_rule: str | None = None
+    source: str
+    maps_url: str
+
+
+class FieldPinBoard(BaseModel):
+    q: str
+    failed_count: int
+    untagged_count: int
+    saved_count: int
+    failed: list[FieldPinItem]
+    untagged: list[FieldPinItem]
+    saved: list[FieldPinItem]
+    showing: int
+
+
+class FieldPinLookupIn(BaseModel):
+    venue_keys: list[str] = Field(min_length=1, max_length=_PIN_LOOKUP_LIMIT)
+
+
+class FieldPinLookupOut(BaseModel):
+    saved: int
+    failed: int
+    skipped: int
+    note: str
+
+
+def _stored_point(row: VenueFieldPoint | None) -> tuple[float | None, float | None, str | None]:
+    if row is None or row.latitude is None or row.longitude is None or row.status != "found":
+        return None, None, None if row is None else row.pin_rule
+    return row.latitude, row.longitude, row.pin_rule
+
+
+def _pin_item(venue_key: str, name: str, city: str, state: str, row: VenueFieldPoint | None) -> tuple[str, FieldPinItem]:
+    latitude, longitude, rule = _stored_point(row)
+    kind = pin_list_name(latitude, longitude, None if row is None else row.pin_rule)
+    if latitude is not None and longitude is not None:
+        link = maps_point_link(latitude, longitude)
+    else:
+        link = maps_search_link(f"{name}, {city}, {state}")
+    item = FieldPinItem(
+        venue_key=venue_key,
         venue_name=name,
         city=city,
         state=state,
-        status="miss",
-        note="Saved pin removed. The next visit can look this field up again. That lookup is not a verification.",
+        latitude=latitude,
+        longitude=longitude,
+        pin_rule=None if row is None else row.pin_rule,
+        source=pin_source(rule if latitude is not None else (None if row is None else row.pin_rule)),
+        maps_url=link,
+    )
+    return kind, item
+
+
+def _matches_query(name: str, city: str, state: str, needle: str) -> bool:
+    if not needle:
+        return True
+    haystack = f"{name} {city} {state}".casefold()
+    return needle.casefold() in haystack
+
+
+@router.get("/admin/field-pins/board", response_model=FieldPinBoard)
+def read_admin_field_pin_board(
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+    q: str = Query(default="", max_length=80),
+) -> FieldPinBoard:
+    """List schedule fields. This does not look up or geocode any field."""
+
+    require_admin(session, token)
+    needle = " ".join(q.split())
+    pins = {row.venue_key: row for row in session.scalars(select(VenueFieldPoint))}
+    grouped: dict[str, list[FieldPinItem]] = {"failed": [], "untagged": [], "saved": []}
+    seen: set[str] = set()
+    for bucket in _complexes(session, datetime.now(UTC)).values():
+        if _is_tbd(bucket.venue_name) or not bucket.venue_name or bucket.venue_name == "TBD":
+            continue
+        if not _matches_query(bucket.venue_name, bucket.city, bucket.state, needle):
+            continue
+        seen.add(bucket.venue_key)
+        kind, item = _pin_item(bucket.venue_key, bucket.venue_name, bucket.city, bucket.state, pins.get(bucket.venue_key))
+        grouped[kind].append(item)
+    for key, row in pins.items():
+        if key in seen or not _matches_query(row.venue_name, row.city, row.state, needle):
+            continue
+        kind, item = _pin_item(key, row.venue_name, row.city, row.state, row)
+        grouped[kind].append(item)
+    for items in grouped.values():
+        items.sort(key=lambda item: (item.venue_name.casefold(), item.state, item.city.casefold()))
+    return FieldPinBoard(
+        q=needle,
+        failed_count=len(grouped["failed"]),
+        untagged_count=len(grouped["untagged"]),
+        saved_count=len(grouped["saved"]),
+        failed=grouped["failed"][:_PIN_LIST_LIMIT],
+        untagged=grouped["untagged"][:_PIN_LIST_LIMIT],
+        saved=grouped["saved"][:_PIN_LIST_LIMIT],
+        showing=_PIN_LIST_LIMIT,
+    )
+
+
+def _apply_maps_result(row: VenueFieldPoint, place, now: datetime) -> None:
+    street = (place.street or "").strip()
+    address = ", ".join(part for part in (street, place.city, place.state) if part)
+    row.status = "found"
+    row.provider = "google-maps"
+    row.place_id = None
+    row.formatted_address = address[:500] or None
+    row.latitude = place.latitude
+    row.longitude = place.longitude
+    row.geocode_kind = "maps"
+    row.pin_rule = PIN_RULE_MAPS_RESULT
+    row.fetched_at = now
+
+
+def _mark_maps_failed(session: Session, key: str, name: str, city: str, state: str, row: VenueFieldPoint | None) -> None:
+    now = datetime.now(UTC)
+    if row is None:
+        row = VenueFieldPoint(
+            venue_key=key,
+            venue_name=name[:160],
+            city=city[:80],
+            state=state[:2],
+            status="miss",
+            fetched_at=now,
+        )
+        session.add(row)
+    row.status = "miss"
+    row.provider = None
+    row.place_id = None
+    row.formatted_address = None
+    row.latitude = None
+    row.longitude = None
+    row.geocode_kind = "maps-failed"
+    row.pin_rule = PIN_RULE_MAPS_FAILED
+    row.fetched_at = now
+
+
+@router.post("/admin/field-pins/lookup", response_model=FieldPinLookupOut)
+def lookup_admin_field_pins(
+    body: FieldPinLookupIn,
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+) -> FieldPinLookupOut:
+    """Look up only the submitted fields. A Maps result is saved when the state matches.
+
+    Manual pins are left as entered. This does not walk the rest of the schedule.
+    """
+
+    require_admin(session, token)
+    buckets = {bucket.venue_key: bucket for bucket in _complexes(session, datetime.now(UTC)).values()}
+    saved = 0
+    failed = 0
+    skipped = 0
+    for index, raw_key in enumerate(body.venue_keys):
+        key = _admin_pin_key(raw_key)
+        bucket = buckets.get(key)
+        row = session.get(VenueFieldPoint, key)
+        if bucket is not None:
+            name, city, state = bucket.venue_name, bucket.city, bucket.state
+        elif row is not None:
+            name, city, state = row.venue_name, row.city, row.state
+        else:
+            name, city, state = key.rsplit("|", 2)
+        latitude, longitude, _rule = _stored_point(row)
+        if lookup_skips(None if row is None else row.pin_rule, latitude, longitude):
+            skipped += 1
+            continue
+        place = read_maps_result(name, city, state)
+        if accept_result(state, place).keep and place is not None:
+            now = datetime.now(UTC)
+            if row is None:
+                row = VenueFieldPoint(
+                    venue_key=key,
+                    venue_name=name[:160],
+                    city=city[:80],
+                    state=state[:2],
+                    status="found",
+                    fetched_at=now,
+                )
+                session.add(row)
+            _apply_maps_result(row, place, now)
+            saved += 1
+        else:
+            _mark_maps_failed(session, key, name, city, state, row)
+            failed += 1
+        session.commit()
+        if index + 1 < len(body.venue_keys):
+            time.sleep(0.2)
+    return FieldPinLookupOut(
+        saved=saved,
+        failed=failed,
+        skipped=skipped,
+        note="Lookup finished for the selected fields only. A saved pin is not verified.",
     )
 
 

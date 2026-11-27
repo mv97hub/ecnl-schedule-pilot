@@ -34,7 +34,7 @@ from app.database import SessionLocal
 from app.locations import _complexes, _is_tbd
 from app.maps_check import MapsPlace, accept_result, field_query, maps_result_url, parse_first_maps_result
 from app.models import VenueFieldPoint
-from app.places import PIN_RULE_MAPS_RESULT
+from app.places import PIN_RULE_ADMIN, PIN_RULE_MANUAL, PIN_RULE_MAPS_FAILED, PIN_RULE_MAPS_RESULT
 
 _AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
@@ -46,6 +46,28 @@ def fetch_maps_body(query: str, timeout: float) -> str:
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read().decode("utf-8", errors="replace")
+
+
+def store_maps_miss(row: VenueFieldPoint | None, bucket, now: datetime) -> VenueFieldPoint:
+    if row is None:
+        row = VenueFieldPoint(
+            venue_key=bucket.venue_key,
+            venue_name=bucket.venue_name[:160],
+            city=bucket.city[:80],
+            state=bucket.state[:2],
+            status="miss",
+            fetched_at=now,
+        )
+    row.status = "miss"
+    row.provider = None
+    row.place_id = None
+    row.formatted_address = None
+    row.latitude = None
+    row.longitude = None
+    row.geocode_kind = "maps-failed"
+    row.pin_rule = PIN_RULE_MAPS_FAILED
+    row.fetched_at = now
+    return row
 
 
 def store_maps_pin(row: VenueFieldPoint, place: MapsPlace, now: datetime) -> None:
@@ -84,6 +106,9 @@ def main() -> int:
                 skipped += 1
                 continue
             row = session.get(VenueFieldPoint, bucket.venue_key)
+            if row is not None and row.pin_rule in {PIN_RULE_ADMIN, PIN_RULE_MANUAL}:
+                skipped += 1
+                continue
             if row is not None and row.latitude is not None and row.longitude is not None:
                 skipped += 1
                 continue
@@ -124,6 +149,12 @@ def main() -> int:
                 failed += 1
                 print(f"failed {name}, {city}, {state} {decision.reason}", flush=True)
                 lines.append(f"- {name}, {city}, {state} — {decision.reason}. Left blank. Not verified.")
+                if not args.dry_run:
+                    now = datetime.now(UTC)
+                    missed = store_maps_miss(row, bucket, now)
+                    if row is None:
+                        session.add(missed)
+                    session.commit()
             if index + 1 < len(buckets):
                 time.sleep(max(0.0, args.sleep))
     finally:
