@@ -29,6 +29,7 @@ from app.profile import (
     save_calendar,
     save_home_address,
 )
+from app.weekend import WeekendMapOut, weekend_map
 
 router = APIRouter(tags=["auth"])
 
@@ -229,6 +230,19 @@ def end_session(
     if token:
         logout(session, token)
     return {"ok": True}
+
+
+@router.get("/me/weekend", response_model=WeekendMapOut)
+def read_weekend_map(
+    session: Annotated[Session, Depends(get_session)],
+    token: Annotated[str, Depends(require_bearer)],
+) -> WeekendMapOut:
+    """Coming-month games for the signed-in family. Reads stored field pins and does not look any up."""
+
+    user = require_user(session, token)
+    if user.id is None:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    return weekend_map(session, int(user.id))
 
 
 @router.get("/me", response_model=MeOut)

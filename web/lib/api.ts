@@ -1,5 +1,5 @@
 import type { LeagueGender } from "@/lib/leagues";
-import type { AccountFavorites, ClubDetail, ClubListItem, ClubLocations, HeadToHeadReport, LocationCard, LocationDetail, LocationTip, MobileDashboard, PredictedStandings, ScheduleFilter, ScheduleResponse, StandingRow, StandingsMode, Team } from "@/lib/types";
+import type { AccountFavorites, ClubDetail, ClubListItem, ClubLocations, HeadToHeadReport, LocationCard, LocationDetail, LocationTip, MobileDashboard, PredictedStandings, ScheduleFilter, ScheduleResponse, StandingRow, StandingsMode, Team, WeekendMap } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
@@ -264,6 +264,10 @@ function favoritesFrom(body: { club_id?: string | null; team_ids?: unknown }): A
     club_id: typeof body.club_id === "string" && body.club_id.trim() ? body.club_id : null,
     team_ids: teamIds,
   };
+}
+
+export function fetchWeekendMap(): Promise<WeekendMap> {
+  return siteRequest<WeekendMap>("/me/weekend");
 }
 
 export async function fetchAccountFavorites(): Promise<AccountFavorites> {
