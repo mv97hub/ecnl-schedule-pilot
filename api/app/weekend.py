@@ -1,25 +1,26 @@
-"""Family home for the website: games in the coming month, and stored field pins only.
+"""Family home for the website: games through the last published date, and stored field pins only.
 
-This read does not geocode, does not insert a field pin, and does not change a
-pin that is already stored. Schedule coordinates on the game row are ignored.
+This read may store a map point for a saved home address when that point is
+still empty. It does not insert a field pin, and it does not change a pin that
+is already stored. Schedule coordinates on the game row are ignored.
 """
 
 from __future__ import annotations
 
-import calendar
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.clubs import accumulate_records, club_detail
 from app.favorites import read_favorites
 from app.locations import _listed_surface, _summarize, clean_venue_for_geocoding, make_venue_key
 from app.logos import club_logos
-from app.models import Club, ScheduleGame, ScheduleTeam, VenueFieldPoint, VenueRating, VenueRecommendation
+from app.models import Club, ScheduleGame, ScheduleTeam, UserHomeAddress, VenueFieldPoint, VenueRating, VenueRecommendation
+from app.places import PlacesUnavailable, geocode_street_address
 
 EASTERN = ZoneInfo("America/New_York")
 WINDOW_DAYS = 14
@@ -81,32 +82,27 @@ class WeekendMapOut(BaseModel):
     record: WeekendRecordOut | None = None
     club_games: bool = False
     lead_team_id: int | None = None
-    month_start: date
-    month_end: date
+    range_start: date
+    range_end: date
     window_start: date
     window_end: date
+    home: WeekendPinOut | None = None
     games: list[WeekendGameOut]
 
 
-def coming_month(today: date) -> tuple[date, date]:
-    """Today through the same day next month, in America/New_York."""
+def default_window(today: date) -> tuple[date, date]:
+    """The next 14 calendar days, including today. This is the selected window, not the slider limit."""
 
-    month = today.month + 1
-    year = today.year
-    if month == 13:
-        month = 1
-        year += 1
-    last = calendar.monthrange(year, month)[1]
-    return today, date(year, month, min(today.day, last))
+    return today, today + timedelta(days=WINDOW_DAYS - 1)
 
 
-def default_window(today: date, month_end: date) -> tuple[date, date]:
-    """The next 14 calendar days, including today, clipped to the coming month."""
+def season_end(today: date, last_game: date | None) -> date:
+    """The later of the default window and the family's last published game."""
 
-    finish = today + timedelta(days=WINDOW_DAYS - 1)
-    if finish > month_end:
-        finish = month_end
-    return today, finish
+    window_end = today + timedelta(days=WINDOW_DAYS - 1)
+    if last_game is None or last_game < window_end:
+        return window_end
+    return last_game
 
 
 def _eastern_today() -> date:
@@ -178,12 +174,11 @@ def _squad(team: ScheduleTeam) -> WeekendSquadOut:
 
 
 def _empty(today: date) -> WeekendMapOut:
-    month_start, month_end = coming_month(today)
-    window_start, window_end = default_window(today, month_end)
+    window_start, window_end = default_window(today)
     return WeekendMapOut(
         has_favorites=False,
-        month_start=month_start,
-        month_end=month_end,
+        range_start=window_start,
+        range_end=window_end,
         window_start=window_start,
         window_end=window_end,
         games=[],
@@ -195,12 +190,11 @@ def weekend_map(session: Session, user_id: int, today: date | None = None) -> We
 
     Pins come from venue_field_point rows that already have a point. A miss,
     a failed lookup, a TBD venue, and a postponed or cancelled game do not
-    produce a marker. Nothing in this function writes.
+    produce a marker. The only write is a home-address map point that was empty.
     """
 
     day = today or _eastern_today()
-    month_start, month_end = coming_month(day)
-    window_start, window_end = default_window(day, month_end)
+    window_start, window_end = default_window(day)
     club_key, team_ids = read_favorites(session, user_id)
     detail = club_detail(session, club_key) if club_key else None
     if team_ids:
@@ -231,7 +225,8 @@ def weekend_map(session: Session, user_id: int, today: date | None = None) -> We
             header_name = lead.name
             header_logo = club_logos(session, [lead]).get(lead_id)
 
-    opening, closing = _bounds(month_start, month_end)
+    range_end = season_end(day, _last_game_day(session, scope) if scope else None)
+    opening, closing = _bounds(day, range_end)
     games: list[ScheduleGame] = []
     if scope:
         games = list(
@@ -246,7 +241,7 @@ def weekend_map(session: Session, user_id: int, today: date | None = None) -> We
                 .order_by(ScheduleGame.starts_at, ScheduleGame.id)
             ).all()
         )
-    games = [game for game in games if month_start <= _eastern_day(game.starts_at) <= month_end]
+    games = [game for game in games if day <= _eastern_day(game.starts_at) <= range_end]
 
     keys = [make_venue_key(game.venue_name, game.city, game.state) for game in games if not _is_tbd(game.venue_name)]
     unique_keys = list(dict.fromkeys(keys))
@@ -355,9 +350,49 @@ def weekend_map(session: Session, user_id: int, today: date | None = None) -> We
         record=record,
         club_games=club_games,
         lead_team_id=lead_id,
-        month_start=month_start,
-        month_end=month_end,
+        range_start=day,
+        range_end=range_end,
         window_start=window_start,
         window_end=window_end,
+        home=_home_point(session, user_id),
         games=packed,
     )
+
+
+def _last_game_day(session: Session, scope: list[int]) -> date | None:
+    """The eastern date of the latest published game for these teams."""
+
+    last = session.scalar(
+        select(func.max(ScheduleGame.starts_at)).where(
+            or_(ScheduleGame.home_team_id.in_(scope), ScheduleGame.away_team_id.in_(scope))
+        )
+    )
+    if last is None:
+        return None
+    return _eastern_day(last)
+
+
+def _home_point(session: Session, user_id: int) -> WeekendPinOut | None:
+    """A star for a saved home address. Geocode once when the point is still empty.
+
+    A missing address returns nothing. A failed lookup leaves the coordinates
+    empty and does not plot a star. This never writes a field pin.
+    """
+
+    row = session.get(UserHomeAddress, user_id)
+    if row is None:
+        return None
+    if row.latitude is not None and row.longitude is not None:
+        return WeekendPinOut(latitude=float(row.latitude), longitude=float(row.longitude))
+    try:
+        point = geocode_street_address(row.street, row.unit, row.city, row.state, row.postal_code)
+    except PlacesUnavailable:
+        return None
+    if point is None:
+        return None
+    session.refresh(row)
+    if row.latitude is not None and row.longitude is not None:
+        return WeekendPinOut(latitude=float(row.latitude), longitude=float(row.longitude))
+    row.latitude, row.longitude = point
+    session.commit()
+    return WeekendPinOut(latitude=point[0], longitude=point[1])

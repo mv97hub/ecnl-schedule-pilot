@@ -579,9 +579,10 @@ export type WeekendMap = {
   record: WeekendRecord | null;
   club_games: boolean;
   lead_team_id: number | null;
-  month_start: string;
-  month_end: string;
+  range_start: string;
+  range_end: string;
   window_start: string;
   window_end: string;
+  home: { latitude: number; longitude: number } | null;
   games: WeekendGame[];
 };

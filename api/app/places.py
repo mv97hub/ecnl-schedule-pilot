@@ -1,8 +1,9 @@
 """Geoapify lookups for one field point and for hotel, restaurant, or hangout tips.
 
 The key is read from GEOAPIFY_API_KEY. Requests send the query and the field
-point. The account id, email, display name, and home address are not sent.
-The key is not logged and is not returned.
+point. The account id, email, and display name are not sent. A home-address
+lookup sends that street address and nothing else. The key is not logged and
+is not returned.
 
 A name search uses one category per request. Geoapify's name filter returns
 no places when several categories are sent together.
@@ -150,6 +151,25 @@ def miles_between(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     delta_lng = radians(lng2 - lng1)
     chord = sin(delta_phi / 2) ** 2 + cos(phi1) * cos(phi2) * sin(delta_lng / 2) ** 2
     return 2 * radius_miles * asin(min(1.0, sqrt(chord)))
+
+
+def geocode_street_address(street: str, unit: str, city: str, state: str, postal_code: str) -> tuple[float, float] | None:
+    """One point for a saved home address. None when Geoapify has no match.
+
+    Sends the street address only. Does not send an account id, email, or name.
+    """
+
+    parts = [street.strip(), unit.strip(), city.strip(), f"{state.strip()} {postal_code.strip()}".strip()]
+    text = ", ".join(part for part in parts if part)
+    if not text:
+        return None
+    rows = _geocode_rows(text, "1")
+    if not rows or not isinstance(rows[0], dict):
+        return None
+    hit = _geocode_hit(rows[0])
+    if hit is None:
+        return None
+    return hit.latitude, hit.longitude
 
 
 def geocode_complex(name: str, city: str, state: str) -> GeocodeHit | None:

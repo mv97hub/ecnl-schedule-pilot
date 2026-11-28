@@ -13,13 +13,20 @@ export type HomePin = {
   number: number;
 };
 
+export type HomeStar = {
+  latitude: number;
+  longitude: number;
+};
+
 export function HomeFieldMap({
   pins,
+  star,
   focusId,
   onSelect,
   className = "h-80",
 }: {
   pins: HomePin[];
+  star?: HomeStar | null;
   focusId?: string | null;
   onSelect?: (id: string) => void;
   className?: string;
@@ -81,25 +88,37 @@ export function HomeFieldMap({
         marker.on("click", () => selectRef.current?.(pin.id));
         marker.addTo(layer);
       }
+      if (star) {
+        const marker = L.marker([star.latitude, star.longitude], {
+          icon: L.divIcon({
+            className: "",
+            html: `<span data-home-star="yes" style="display:flex;align-items:center;justify-content:center;width:24px;height:24px;color:#f2b705;font-size:24px;line-height:1;text-shadow:0 0 1px #14284b,-1px 0 #14284b,1px 0 #14284b,0 -1px #14284b,0 1px #14284b">★</span>`,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+          }),
+          zIndexOffset: 900,
+        });
+        marker.bindTooltip("Home", { direction: "top" });
+        marker.addTo(layer);
+      }
+      const points: [number, number][] = pins.map((pin) => [pin.latitude, pin.longitude]);
+      if (star) points.push([star.latitude, star.longitude]);
       const focus = pins.find((pin) => pin.id === focusId);
       if (focus) {
         map.setView([focus.latitude, focus.longitude], Math.max(map.getZoom(), 11));
-      } else if (pins.length === 1) {
-        map.setView([pins[0].latitude, pins[0].longitude], 12);
-      } else if (pins.length > 1) {
-        map.fitBounds(
-          pins.map((pin) => [pin.latitude, pin.longitude] as [number, number]),
-          { padding: [28, 28], maxZoom: 12 },
-        );
+      } else if (points.length === 1) {
+        map.setView(points[0], 12);
+      } else if (points.length > 1) {
+        map.fitBounds(points, { padding: [28, 28], maxZoom: 12 });
       } else {
         map.setView([39.8, -98.5], 4);
       }
       map.invalidateSize();
     });
-  }, [pins, focusId, ready]);
+  }, [pins, star, focusId, ready]);
 
   return (
-    <div className={`relative z-0 overflow-hidden rounded-2xl border border-stone-200 bg-stone-100 ${className} [&_.leaflet-bottom]:!z-[2] [&_.leaflet-pane]:!z-[1] [&_.leaflet-top]:!z-[2]`}>
+    <div data-home-star={star ? "yes" : "no"} className={`relative z-0 overflow-hidden rounded-2xl border border-stone-200 bg-stone-100 ${className} [&_.leaflet-bottom]:!z-[2] [&_.leaflet-pane]:!z-[1] [&_.leaflet-top]:!z-[2]`}>
       <div ref={nodeRef} className="h-full w-full" />
     </div>
   );

@@ -45,7 +45,7 @@ export default function PrivacyPage() {
         </Link>
         .
       </p>
-      <p>A home address you save is stored on the account. It is not public. A PlayMetrics or TeamSnap calendar link for a favorite team is stored on the account. It is not public.</p>
+      <p>A home address you save is stored on the account, including a map point for that address when one can be found. It is not public. A PlayMetrics or TeamSnap calendar link for a favorite team is stored on the account. It is not public.</p>
       <p>The two admin accounts can see account email on the users page and on a contribution’s history. Location pages do not show email or that history.</p>
       <p>
         You can delete the account on Profile, or by emailing{" "}

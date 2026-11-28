@@ -10,8 +10,6 @@ import { formatKickoff, mapsUrl } from "@/lib/format";
 import type { WeekendGame, WeekendMap, WeekendNote } from "@/lib/types";
 import { venueGuideHref } from "@/lib/venueKey";
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
 function wdl(record: { wins: number; draws: number; losses: number }): string {
   return `${record.wins}-${record.draws}-${record.losses}`;
 }
@@ -42,14 +40,6 @@ function eachDay(start: string, end: string): string[] {
   return days;
 }
 
-function weekdayIndex(day: string): number {
-  const name = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short" }).format(
-    new Date(`${day}T16:00:00Z`),
-  );
-  const index = WEEKDAYS.indexOf(name);
-  return index < 0 ? 0 : index;
-}
-
 function dayLabel(day: string): string {
   return new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -57,12 +47,6 @@ function dayLabel(day: string): string {
     month: "short",
     day: "numeric",
   }).format(new Date(`${day}T16:00:00Z`));
-}
-
-function monthLabel(day: string): string {
-  return new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "long", year: "numeric" }).format(
-    new Date(`${day}T16:00:00Z`),
-  );
 }
 
 function squadLabel(game: WeekendGame): string {
@@ -94,6 +78,7 @@ type Kickoff = {
   squad: string;
   side: "home" | "away";
   opponent: string;
+  logo: string | null;
   status: WeekendGame["status"];
   teamId: number;
   opponentId: number;
@@ -128,6 +113,7 @@ function buildStops(games: WeekendGame[]): Stop[] {
       squad: squadLabel(game),
       side: game.side,
       opponent: game.opponent_club_name || game.opponent_name,
+      logo: game.opponent_logo_url,
       status: game.status,
       teamId: game.squad.id,
       opponentId: game.opponent_id,
@@ -218,8 +204,8 @@ export function FavoritesHome() {
     };
   }, []);
 
-  const monthDays = useMemo(
-    () => (payload ? eachDay(payload.month_start, payload.month_end) : []),
+  const rangeDays = useMemo(
+    () => (payload ? eachDay(payload.range_start, payload.range_end) : []),
     [payload],
   );
   const windowStart = start || payload?.window_start || "";
@@ -265,17 +251,16 @@ export function FavoritesHome() {
     return numbers;
   }, [pins, stops]);
   const pinFocus = selected ? (pins.find((pin) => pin.id === selected)?.id ?? pins.find((pin) => pinNumber.get(selected) === pin.number)?.id ?? null) : null;
-  const gameDays = useMemo(() => new Set(payload?.games.map((game) => game.day) ?? []), [payload]);
 
   function chooseStart(value: string) {
-    if (!payload || !value || value < payload.month_start || value > payload.month_end) return;
+    if (!payload || !value || value < payload.range_start || value > payload.range_end) return;
     const next = value > windowEnd ? windowEnd : value;
     setStart(next);
     setSelected(null);
   }
 
   function chooseEnd(value: string) {
-    if (!payload || !value || value < payload.month_start || value > payload.month_end) return;
+    if (!payload || !value || value < payload.range_start || value > payload.range_end) return;
     const next = value < windowStart ? windowStart : value;
     setEnd(next);
     setSelected(null);
@@ -325,40 +310,31 @@ export function FavoritesHome() {
 
         {payload?.has_favorites ? (
           <>
-            <section className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_26rem]">
-              <div>
-                <WindowSlider
-                  days={monthDays}
-                  start={windowStart}
-                  end={windowEnd}
-                  onStart={chooseStart}
-                  onEnd={chooseEnd}
-                />
-                <HomeFieldMap
-                  pins={pins}
-                  focusId={pinFocus}
-                  onSelect={showStop}
-                  className="mt-3 h-80 lg:h-[28rem]"
-                />
-                <p className="mt-2 text-sm text-stone-500" data-pin-note>
-                  Pins are stored field locations. They are not confirmed on the ground.
-                </p>
-              </div>
-              <aside aria-label="Coming month">
-                <ComingMonth
-                  days={monthDays}
-                  gameDays={gameDays}
-                  start={windowStart}
-                  end={windowEnd}
-                  onPick={(day) => {
-                    const stop = stops.find((item) => item.day === day);
-                    if (stop) showStop(stop.id);
-                  }}
-                />
-              </aside>
+            <section aria-label="Upcoming opponents" data-opponent-count={opponents.length}>
+              <h2 className="text-xl font-semibold text-navy">Upcoming opponents</h2>
+              {opponents.length === 0 ? <p className="mt-3 text-sm text-stone-500">No opponents in this window.</p> : null}
+              <ul className="mt-3 flex flex-wrap gap-4">
+                {opponents.map((opponent) => (
+                  <li key={opponent.key} className="flex w-36 flex-col items-center gap-2 text-center">
+                    <ClubMark name={opponent.name} src={opponent.logo} />
+                    <span className="text-sm font-semibold text-navy">{opponent.name}</span>
+                    <span className="text-xs text-stone-500">{dayLabel(opponent.day)}</span>
+                    {opponent.squads.map((squad) => (
+                      <Link
+                        key={`${squad.teamId}-${squad.opponentId}`}
+                        href={`/head-to-head?teamA=${squad.teamId}&teamB=${squad.opponentId}`}
+                        className="text-xs font-medium text-navy underline underline-offset-4"
+                      >
+                        {squad.label} · {squad.side === "home" ? "vs" : "at"} · Match Up
+                      </Link>
+                    ))}
+                  </li>
+                ))}
+              </ul>
             </section>
 
-            <section className="mt-6" aria-label="Upcoming locations">
+            <section className="mt-6 grid items-start gap-6 lg:grid-cols-2">
+            <section aria-label="Upcoming locations">
               <h2 className="text-xl font-semibold text-navy">Upcoming locations</h2>
               {stops.length === 0 ? <p className="mt-3 text-sm text-stone-500">No games in this window.</p> : null}
               <ol className="mt-3 space-y-3" data-location-count={stops.length} data-pin-count={pins.length}>
@@ -385,10 +361,13 @@ export function FavoritesHome() {
                             {stop.kickoffs.map((kick) => {
                               const label = statusLabel(kick.status);
                               return (
-                                <li key={`${kick.gameId}-${kick.teamId}`} className="text-sm text-ink">
-                                  <span className="font-semibold text-navy">{kick.clock}</span>
-                                  {kick.field ? ` · ${kick.field}` : ""} · {kick.squad} · {kick.side === "home" ? "vs" : "at"} {kick.opponent}
-                                  {label ? <span className="ml-2 font-semibold text-stone-500">{label}</span> : null}
+                                <li key={`${kick.gameId}-${kick.teamId}`} className="flex items-center gap-2 text-sm text-ink">
+                                  <ClubMark name={kick.opponent} src={kick.logo} size="sm" />
+                                  <span>
+                                    <span className="font-semibold text-navy">{kick.clock}</span>
+                                    {kick.field ? ` · ${kick.field}` : ""} · {kick.squad} · {kick.side === "home" ? "vs" : "at"} {kick.opponent}
+                                    {label ? <span className="ml-2 font-semibold text-stone-500">{label}</span> : null}
+                                  </span>
                                 </li>
                               );
                             })}
@@ -427,28 +406,25 @@ export function FavoritesHome() {
                 })}
               </ol>
             </section>
-
-            <section className="mt-6" aria-label="Upcoming opponents" data-opponent-count={opponents.length}>
-              <h2 className="text-xl font-semibold text-navy">Upcoming opponents</h2>
-              {opponents.length === 0 ? <p className="mt-3 text-sm text-stone-500">No opponents in this window.</p> : null}
-              <ul className="mt-3 flex flex-wrap gap-4">
-                {opponents.map((opponent) => (
-                  <li key={opponent.key} className="flex w-36 flex-col items-center gap-2 text-center">
-                    <ClubMark name={opponent.name} src={opponent.logo} />
-                    <span className="text-sm font-semibold text-navy">{opponent.name}</span>
-                    <span className="text-xs text-stone-500">{dayLabel(opponent.day)}</span>
-                    {opponent.squads.map((squad) => (
-                      <Link
-                        key={`${squad.teamId}-${squad.opponentId}`}
-                        href={`/head-to-head?teamA=${squad.teamId}&teamB=${squad.opponentId}`}
-                        className="text-xs font-medium text-navy underline underline-offset-4"
-                      >
-                        {squad.label} · {squad.side === "home" ? "vs" : "at"} · Match Up
-                      </Link>
-                    ))}
-                  </li>
-                ))}
-              </ul>
+            <div>
+              <WindowSlider
+                days={rangeDays}
+                start={windowStart}
+                end={windowEnd}
+                onStart={chooseStart}
+                onEnd={chooseEnd}
+              />
+              <HomeFieldMap
+                pins={pins}
+                star={payload.home}
+                focusId={pinFocus}
+                onSelect={showStop}
+                className="mt-3 h-80 lg:h-[28rem]"
+              />
+              <p className="mt-2 text-sm text-stone-500" data-pin-note>
+                Pins are stored field locations. They are not confirmed on the ground.
+              </p>
+            </div>
             </section>
           </>
         ) : null}
@@ -477,7 +453,7 @@ function WindowSlider({
   const right = max === 0 ? 0 : 100 - (endIndex / max) * 100;
 
   return (
-    <div data-window-start={start} data-window-end={end}>
+    <div data-window-start={start} data-window-end={end} data-range-end={days[max] ?? ""}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <label className="text-sm font-medium text-navy">
           Start
@@ -539,69 +515,3 @@ function WindowSlider({
   );
 }
 
-function ComingMonth({
-  days,
-  gameDays,
-  start,
-  end,
-  onPick,
-}: {
-  days: string[];
-  gameDays: Set<string>;
-  start: string;
-  end: string;
-  onPick: (day: string) => void;
-}) {
-  const months: { label: string; days: string[] }[] = [];
-  for (const day of days) {
-    const label = monthLabel(day);
-    const current = months[months.length - 1];
-    if (!current || current.label !== label) months.push({ label, days: [day] });
-    else current.days.push(day);
-  }
-
-  return (
-    <div className="space-y-3">
-      {months.map((month) => {
-        const leading = weekdayIndex(month.days[0]);
-        const cells: Array<string | null> = [...Array.from({ length: leading }, () => null), ...month.days];
-        while (cells.length % 7 !== 0) cells.push(null);
-        return (
-          <div key={month.label} className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
-            <h2 className="border-b border-stone-100 px-3 py-2 text-sm font-semibold text-navy">{month.label}</h2>
-            <div className="grid grid-cols-7 border-b border-stone-100 bg-stone-50 text-center text-[10px] font-medium uppercase tracking-wide text-stone-500">
-              {WEEKDAYS.map((day) => (
-                <div key={day} className="px-1 py-1">
-                  {day.slice(0, 1)}
-                </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7">
-              {cells.map((day, index) => {
-                const selected = day != null && inWindow(day, start, end);
-                const marked = day != null && gameDays.has(day);
-                const inside = day != null && inWindow(day, start, end) && marked;
-                return (
-                  <button
-                    key={day ?? `empty-${month.label}-${index}`}
-                    type="button"
-                    disabled={!inside}
-                    onClick={() => {
-                      if (day && inside) onPick(day);
-                    }}
-                    className={`flex h-9 flex-col items-center justify-center text-xs ${selected ? "bg-gold-soft text-navy" : "text-stone-500"} ${inside ? "font-semibold" : ""} disabled:cursor-default`}
-                    aria-label={day ? dayLabel(day) : undefined}
-                    aria-pressed={selected}
-                  >
-                    {day ? Number(day.slice(8)) : ""}
-                    {marked ? <span className={`mt-0.5 size-1.5 rounded-full ${inside ? "bg-navy" : "bg-stone-400"}`} /> : null}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
