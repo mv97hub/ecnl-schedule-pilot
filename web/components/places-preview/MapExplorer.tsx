@@ -3,16 +3,17 @@
 import { ChevronDown, LoaderCircle, Search, Star } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { TermsCheckbox } from "@/components/CommentFields";
 import { ClubMark } from "@/components/ClubMark";
-import { fetchClubCatalog, fetchClubLocations, fetchClubMap, fetchFieldMap, fetchLocationDetail, voteRecommendation } from "@/lib/api";
+import { acceptTerms, fetchClubCatalog, fetchClubLocations, fetchClubMap, fetchFieldMap, fetchLocationDetail, postRating, voteRecommendation } from "@/lib/api";
 import type { MapFieldPoint, MapTipPoint } from "@/lib/api";
-import { signInHref, useAccount } from "@/lib/useAccount";
-import type { ClubListItem, ClubLocationTip, LocationAggregate, LocationCard, LocationDetail, LocationScores, LocationTip, TipVote } from "@/lib/types";
+import { signInHref, useAccount, type WebsiteAccount } from "@/lib/useAccount";
+import type { ClubListItem, ClubLocationTip, LocationAggregate, LocationCard, LocationDetail, LocationScores, LocationTip, MyRating, TipVote } from "@/lib/types";
 
 import { FieldMap, type MapPin } from "./FieldMap";
-import { Meter, PreviewBack, TipCard, scoreText } from "./bits";
+import { PreviewBack, TipCard, scoreText } from "./bits";
 
 type ScoreKey = "field_quality" | "referees" | "parent_vibe" | "parking_access" | "amenities";
 
@@ -23,6 +24,277 @@ const SCORE_CRITERIA: { key: ScoreKey; label: string; short: string }[] = [
   { key: "parking_access", label: "Parking and walkability", short: "Parking" },
   { key: "amenities", label: "Amenities", short: "Amenities" },
 ];
+
+type Scores = Record<ScoreKey, number>;
+
+const EMPTY_SCORES: Scores = {
+  field_quality: 0,
+  referees: 0,
+  parent_vibe: 0,
+  parking_access: 0,
+  amenities: 0,
+};
+
+function scoresFrom(rating: MyRating): Scores {
+  return {
+    field_quality: rating.field_quality,
+    referees: rating.referees,
+    parent_vibe: rating.parent_vibe,
+    parking_access: rating.parking_access,
+    amenities: rating.amenities,
+  };
+}
+
+function scoresComplete(scores: Scores): boolean {
+  return SCORE_CRITERIA.every((item) => scores[item.key] >= 1 && scores[item.key] <= 5);
+}
+
+function CriterionStars({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  disabled: boolean;
+  onChange: (score: number) => void;
+}) {
+  const [hover, setHover] = useState(0);
+  const shown = !disabled && hover > 0 ? hover : value;
+  return (
+    <div
+      className={`inline-flex shrink-0 ${disabled ? "cursor-not-allowed" : ""}`}
+      role="group"
+      aria-label={`Your ${label} rating`}
+      data-my-rating={value}
+      onMouseLeave={() => setHover(0)}
+    >
+      {[1, 2, 3, 4, 5].map((score) => {
+        const filled = score <= shown;
+        return (
+          <button
+            key={score}
+            type="button"
+            disabled={disabled}
+            aria-label={`${label} ${score} out of 5`}
+            aria-pressed={value === score}
+            onMouseEnter={() => {
+              if (!disabled) setHover(score);
+            }}
+            onFocus={() => {
+              if (!disabled) setHover(score);
+            }}
+            onBlur={() => setHover(0)}
+            onClick={() => onChange(score)}
+            className="rounded p-0.5 disabled:cursor-not-allowed"
+          >
+            <Star className={`size-5 ${filled ? "fill-amber-400 text-amber-500" : "text-stone-300"} ${disabled ? "opacity-50" : ""}`} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ScorecardRow({
+  scoreKey,
+  label,
+  average,
+  mine,
+  disabled,
+  onChange,
+}: {
+  scoreKey: ScoreKey;
+  label: string;
+  average: number | null;
+  mine: number;
+  disabled: boolean;
+  onChange: (score: number) => void;
+}) {
+  const width = average == null ? 0 : Math.max(0, Math.min(100, (average / 5) * 100));
+  return (
+    <div data-score-key={scoreKey}>
+      <p className="text-sm text-ink">{label}</p>
+      <div className="mt-1 flex items-center gap-3">
+        <div className="h-2 min-w-16 max-w-xs flex-1 rounded-full bg-stone-100" aria-hidden="true">
+          <div className="h-2 rounded-full bg-gold" style={{ width: `${width}%` }} />
+        </div>
+        <span className="w-8 shrink-0 text-right text-sm font-medium tabular-nums text-navy" data-average={average == null ? "" : average.toFixed(1)}>
+          <span className="sr-only">Average </span>
+          {scoreText(average)}
+        </span>
+        <CriterionStars label={label} value={mine} disabled={disabled} onChange={onChange} />
+      </div>
+    </div>
+  );
+}
+
+function FieldScorecard({
+  detail,
+  account,
+  returnHref,
+  onDetail,
+}: {
+  detail: LocationDetail;
+  account: WebsiteAccount | null | undefined;
+  returnHref: string;
+  onDetail: (next: LocationDetail) => void;
+}) {
+  const [mine, setMine] = useState<Scores>(() => (detail.my_rating ? scoresFrom(detail.my_rating) : { ...EMPTY_SCORES }));
+  const [saving, setSaving] = useState(false);
+  const [ratingError, setRatingError] = useState<string | null>(null);
+  const [ratingMessage, setRatingMessage] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const latest = useRef(mine);
+  const saved = useRef<Scores>(detail.my_rating ? scoresFrom(detail.my_rating) : { ...EMPTY_SCORES });
+  const inflight = useRef(false);
+  const queued = useRef(false);
+  const detailRef = useRef(detail);
+  const onDetailRef = useRef(onDetail);
+  const needsTerms = Boolean(account && !account.terms_accepted && !termsAccepted);
+  const needsTermsRef = useRef(needsTerms);
+  const agreedRef = useRef(agreed);
+  const signedIn = account != null;
+
+  useEffect(() => {
+    detailRef.current = detail;
+    onDetailRef.current = onDetail;
+    needsTermsRef.current = needsTerms;
+    agreedRef.current = agreed;
+  }, [agreed, detail, needsTerms, onDetail]);
+  const partial = !scoresComplete(mine) && SCORE_CRITERIA.some((item) => mine[item.key] > 0);
+
+  async function persist() {
+    const current = detailRef.current;
+    const scores = { ...latest.current };
+    if (!scoresComplete(scores)) return;
+    if (inflight.current) {
+      queued.current = true;
+      return;
+    }
+    if (needsTermsRef.current && !agreedRef.current) {
+      setRatingError("Agree to the Terms of Use.");
+      setRatingMessage(null);
+      return;
+    }
+    inflight.current = true;
+    setSaving(true);
+    setRatingError(null);
+    setRatingMessage(null);
+    try {
+      if (needsTermsRef.current) {
+        await acceptTerms();
+        setTermsAccepted(true);
+        needsTermsRef.current = false;
+      }
+      await postRating({
+        venue_name: current.venue_name,
+        city: current.city,
+        state: current.state,
+        ...scores,
+        surface_vote: current.my_rating?.surface_vote ?? null,
+        comment: current.my_rating?.comment ?? null,
+      });
+      const next = await fetchLocationDetail(current.venue_key, null);
+      if (!queued.current) {
+        onDetailRef.current(next);
+        if (next.my_rating) {
+          const stored = scoresFrom(next.my_rating);
+          latest.current = stored;
+          saved.current = stored;
+          setMine(stored);
+        }
+        setRatingMessage("Rating saved.");
+      }
+    } catch (err: unknown) {
+      if (!queued.current) {
+        setRatingError(err instanceof Error ? err.message : "Could not save that rating.");
+      }
+    } finally {
+      inflight.current = false;
+      const again = queued.current;
+      queued.current = false;
+      if (again) void persist();
+      else setSaving(false);
+    }
+  }
+
+  function rate(key: ScoreKey, score: number) {
+    if (!signedIn) return;
+    if (latest.current[key] === score && saved.current[key] === score) return;
+    const next = { ...latest.current, [key]: score };
+    latest.current = next;
+    setMine(next);
+    setRatingMessage(null);
+    if (!scoresComplete(next)) {
+      setRatingError(null);
+      return;
+    }
+    if (needsTerms && !agreed) {
+      setRatingError("Agree to the Terms of Use.");
+      return;
+    }
+    setRatingError(null);
+    void persist();
+  }
+
+  function agree(next: boolean) {
+    setAgreed(next);
+    agreedRef.current = next;
+    if (!next) return;
+    if (!scoresComplete(latest.current)) return;
+    setRatingError(null);
+    void persist();
+  }
+
+  return (
+    <section className="mt-4 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm" aria-label="Scorecard">
+      <h2 className="text-lg font-semibold text-navy">Scorecard</h2>
+      <p className="mt-1 text-sm text-stone-500">
+        {detail.overall == null || detail.ratings_count === 0
+          ? "No family ratings yet"
+          : `${detail.overall.toFixed(1)} overall · ${detail.ratings_count} ${detail.ratings_count === 1 ? "rating" : "ratings"}`}
+      </p>
+      <div className="mt-4 space-y-3">
+        {SCORE_CRITERIA.map((item) => (
+          <ScorecardRow
+            key={item.key}
+            scoreKey={item.key}
+            label={item.label}
+            average={detail[item.key]}
+            mine={mine[item.key]}
+            disabled={!signedIn}
+            onChange={(score) => rate(item.key, score)}
+          />
+        ))}
+      </div>
+      {needsTerms ? <TermsCheckbox id="map-rating-terms" checked={agreed} onChange={agree} /> : null}
+      {ratingError || saving || ratingMessage || (signedIn && partial) ? (
+        <p className="mt-3 text-sm" aria-live="polite">
+          {ratingError ? (
+            <span className="text-ink">{ratingError}</span>
+          ) : saving ? (
+            <span className="text-stone-500">Saving</span>
+          ) : ratingMessage ? (
+            <span className="text-navy">{ratingMessage}</span>
+          ) : (
+            <span className="text-stone-500">Choose 1 to 5 on each row to save.</span>
+          )}
+        </p>
+      ) : null}
+      {account === null ? (
+        <p className="mt-3 text-sm text-stone-500">
+          <Link href={returnHref} className="font-medium text-navy underline underline-offset-4">
+            Sign in
+          </Link>{" "}
+          to rate
+        </p>
+      ) : null}
+    </section>
+  );
+}
 
 type TipSummary = {
   hotels: number;
@@ -438,19 +710,7 @@ export function MapExplorerField({ venueKey }: { venueKey: string }) {
                 </Link>
               </div>
             </div>
-            <section className="mt-4 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm" aria-label="Scorecard">
-              <h2 className="text-lg font-semibold text-navy">Scorecard</h2>
-              <p className="mt-1 text-sm text-stone-500">
-                {detail.overall == null || detail.ratings_count === 0
-                  ? "No family ratings yet"
-                  : `${detail.overall.toFixed(1)} overall · ${detail.ratings_count} ${detail.ratings_count === 1 ? "rating" : "ratings"}`}
-              </p>
-              <div className="mt-4 space-y-3">
-                {SCORE_CRITERIA.map((item) => (
-                  <Meter key={item.key} label={item.label} value={detail[item.key]} />
-                ))}
-              </div>
-            </section>
+            <FieldScorecard detail={detail} account={account} returnHref={returnHref} onDetail={setDetail} />
             <div className="mt-4">
               {pins.length > 0 ? <FieldMap pins={pins} focusId="field" className="h-96" /> : <p className="rounded-2xl border border-stone-200 bg-white p-4 text-sm text-stone-500">No map point for this field yet.</p>}
               <ul className="mt-2 flex flex-wrap gap-3 text-xs text-stone-500">
