@@ -1,7 +1,7 @@
 "use client";
 
 import { LoaderCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { PlaceCredit } from "@/components/PlaceCredit";
 import { fetchFieldPoint, fetchPlaceSuggestions, type PlaceSuggestion } from "@/lib/api";
@@ -134,44 +134,6 @@ export function PlaceNameInput({
     };
   }, [searchable, venueKey, venueName, city, state, onPlaceId, onAddress]);
 
-  useEffect(() => {
-    if (!searchable || !confirmed || declined || placeId || !venueKey) {
-      setSuggestions([]);
-      setLooking(false);
-      return;
-    }
-    const query = value.trim();
-    if (query.length < MIN_CHARS) {
-      setSuggestions([]);
-      setLooking(false);
-      setNote(null);
-      return;
-    }
-    let active = true;
-    const handle = window.setTimeout(() => {
-      setLooking(true);
-      fetchPlaceSuggestions(venueKey, category as "HOTEL" | "RESTAURANT" | "COFFEE_GAP", query)
-        .then((rows) => {
-          if (!active) return;
-          setSuggestions(rows);
-          setNote(rows.length === 0 ? "No matching places. The name is saved as you type it." : null);
-        })
-        .catch((err: unknown) => {
-          if (!active) return;
-          setSuggestions([]);
-          const message = err instanceof Error ? err.message : "";
-          setNote(message || "Place search is unavailable. The name is saved as you type it.");
-        })
-        .finally(() => {
-          if (active) setLooking(false);
-        });
-    }, PAUSE_MS);
-    return () => {
-      active = false;
-      window.clearTimeout(handle);
-    };
-  }, [searchable, confirmed, declined, placeId, venueKey, category, value]);
-
   function edit(next: string) {
     onChange(next);
     if (placeId) {
@@ -201,6 +163,54 @@ export function PlaceNameInput({
     setNote(null);
   }
 
+  const searchToken = useRef(0);
+  const runSearch = useCallback(() => {
+    if (!searchable || !confirmed || declined || placeId || !venueKey) return;
+    const query = value.trim();
+    if (query.length < MIN_CHARS) {
+      setSuggestions([]);
+      setLooking(false);
+      setNote(null);
+      return;
+    }
+    const token = ++searchToken.current;
+    setLooking(true);
+    fetchPlaceSuggestions(venueKey, category as "HOTEL" | "RESTAURANT" | "COFFEE_GAP", query)
+      .then((rows) => {
+        if (searchToken.current !== token) return;
+        setSuggestions(rows);
+        setNote(rows.length === 0 ? "No matching places. The name is saved as you type it." : null);
+      })
+      .catch((err: unknown) => {
+        if (searchToken.current !== token) return;
+        setSuggestions([]);
+        const message = err instanceof Error ? err.message : "";
+        setNote(message || "Place search is unavailable. The name is saved as you type it.");
+      })
+      .finally(() => {
+        if (searchToken.current === token) setLooking(false);
+      });
+  }, [searchable, confirmed, declined, placeId, venueKey, category, value]);
+
+  useEffect(() => {
+    if (!searchable || !confirmed || declined || placeId || !venueKey) {
+      setSuggestions([]);
+      setLooking(false);
+      return;
+    }
+    const query = value.trim();
+    if (query.length < MIN_CHARS) {
+      setSuggestions([]);
+      setLooking(false);
+      setNote(null);
+      return;
+    }
+    const handle = window.setTimeout(() => runSearch(), PAUSE_MS);
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [searchable, confirmed, declined, placeId, venueKey, value, runSearch]);
+
   const found = point.kind === "ready" && point.status === "found" && point.formatted_address;
   const showCredit = Boolean(searchable && (found || suggestions.length > 0 || placeId));
   const addressClass = `${className} read-only:bg-stone-50`;
@@ -209,19 +219,37 @@ export function PlaceNameInput({
     <div>
       <label htmlFor={id} className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
         {nameLabel(category)}
+      </label>
+      <div className="flex items-center gap-2">
         <input
           id={id}
           value={value}
           onChange={(event) => edit(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || !searchable) return;
+            event.preventDefault();
+            runSearch();
+          }}
           autoComplete="off"
           data-place-name
           role={searchable ? "combobox" : undefined}
           aria-autocomplete={searchable ? "list" : undefined}
           aria-expanded={searchable ? suggestions.length > 0 : undefined}
           aria-controls={searchable ? listId : undefined}
-          className={className}
+          className={`${className} min-w-0 flex-1`}
         />
-      </label>
+        {searchable ? (
+          <button
+            type="button"
+            data-place-search
+            onClick={() => runSearch()}
+            disabled={!confirmed || declined || locked || !venueKey || looking || value.trim().length < MIN_CHARS}
+            className="mt-1 h-10 shrink-0 rounded-xl bg-gold px-3 text-sm font-medium text-navy disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Search
+          </button>
+        ) : null}
+      </div>
       {point.kind === "loading" ? (
         <p className="mt-2 flex items-center gap-2 text-xs text-stone-500">
           <LoaderCircle className="size-3.5 animate-spin" />

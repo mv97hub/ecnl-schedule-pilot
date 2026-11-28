@@ -26,6 +26,10 @@ PLACES_URL = "https://api.geoapify.com/v2/places"
 DETAILS_URL = "https://api.geoapify.com/v2/place-details"
 SEARCH_RADIUS_METERS = 40234  # 25 miles
 SUGGEST_LIMIT = 5
+# Geoapify's name filter only looks at a window that grows with limit. At 5,
+# "Island Wing" misses Island Wing Company Grill & Bar, 12 miles from the
+# Veterans Park pin. 20 returns that match. The response still keeps 5.
+PLACES_NAME_LIMIT = 20
 MIN_QUERY_CHARS = 3
 NEAR_MILES = 25.0
 FIELD_NEAR_CITY_MILES = 25.0
@@ -203,11 +207,37 @@ def geocode_venue(name: str, city: str, state: str) -> GeocodeHit | None:
     return lookup_field_pin(name, city, state).hit
 
 
+def singular_place_query(query: str) -> str | None:
+    """Drop a trailing s so "Island Wings" can match "Island Wing Company".
+
+    Geoapify's name filter is a substring check. "Wings" is not contained in
+    "Wing". A second search uses the shorter form only when the typed text
+    finds nothing. Words of four letters or fewer, and words ending in ss,
+    stay as typed.
+    """
+
+    changed = False
+    stems: list[str] = []
+    for word in query.split(" "):
+        if len(word) >= 5 and word.isalpha() and word.endswith("s") and not word.endswith("ss"):
+            stems.append(word[:-1])
+            changed = True
+        else:
+            stems.append(word)
+    if not changed:
+        return None
+    return " ".join(stems)
+
+
 def suggest_places(query: str, category: str, latitude: float, longitude: float) -> list[PlaceSuggestionHit]:
     """Places whose names contain the typed text, inside twenty-five miles of the field.
 
     Each lodging, food, or hangout category is a separate request. One combined
     category list makes Geoapify's name filter return an empty collection.
+    The request asks for more rows than we show, because a small limit drops a
+    matching place that sits farther out in the circle. When the typed name
+    finds nothing, one more pass drops a trailing s ("Island Wings" to
+    "Island Wing").
     """
 
     labels = (
@@ -224,6 +254,17 @@ def suggest_places(query: str, category: str, latitude: float, longitude: float)
     point = f"{longitude:.6f},{latitude:.6f}"
     circle = f"circle:{point},{SEARCH_RADIUS_METERS}"
     bias = f"proximity:{point}"
+    ranked = _ranked_places(query, labels, circle, bias)
+    if not ranked:
+        singular = singular_place_query(query)
+        if singular is not None and singular.casefold() != query.casefold():
+            ranked = _ranked_places(singular, labels, circle, bias)
+    return _suggestions({"features": [feature for _, _, feature in ranked]})
+
+
+def _ranked_places(
+    query: str, labels: tuple[str, ...], circle: str, bias: str
+) -> list[tuple[float, int, dict]]:
     ranked: list[tuple[float, int, dict]] = []
     order = 0
     for label in labels:
@@ -234,7 +275,7 @@ def suggest_places(query: str, category: str, latitude: float, longitude: float)
                 "name": query,
                 "filter": circle,
                 "bias": bias,
-                "limit": str(SUGGEST_LIMIT),
+                "limit": str(PLACES_NAME_LIMIT),
                 "lang": "en",
             },
         )
@@ -249,7 +290,7 @@ def suggest_places(query: str, category: str, latitude: float, longitude: float)
             ranked.append((distance if distance is not None else 1e12, order, feature))
             order += 1
     ranked.sort(key=lambda item: (item[0], item[1]))
-    return _suggestions({"features": [feature for _, _, feature in ranked]})
+    return ranked
 
 
 def retrieve_place(place_id: str) -> PlaceHit | None:

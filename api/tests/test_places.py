@@ -25,11 +25,13 @@ from app.places import (
     NEAR_MILES,
     PIN_RULE_MANUAL,
     PIN_RULE_MATCH,
+    PLACES_NAME_LIMIT,
     SEARCH_RADIUS_METERS,
     category_fits,
     choose_field_pin,
     miles_between,
     reset_place_rate_limit,
+    singular_place_query,
     suggest_places,
 )
 
@@ -208,6 +210,14 @@ class GeocodeRankTests(unittest.TestCase):
         assert hit is not None
         self.assertEqual(hit.latitude, 30.068)
         self.assertEqual(hit.longitude, -81.901)
+
+    def test_a_trailing_s_is_the_only_name_change(self) -> None:
+        self.assertEqual(singular_place_query("Island Wings"), "Island Wing")
+        self.assertEqual(singular_place_query("Buffalo Wild Wings"), "Buffalo Wild Wing")
+        self.assertIsNone(singular_place_query("Island Wing"))
+        self.assertIsNone(singular_place_query("Hyatt"))
+        self.assertIsNone(singular_place_query("Boss"))
+        self.assertEqual(singular_place_query("Wings"), "Wing")
 
 
 class PlaceLookupTests(unittest.TestCase):
@@ -695,6 +705,64 @@ class PlaceLookupTests(unittest.TestCase):
             [str(call["params"]["categories"]) for call in self.calls],
             ["accommodation.hotel", "accommodation.motel", "accommodation.guest_house"],
         )
+        self.assertTrue(all(str(call["params"]["limit"]) == str(PLACES_NAME_LIMIT) for call in self.calls))
+
+    def test_island_wings_uses_the_singular_name_when_the_plural_misses(self) -> None:
+        """Geoapify stores Island Wing Company, and limit 5 hides it from the pin."""
+
+        company_id = "c0ffee1234abcd90"
+
+        def fake(url: str, params: dict | None = None, timeout: float | None = None) -> _Response:
+            query = dict(params or {})
+            self.calls.append({"url": url, "params": query, "timeout": timeout})
+            name = str(query.get("name") or "")
+            categories = str(query.get("categories") or "")
+            limit = str(query.get("limit") or "")
+            if name == "Island Wing" and categories == "catering.restaurant" and limit == str(PLACES_NAME_LIMIT):
+                feature = _place_feature(company_id, "Island Wing Company Grill & Bar", ["catering.restaurant"], 30.266548, -81.557518)
+                feature["properties"]["distance"] = 19517
+                feature["properties"]["formatted"] = "Island Wing Company Grill & Bar, 4409 Southside Boulevard, Jacksonville, FL 32216, United States"
+                feature["properties"]["address_line1"] = "4409 Southside Boulevard"
+                feature["properties"]["city"] = "Jacksonville"
+                feature["properties"]["state_code"] = "fl"
+                feature["properties"]["postcode"] = "32216"
+                return _Response({"features": [feature]})
+            return _Response({"features": []})
+
+        with patch("app.places.httpx.get", side_effect=fake):
+            hits = suggest_places("Island Wings", "RESTAURANT", 30.09074022710416, -81.56896571349351)
+        self.assertEqual([hit.name for hit in hits], ["Island Wing Company Grill & Bar"])
+        self.assertEqual(hits[0].street, "4409 Southside Boulevard")
+        self.assertEqual(hits[0].city, "Jacksonville")
+        self.assertEqual(hits[0].state, "FL")
+        self.assertEqual(hits[0].postal_code, "32216")
+        names = [str(call["params"]["name"]) for call in self.calls]
+        self.assertEqual(names[:3], ["Island Wings", "Island Wings", "Island Wings"])
+        self.assertEqual(names[3:], ["Island Wing", "Island Wing", "Island Wing"])
+        categories = [str(call["params"]["categories"]) for call in self.calls]
+        self.assertEqual(categories[:3], ["catering.restaurant", "catering.fast_food", "catering.cafe"])
+        self.assertEqual(categories[3:], ["catering.restaurant", "catering.fast_food", "catering.cafe"])
+        self.assertTrue(all("," not in label for label in categories))
+        center = f"{-81.56896571349351:.6f},{30.09074022710416:.6f}"
+        for call in self.calls:
+            params = call["params"]
+            self.assertEqual(params["bias"], f"proximity:{center}")
+            self.assertEqual(params["filter"], f"circle:{center},{SEARCH_RADIUS_METERS}")
+            self.assertEqual(params["limit"], str(PLACES_NAME_LIMIT))
+
+    def test_an_empty_name_without_a_plural_is_not_searched_twice(self) -> None:
+        def fake(url: str, params: dict | None = None, timeout: float | None = None) -> _Response:
+            query = dict(params or {})
+            self.calls.append({"url": url, "params": query, "timeout": timeout})
+            return _Response({"features": []})
+
+        with patch("app.places.httpx.get", side_effect=fake):
+            hits = suggest_places("Hyatt", "HOTEL", FIELD_LAT, FIELD_LON)
+        self.assertEqual(hits, [])
+        self.assertEqual(
+            [str(call["params"]["categories"]) for call in self.calls],
+            ["accommodation.hotel", "accommodation.motel", "accommodation.guest_house"],
+        )
 
     def test_a_hand_typed_address_is_saved_for_a_hotel_only(self) -> None:
         with TestClient(app) as client:
@@ -1047,8 +1115,10 @@ class PlaceLookupTests(unittest.TestCase):
             for call in place_calls:
                 params = call["params"]
                 self.assertIsInstance(params, dict)
-                self.assertEqual(params["bias"], f"proximity:{center}")
-                self.assertEqual(params["filter"], f"circle:{center},{SEARCH_RADIUS_METERS}")
+            self.assertEqual(params["bias"], f"proximity:{center}")
+            self.assertEqual(params["filter"], f"circle:{center},{SEARCH_RADIUS_METERS}")
+            self.assertEqual(params["name"], "Island Wings")
+            self.assertEqual(params["limit"], str(PLACES_NAME_LIMIT))
             self.assertFalse(any("geocode" in str(call["url"]) for call in self.calls))
 
             saved = client.post(
