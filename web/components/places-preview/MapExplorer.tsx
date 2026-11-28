@@ -493,9 +493,7 @@ export function MapExplorerDirectory() {
   return (
     <div className="min-h-full bg-bone">
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-        <PreviewBack href="/locations" label="Places" />
-        <p className="mt-3 text-xs font-medium uppercase tracking-wide text-stone-400">Preview</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-navy">Map explorer</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-navy">Places</h1>
         <p className="mt-1 max-w-2xl text-sm text-stone-500">Pick a club. Its fields are listed from the schedule right away. Saved pins fill in on the map. A pin is a saved lookup, not a verified location.</p>
         <div className="mt-4">
           <Link
@@ -540,7 +538,7 @@ export function MapExplorerDirectory() {
                       onClick={() => {
                         setOpen(false);
                         setClubQuery("");
-                        router.push(`/locations/v3?club=${encodeURIComponent(String(club.id))}`);
+                        router.push(`/locations?club=${encodeURIComponent(String(club.id))}`);
                       }}
                       className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-stone-50"
                     >
@@ -590,7 +588,7 @@ export function MapExplorerDirectory() {
                           </span>
                         ))}
                       </button>
-                      <Link href={`/locations/v3/${encodeURIComponent(field.venue_key)}`} className="mt-1 inline-flex text-xs font-medium text-navy underline-offset-4 hover:underline">
+                      <Link href={`/locations/${encodeURIComponent(field.venue_key)}`} className="mt-1 inline-flex text-xs font-medium text-navy underline-offset-4 hover:underline">
                         Open field
                       </Link>
                     </div>
@@ -613,7 +611,7 @@ export function MapExplorerDirectory() {
 
 export function MapExplorerField({ venueKey }: { venueKey: string }) {
   const account = useAccount();
-  const returnHref = signInHref(`/locations/v3/${encodeURIComponent(venueKey)}`);
+  const returnHref = signInHref(`/locations/${encodeURIComponent(venueKey)}`);
   const [detail, setDetail] = useState<LocationDetail | null>(null);
   const [mapTips, setMapTips] = useState<MapTipPoint[]>([]);
   const [fieldPoint, setFieldPoint] = useState<MapFieldPoint | null>(null);
@@ -683,7 +681,7 @@ export function MapExplorerField({ venueKey }: { venueKey: string }) {
   return (
     <div className="min-h-full bg-bone">
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-        <PreviewBack href="/locations/v3" label="Map explorer" />
+        <PreviewBack href="/locations" label="Places" />
         {loading ? (
           <p className="mt-6 flex items-center gap-2 text-sm text-stone-500">
             <LoaderCircle className="size-4 animate-spin" />
@@ -705,7 +703,7 @@ export function MapExplorerField({ venueKey }: { venueKey: string }) {
                 <a href={detail.links.directions} target="_blank" rel="noopener noreferrer" className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink">
                   Directions
                 </a>
-                <Link href={`/locations/v3/${encodeURIComponent(detail.venue_key)}/tip`} className="rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy">
+                <Link href={`/locations/${encodeURIComponent(detail.venue_key)}/tip`} className="rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy">
                   Add a tip
                 </Link>
               </div>

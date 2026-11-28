@@ -10,6 +10,36 @@ const nextConfig: NextConfig = {
         destination: "/standings?view=projected",
         permanent: false,
       },
+      {
+        source: "/locations/v2/:venueKey/tip",
+        destination: "/locations/:venueKey/tip",
+        permanent: false,
+      },
+      {
+        source: "/locations/v2/:venueKey",
+        destination: "/locations/:venueKey",
+        permanent: false,
+      },
+      {
+        source: "/locations/v2",
+        destination: "/locations",
+        permanent: false,
+      },
+      {
+        source: "/locations/v3/:venueKey/tip",
+        destination: "/locations/:venueKey/tip",
+        permanent: false,
+      },
+      {
+        source: "/locations/v3/:venueKey",
+        destination: "/locations/:venueKey",
+        permanent: false,
+      },
+      {
+        source: "/locations/v3",
+        destination: "/locations",
+        permanent: false,
+      },
     ];
   },
   cacheComponents: true,
