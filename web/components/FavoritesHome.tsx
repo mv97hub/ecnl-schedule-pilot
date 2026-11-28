@@ -361,7 +361,7 @@ export function FavoritesHome() {
             </section>
 
             <section className="mt-6 grid items-start gap-6 lg:grid-cols-2">
-            <section aria-label="Upcoming locations">
+            <section className="order-2 lg:order-1" aria-label="Upcoming locations">
               <h2 className="text-xl font-semibold text-navy">Upcoming locations</h2>
               {stops.length === 0 ? <p className="mt-3 text-sm text-stone-500">No games in this window.</p> : null}
               <ol className="mt-3 space-y-3" data-location-count={stops.length} data-pin-count={pins.length}>
@@ -433,7 +433,7 @@ export function FavoritesHome() {
                 })}
               </ol>
             </section>
-            <div>
+            <div className="order-1 lg:order-2">
               <WindowSlider
                 days={rangeDays}
                 start={windowStart}
