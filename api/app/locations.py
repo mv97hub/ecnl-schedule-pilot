@@ -81,7 +81,7 @@ SurfaceVote = Literal["GRASS", "TURF", "MIXED"]
 TipCategory = Literal["HOTEL", "RESTAURANT", "COFFEE_GAP", "ACTIVITY", "SIDELINE_TIP"]
 VoteChoice = Literal["up", "down"]
 CATEGORIES = {"HOTEL", "RESTAURANT", "COFFEE_GAP", "ACTIVITY", "SIDELINE_TIP"}
-MATCH_CATEGORIES = frozenset({"HOTEL", "RESTAURANT"})
+MATCH_CATEGORIES = frozenset({"HOTEL", "RESTAURANT", "COFFEE_GAP"})
 PLACE_UNAVAILABLE = "Place lookup is unavailable"
 PLACE_BUSY = "Too many place lookups. You can still save the name as typed."
 PLACE_NOT_NEAR = "That place is not near this field. You can still save the name as typed."
@@ -1363,11 +1363,11 @@ def _resolve_map_field(session: Session, bucket: ComplexBucket) -> MapFieldOut:
     """
 
     base = {"venue_key": bucket.venue_key, "venue_name": bucket.venue_name, "city": bucket.city, "state": bucket.state}
-    if _is_tbd(bucket.venue_name):
-        return MapFieldOut(**base, status="skipped")
     cached = session.get(VenueFieldPoint, bucket.venue_key)
     if cached is not None and (cached.pin_rule or "") in _SAVED_PIN_RULES:
         return _map_from_row(bucket, cached)
+    if _is_tbd(bucket.venue_name):
+        return MapFieldOut(**base, status="skipped")
     session.rollback()
     if not bucket.city or not bucket.state:
         return MapFieldOut(**base, status="skipped")
@@ -1906,13 +1906,17 @@ def read_place_suggestions(
     category: str = Query(min_length=1, max_length=16),
     q: str = Query(default="", max_length=80),
 ) -> PlaceSuggestionsOut:
-    """Suggest hotels or restaurants within twenty-five miles of the cached field point. Short queries do not call Geoapify."""
+    """Suggest hotels, restaurants, or hangouts within twenty-five miles of the cached field point.
+
+    A saved pin, including a manual pin with no formatted address, is the search center.
+    This does not geocode again and does not replace that pin. Short queries do not call Geoapify.
+    """
 
     user = require_user(session, token)
     _require_terms(user)
     user_id = int(user.id)
     if category not in MATCH_CATEGORIES:
-        raise HTTPException(status_code=400, detail="Place search is only for a hotel or a restaurant.")
+        raise HTTPException(status_code=400, detail="Place search is only for a hotel, a restaurant, or a team hangout.")
     query = " ".join(q.split())
     if len(query) < MIN_QUERY_CHARS:
         return PlaceSuggestionsOut(suggestions=[])

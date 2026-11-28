@@ -24,8 +24,6 @@ const SCORE_CRITERIA: { key: ScoreKey; label: string; short: string }[] = [
   { key: "amenities", label: "Amenities", short: "Amenities" },
 ];
 
-const HIGHLY_RATED = 4;
-
 type TipSummary = {
   hotels: number;
   food: number;
@@ -68,19 +66,6 @@ function ScoreLine({ scores }: { scores: LocationScores }) {
         </span>
       ))}
     </div>
-  );
-}
-
-function FilterChip({ pressed, onClick, children }: { pressed: boolean; onClick: () => void; children: string }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={pressed}
-      onClick={onClick}
-      className={`rounded-full border px-3 py-1 text-sm ${pressed ? "border-navy bg-navy text-white" : "border-stone-300 bg-white text-ink"}`}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -149,9 +134,6 @@ export function MapExplorerDirectory() {
   const [selected, setSelected] = useState<string | null>(null);
   const [loadedClub, setLoadedClub] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [hotelTips, setHotelTips] = useState(false);
-  const [foodTips, setFoodTips] = useState(false);
-  const [highlyRated, setHighlyRated] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -224,16 +206,7 @@ export function MapExplorerDirectory() {
   const selectedName = clubName ?? clubs.find((club) => String(club.id) === clubId)?.name ?? null;
   const loading = Boolean(clubId) && loadedClub !== clubId;
   const ready = Boolean(clubId) && loadedClub === clubId;
-  const visibleFields = useMemo(() => {
-    if (!ready) return [];
-    return fields.filter((field) => {
-      const summary = summarizeTips(summaries.get(field.venue_key) ?? []);
-      if (hotelTips && summary.hotels < 1) return false;
-      if (foodTips && summary.food < 1) return false;
-      if (highlyRated && (field.overall == null || field.overall < HIGHLY_RATED)) return false;
-      return true;
-    });
-  }, [ready, fields, summaries, hotelTips, foodTips, highlyRated]);
+  const visibleFields = ready ? fields : [];
   const pinsReady = pointsClub === clubId;
   const visiblePins = useMemo<MapPin[]>(() => {
     if (!pinsReady) return [];
@@ -252,16 +225,14 @@ export function MapExplorerDirectory() {
         <p className="mt-3 text-xs font-medium uppercase tracking-wide text-stone-400">Preview</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight text-navy">Map explorer</h1>
         <p className="mt-1 max-w-2xl text-sm text-stone-500">Pick a club. Its fields are listed from the schedule right away. Saved pins fill in on the map. A pin is a saved lookup, not a verified location.</p>
-        <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Field filters">
-          <FilterChip pressed={hotelTips} onClick={() => setHotelTips((current) => !current)}>
-            Hotel tips
-          </FilterChip>
-          <FilterChip pressed={foodTips} onClick={() => setFoodTips((current) => !current)}>
-            Food tips
-          </FilterChip>
-          <FilterChip pressed={highlyRated} onClick={() => setHighlyRated((current) => !current)}>
-            Highly rated
-          </FilterChip>
+        <div className="mt-4">
+          <Link
+            href={clubId ? `/locations/tip?club=${encodeURIComponent(clubId)}` : "/locations/tip"}
+            data-add-family-tip
+            className="inline-flex rounded-full bg-gold px-3 py-1.5 text-sm font-medium text-navy"
+          >
+            Add a Family Tip
+          </Link>
         </div>
         <div className="relative mt-4 max-w-sm">
           <button
@@ -323,7 +294,6 @@ export function MapExplorerDirectory() {
           <div className="mt-4 grid items-start gap-4 lg:grid-cols-[28rem_minmax(0,1fr)]">
             <ul className="max-h-[32rem] space-y-2 overflow-y-auto">
               {ready && fields.length === 0 ? <li className="text-sm text-stone-500">No home fields stored.</li> : null}
-              {ready && fields.length > 0 && visibleFields.length === 0 ? <li className="text-sm text-stone-500">No fields match these filters.</li> : null}
               {visibleFields.map((field) => {
                 const active = field.venue_key === selected;
                 const summary = summarizeTips(summaries.get(field.venue_key) ?? []);

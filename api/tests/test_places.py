@@ -23,6 +23,7 @@ from app.main import app
 from app.models import Base, LocationWriteEvent, VenueFieldPoint, VenueRecommendation
 from app.places import (
     NEAR_MILES,
+    PIN_RULE_MANUAL,
     PIN_RULE_MATCH,
     SEARCH_RADIUS_METERS,
     category_fits,
@@ -273,6 +274,10 @@ class PlaceLookupTests(unittest.TestCase):
             place_id = str(query.get("id") or "")
             if place_id == FOOD_ID:
                 return _Response({"features": [_place_feature(FOOD_ID, "Cafe Probe", ["catering.cafe"])]})
+            if place_id == "i1b2c3d4e5f67890":
+                return _Response({"features": [_place_feature(place_id, "Island Wings", ["catering.restaurant"], 30.13, -81.55)]})
+            if place_id == "g1b2c3d4e5f67890":
+                return _Response({"features": [_place_feature(place_id, "Team Lounge", ["catering.cafe"])]})
             if place_id == "d1b2c3d4e5f67890":
                 return _Response({"features": [_place_feature(place_id, "Far Inn", ["accommodation.hotel"], 40.0, -105.0)]})
             return _Response({"features": [_place_feature(HOTEL_ID, "Hilton Probeplace", ["accommodation.hotel"])]})
@@ -280,6 +285,52 @@ class PlaceLookupTests(unittest.TestCase):
             categories = str(query.get("categories") or "")
             if "," in categories:
                 return _Response({"features": []})
+            if str(query.get("name") or "") == "Island Wings":
+                if categories != "catering.restaurant":
+                    return _Response({"features": []})
+                return _Response(
+                    {
+                        "features": [
+                            {
+                                "properties": {
+                                    "name": "Island Wings",
+                                    "formatted": "8200 Merrill Rd, Jacksonville, FL 32277, United States",
+                                    "address_line1": "8200 Merrill Rd",
+                                    "city": "Jacksonville",
+                                    "state_code": "fl",
+                                    "postcode": "32277",
+                                    "place_id": "i1b2c3d4e5f67890",
+                                    "lat": 30.13,
+                                    "lon": -81.55,
+                                    "categories": ["catering.restaurant"],
+                                }
+                            }
+                        ]
+                    }
+                )
+            if str(query.get("name") or "") == "Lounge":
+                if categories != "catering.cafe":
+                    return _Response({"features": []})
+                return _Response(
+                    {
+                        "features": [
+                            {
+                                "properties": {
+                                    "name": "Team Lounge",
+                                    "formatted": ADDRESS,
+                                    "address_line1": "100 Main Street",
+                                    "city": "Probeplace",
+                                    "state_code": "fl",
+                                    "postcode": "32000",
+                                    "place_id": "g1b2c3d4e5f67890",
+                                    "lat": HOTEL_LAT,
+                                    "lon": HOTEL_LON,
+                                    "categories": ["catering.cafe"],
+                                }
+                            }
+                        ]
+                    }
+                )
             if str(query.get("name") or "") == "Starbucks":
                 if categories != "catering.cafe":
                     return _Response({"features": []})
@@ -371,6 +422,12 @@ class PlaceLookupTests(unittest.TestCase):
         self.assertTrue(category_fits("RESTAURANT", ("catering.cafe",)))
         self.assertTrue(category_fits("RESTAURANT", ("catering.cafe.coffee_shop",)))
         self.assertFalse(category_fits("RESTAURANT", ("commercial.supermarket",)))
+        self.assertTrue(category_fits("COFFEE_GAP", ("catering.cafe",)))
+        self.assertTrue(category_fits("COFFEE_GAP", ("catering.cafe.coffee_shop",)))
+        self.assertTrue(category_fits("COFFEE_GAP", ("catering.ice_cream",)))
+        self.assertTrue(category_fits("COFFEE_GAP", ("commercial.shopping_mall",)))
+        self.assertFalse(category_fits("COFFEE_GAP", ("accommodation.hotel",)))
+        self.assertFalse(category_fits("HOTEL", ("commercial.shopping_mall",)))
         self.assertEqual(NEAR_MILES, 25.0)
         self.assertLess(miles_between(FIELD_LAT, FIELD_LON, HOTEL_LAT, HOTEL_LON), NEAR_MILES)
         self.assertGreater(miles_between(FIELD_LAT, FIELD_LON, 40.0, -105.0), NEAR_MILES)
@@ -472,13 +529,6 @@ class PlaceLookupTests(unittest.TestCase):
             self.assertEqual(short.status_code, 200, short.text)
             self.assertEqual(short.json()["suggestions"], [])
             self.assertEqual(len(self.calls), 1)
-
-            hangout = client.get(
-                "/locations/places",
-                params={"venue_key": venue_key, "category": "COFFEE_GAP", "q": "coffee"},
-                headers=headers,
-            )
-            self.assertEqual(hangout.status_code, 400, hangout.text)
 
             found = client.get(
                 "/locations/places",
@@ -930,3 +980,167 @@ class PlaceLookupTests(unittest.TestCase):
             self.assertEqual(row.geocode_kind, "venue")
             self.assertEqual(row.pin_rule, PIN_RULE_MATCH)
             self.assertEqual(row.latitude, park_lat)
+
+    def test_manual_pin_centers_island_wings_search_and_is_not_replaced(self) -> None:
+        """Veterans Park's manual pin is the search center and is left as stored."""
+
+        manual_lat = 30.09074022710416
+        manual_lon = -81.56896571349351
+        key = make_venue_key(FIELD, CITY, STATE)
+        with Session(engine) as session:
+            session.add(
+                VenueFieldPoint(
+                    venue_key=key,
+                    venue_name=FIELD,
+                    city=CITY,
+                    state=STATE,
+                    status="found",
+                    provider=None,
+                    place_id=None,
+                    formatted_address=None,
+                    latitude=manual_lat,
+                    longitude=manual_lon,
+                    geocode_kind="manual",
+                    pin_rule=PIN_RULE_MANUAL,
+                    fetched_at=datetime.now(UTC),
+                )
+            )
+            session.commit()
+
+        with TestClient(app) as client, patch("app.places.httpx.get", side_effect=self._fake_get):
+            headers = _sign_in(client, "probe-place-manual-pin")
+            point = client.get(
+                "/locations/field-point",
+                params={"venue_name": FIELD, "city": CITY, "state": STATE},
+                headers=headers,
+            )
+            self.assertEqual(point.status_code, 200, point.text)
+            self.assertEqual(point.json()["status"], "found")
+            self.assertIsNone(point.json()["formatted_address"])
+            self.assertNotIn("latitude", point.json())
+            self.assertEqual(self.calls, [])
+            self._assert_key_stays_out(point.text)
+
+            found = client.get(
+                "/locations/places",
+                params={"venue_key": key, "category": "RESTAURANT", "q": "Island Wings"},
+                headers=headers,
+            )
+            self.assertEqual(found.status_code, 200, found.text)
+            suggestions = found.json()["suggestions"]
+            self.assertEqual([item["name"] for item in suggestions], ["Island Wings"])
+            self.assertEqual(suggestions[0]["street"], "8200 Merrill Rd")
+            self.assertEqual(suggestions[0]["city"], "Jacksonville")
+            self.assertEqual(suggestions[0]["state"], "FL")
+            self.assertEqual(suggestions[0]["postal_code"], "32277")
+            self._assert_key_stays_out(found.text)
+            categories = [
+                str(call["params"]["categories"])
+                for call in self.calls
+                if "/v2/places" in str(call["url"]) and isinstance(call["params"], dict)
+            ]
+            self.assertEqual(categories, ["catering.restaurant", "catering.fast_food", "catering.cafe"])
+            self.assertTrue(all("," not in label for label in categories))
+            center = f"{manual_lon:.6f},{manual_lat:.6f}"
+            place_calls = [call for call in self.calls if "/v2/places" in str(call["url"])]
+            self.assertEqual(len(place_calls), 3)
+            for call in place_calls:
+                params = call["params"]
+                self.assertIsInstance(params, dict)
+                self.assertEqual(params["bias"], f"proximity:{center}")
+                self.assertEqual(params["filter"], f"circle:{center},{SEARCH_RADIUS_METERS}")
+            self.assertFalse(any("geocode" in str(call["url"]) for call in self.calls))
+
+            saved = client.post(
+                "/locations/recommendations",
+                json=_tip("Island Wings", category="RESTAURANT", place_id="i1b2c3d4e5f67890"),
+                headers=headers,
+            )
+            self.assertEqual(saved.status_code, 200, saved.text)
+            self.assertEqual(saved.json()["matched_name"], "Island Wings")
+            self.assertEqual(saved.json()["formatted_address"], ADDRESS)
+            self._assert_key_stays_out(saved.text)
+
+        with Session(engine) as session:
+            row = session.get(VenueFieldPoint, key)
+            self.assertIsNotNone(row)
+            assert row is not None
+            self.assertEqual(row.pin_rule, PIN_RULE_MANUAL)
+            self.assertIsNone(row.formatted_address)
+            self.assertIsNone(row.provider)
+            self.assertAlmostEqual(row.latitude, manual_lat, places=6)
+            self.assertAlmostEqual(row.longitude, manual_lon, places=6)
+
+    def test_team_hangout_search_saves_a_match_or_a_typed_address(self) -> None:
+        with TestClient(app) as client, patch("app.places.httpx.get", side_effect=self._fake_get):
+            headers = _sign_in(client, "probe-place-hangout")
+            point = client.get(
+                "/locations/field-point",
+                params={"venue_name": FIELD, "city": CITY, "state": STATE},
+                headers=headers,
+            )
+            self.assertEqual(point.status_code, 200, point.text)
+            venue_key = point.json()["venue_key"]
+            activity = client.get(
+                "/locations/places",
+                params={"venue_key": venue_key, "category": "ACTIVITY", "q": "Lounge"},
+                headers=headers,
+            )
+            self.assertEqual(activity.status_code, 400, activity.text)
+
+            found = client.get(
+                "/locations/places",
+                params={"venue_key": venue_key, "category": "COFFEE_GAP", "q": "Lounge"},
+                headers=headers,
+            )
+            self.assertEqual(found.status_code, 200, found.text)
+            suggestions = found.json()["suggestions"]
+            self.assertEqual([item["name"] for item in suggestions], ["Team Lounge"])
+            self.assertEqual(suggestions[0]["street"], "100 Main Street")
+            self.assertEqual(suggestions[0]["city"], "Probeplace")
+            self.assertEqual(suggestions[0]["state"], "FL")
+            self.assertEqual(suggestions[0]["postal_code"], "32000")
+            self._assert_key_stays_out(found.text)
+            categories = [
+                str(call["params"]["categories"])
+                for call in self.calls
+                if "/v2/places" in str(call["url"]) and isinstance(call["params"], dict)
+            ]
+            self.assertEqual(categories, ["catering.cafe", "catering.ice_cream", "commercial.shopping_mall"])
+            self.assertTrue(all("," not in label for label in categories))
+            center = f"{FIELD_LON:.6f},{FIELD_LAT:.6f}"
+            for call in self.calls:
+                if "/v2/places" not in str(call["url"]):
+                    continue
+                params = call["params"]
+                self.assertIsInstance(params, dict)
+                self.assertEqual(params["filter"], f"circle:{center},{SEARCH_RADIUS_METERS}")
+
+            saved = client.post(
+                "/locations/recommendations",
+                json=_tip("lounge", category="COFFEE_GAP", place_id="g1b2c3d4e5f67890"),
+                headers=headers,
+            )
+            self.assertEqual(saved.status_code, 200, saved.text)
+            self.assertEqual(saved.json()["matched_name"], "Team Lounge")
+            self.assertEqual(saved.json()["formatted_address"], ADDRESS)
+            self.assertEqual(saved.json()["place_provider"], "geoapify")
+            self._assert_key_stays_out(saved.text)
+
+            typed = client.post(
+                "/locations/recommendations",
+                json=_tip("Typed Hangout", category="COFFEE_GAP", formatted_address="  44 Side St, Probeplace, FL 32000  "),
+                headers=headers,
+            )
+            self.assertEqual(typed.status_code, 200, typed.text)
+            self.assertEqual(typed.json()["formatted_address"], "44 Side St, Probeplace, FL 32000")
+            self.assertIsNone(typed.json()["place_provider"])
+            self.assertIsNone(typed.json()["matched_name"])
+
+            activity_tip = client.post(
+                "/locations/recommendations",
+                json=_tip("Walk", category="ACTIVITY", formatted_address="44 Side St, Probeplace, FL 32000"),
+                headers=headers,
+            )
+            self.assertEqual(activity_tip.status_code, 200, activity_tip.text)
+            self.assertIsNone(activity_tip.json()["formatted_address"])

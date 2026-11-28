@@ -233,7 +233,7 @@ export function fetchClubMap(clubId: string): Promise<ClubMapPayload> {
 
 export function fetchPlaceSuggestions(
   venueKey: string,
-  category: "HOTEL" | "RESTAURANT",
+  category: "HOTEL" | "RESTAURANT" | "COFFEE_GAP",
   q: string,
 ): Promise<PlaceSuggestion[]> {
   const params = new URLSearchParams({ venue_key: venueKey, category, q });

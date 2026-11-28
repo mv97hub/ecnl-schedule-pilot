@@ -36,7 +36,7 @@ export default function PrivacyPage() {
         On the website, you can sign in with Google or Apple. Google or Apple supplies your name and email. The website stores a session cookie. Location ratings and tips are stored with the account. Your email is not shown on the location page.
       </p>
       <p>
-        A picked hotel or restaurant can store that business&apos;s public name and address from the places provider, shown to other families.
+        A picked hotel, restaurant, or team hangout can store that business&apos;s public name and address from the places provider, shown to other families.
       </p>
       <p>
         Posting a rating or a tip requires the{" "}

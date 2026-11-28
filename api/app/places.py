@@ -1,4 +1,4 @@
-"""Geoapify lookups for one field point and for hotel or restaurant tips.
+"""Geoapify lookups for one field point and for hotel, restaurant, or hangout tips.
 
 The key is read from GEOAPIFY_API_KEY. Requests send the query and the field
 point. The account id, email, display name, and home address are not sent.
@@ -41,8 +41,10 @@ PLACE_WINDOW_SECONDS = 10 * 60
 
 _HOTEL_CATEGORIES = ("accommodation.hotel", "accommodation.motel", "accommodation.guest_house")
 _FOOD_CATEGORIES = ("catering.restaurant", "catering.fast_food", "catering.cafe")
+_HANGOUT_CATEGORIES = ("catering.cafe", "catering.ice_cream", "commercial.shopping_mall")
 _HOTEL_PREFIXES = _HOTEL_CATEGORIES
 _FOOD_PREFIXES = _FOOD_CATEGORIES
+_HANGOUT_PREFIXES = _HANGOUT_CATEGORIES
 _PLACE_ID = re.compile(r"^[A-Za-z0-9]{8,512}$")
 _LOCK = threading.Lock()
 _HITS: dict[int, list[float]] = {}
@@ -123,7 +125,15 @@ def category_fits(category: str, labels: tuple[str, ...]) -> bool:
 
     if not labels:
         return True
-    prefixes = _HOTEL_PREFIXES if category == "HOTEL" else _FOOD_PREFIXES if category == "RESTAURANT" else ()
+    prefixes = (
+        _HOTEL_PREFIXES
+        if category == "HOTEL"
+        else _FOOD_PREFIXES
+        if category == "RESTAURANT"
+        else _HANGOUT_PREFIXES
+        if category == "COFFEE_GAP"
+        else ()
+    )
     if not prefixes:
         return False
     for label in labels:
@@ -176,11 +186,19 @@ def geocode_venue(name: str, city: str, state: str) -> GeocodeHit | None:
 def suggest_places(query: str, category: str, latitude: float, longitude: float) -> list[PlaceSuggestionHit]:
     """Places whose names contain the typed text, inside twenty-five miles of the field.
 
-    Each lodging or food category is a separate request. One combined category
-    list makes Geoapify's name filter return an empty collection.
+    Each lodging, food, or hangout category is a separate request. One combined
+    category list makes Geoapify's name filter return an empty collection.
     """
 
-    labels = _HOTEL_CATEGORIES if category == "HOTEL" else _FOOD_CATEGORIES if category == "RESTAURANT" else ()
+    labels = (
+        _HOTEL_CATEGORIES
+        if category == "HOTEL"
+        else _FOOD_CATEGORIES
+        if category == "RESTAURANT"
+        else _HANGOUT_CATEGORIES
+        if category == "COFFEE_GAP"
+        else ()
+    )
     if not labels:
         return []
     point = f"{longitude:.6f},{latitude:.6f}"

@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { CommentBox, TIP_PLACEHOLDER, TermsCheckbox } from "@/components/CommentFields";
-import { EMPTY_ADDRESS, PlaceNameInput, StaticFieldName, formatTipAddress, type PlaceAddressDraft } from "@/components/PlaceNameInput";
+import { EMPTY_ADDRESS, PlaceNameInput, StaticFieldName, formatTipAddress, matchesPlace, type PlaceAddressDraft } from "@/components/PlaceNameInput";
 import { acceptTerms, fetchClubLocations, postRecommendation } from "@/lib/api";
 import type { LocationCard, TipCategory } from "@/lib/types";
 import { signInHref, useAccount } from "@/lib/useAccount";
@@ -14,7 +14,7 @@ import { signInHref, useAccount } from "@/lib/useAccount";
 const CATEGORIES: { id: TipCategory; label: string }[] = [
   { id: "HOTEL", label: "Hotel" },
   { id: "RESTAURANT", label: "Team Food and Dining" },
-  { id: "COFFEE_GAP", label: "Between-Game Hangout" },
+  { id: "COFFEE_GAP", label: "Team Hangouts" },
   { id: "ACTIVITY", label: "Activity" },
   { id: "SIDELINE_TIP", label: "Sideline and Parking Tip" },
 ];
@@ -121,9 +121,8 @@ export function AddFamilyTip() {
         rating: tipStars,
         review_text: review.trim(),
         tags,
-        place_id: category === "HOTEL" || category === "RESTAURANT" ? placeId : null,
-        formatted_address:
-          (category === "HOTEL" || category === "RESTAURANT") && !placeId ? formatTipAddress(address) || null : null,
+        place_id: matchesPlace(category) ? placeId : null,
+        formatted_address: matchesPlace(category) && !placeId ? formatTipAddress(address) || null : null,
       });
       router.push(backHref);
     } catch (err: unknown) {

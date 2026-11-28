@@ -7,7 +7,11 @@ import { PlaceCredit } from "@/components/PlaceCredit";
 import { fetchFieldPoint, fetchPlaceSuggestions, type PlaceSuggestion } from "@/lib/api";
 import type { TipCategory } from "@/lib/types";
 
-const MATCHED = new Set<TipCategory>(["HOTEL", "RESTAURANT"]);
+const MATCHED = new Set<TipCategory>(["HOTEL", "RESTAURANT", "COFFEE_GAP"]);
+
+export function matchesPlace(category: TipCategory): boolean {
+  return MATCHED.has(category);
+}
 const PAUSE_MS = 400;
 const MIN_CHARS = 3;
 
@@ -55,6 +59,7 @@ export function StaticFieldName({ name, city, state }: { name: string; city: str
 function nameLabel(category: TipCategory): string {
   if (category === "HOTEL") return "Hotel name";
   if (category === "RESTAURANT") return "Restaurant name";
+  if (category === "COFFEE_GAP") return "Hangout name";
   return "Name";
 }
 
@@ -119,6 +124,7 @@ export function PlaceNameInput({
           formatted_address: next.formatted_address,
           map_url: next.map_url,
         });
+        if (next.status === "found" && !next.formatted_address) setConfirmed(true);
       })
       .catch(() => {
         if (active) setPoint({ kind: "unavailable" });
@@ -144,7 +150,7 @@ export function PlaceNameInput({
     let active = true;
     const handle = window.setTimeout(() => {
       setLooking(true);
-      fetchPlaceSuggestions(venueKey, category as "HOTEL" | "RESTAURANT", query)
+      fetchPlaceSuggestions(venueKey, category as "HOTEL" | "RESTAURANT" | "COFFEE_GAP", query)
         .then((rows) => {
           if (!active) return;
           setSuggestions(rows);
@@ -244,6 +250,11 @@ export function PlaceNameInput({
           )}
         </div>
       ) : null}
+      {point.kind === "ready" && point.status === "found" && !point.formatted_address ? (
+        <p className="mt-2 text-xs text-stone-500" data-field-point="saved">
+          Searching within 25 miles of the saved pin for this field.
+        </p>
+      ) : null}
       {point.kind === "ready" && point.status === "miss" ? (
         <p className="mt-2 text-xs text-stone-500" data-field-point="miss">
           No mapped point for this field. The name is saved as you type it.
@@ -260,7 +271,7 @@ export function PlaceNameInput({
         </p>
       ) : null}
       {confirmed && !placeId && value.trim().length < MIN_CHARS ? (
-        <p className="mt-2 text-xs text-stone-500">Type a hotel or restaurant name to see nearby places.</p>
+        <p className="mt-2 text-xs text-stone-500">Type a hotel, restaurant, or hangout name to see nearby places.</p>
       ) : null}
       {looking ? <p className="mt-2 text-xs text-stone-500">Looking up places</p> : null}
       {suggestions.length > 0 ? (

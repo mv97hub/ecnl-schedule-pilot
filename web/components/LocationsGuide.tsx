@@ -32,7 +32,7 @@ const SURFACE_LABEL: Record<string, string> = {
 const TIP_LABEL: Record<TipCategory, string> = {
   HOTEL: "Hotel",
   RESTAURANT: "Team Food and Dining",
-  COFFEE_GAP: "Between-Game Hangout",
+  COFFEE_GAP: "Team Hangouts",
   ACTIVITY: "Activity",
   SIDELINE_TIP: "Sideline and Parking Tip",
 };
