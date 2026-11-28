@@ -61,6 +61,7 @@ class ProviderAuthTests(unittest.TestCase):
         SQLModel.metadata.create_all(engine)
         os.environ["AUTH_INTERNAL_SECRET"] = SECRET
         os.environ["GOOGLE_IOS_CLIENT_ID"] = GOOGLE_AUDIENCE
+        os.environ.pop("GOOGLE_CLIENT_ID", None)
         self._fetch = provider_tokens.fetch_jwks
         provider_tokens.fetch_jwks = lambda _url: [self.jwk]  # type: ignore[assignment]
         provider_tokens.clear_key_cache()
@@ -69,6 +70,7 @@ class ProviderAuthTests(unittest.TestCase):
     def tearDown(self) -> None:
         provider_tokens.fetch_jwks = self._fetch
         provider_tokens.clear_key_cache()
+        os.environ.pop("GOOGLE_CLIENT_ID", None)
         self._cleanup()
 
     def _cleanup(self) -> None:
@@ -222,12 +224,40 @@ class ProviderAuthTests(unittest.TestCase):
             )
             self.assertEqual(wrong.status_code, 401)
             os.environ.pop("GOOGLE_IOS_CLIENT_ID", None)
+            os.environ.pop("GOOGLE_CLIENT_ID", None)
             missing = self._post(
                 client,
                 provider="google",
                 identity_token=self._google("probe-provider-google-config"),
             )
             self.assertEqual(missing.status_code, 503)
+
+    def test_android_google_token_uses_the_web_client_audience(self) -> None:
+        web_audience = "probe-web.apps.googleusercontent.com"
+        with TestClient(app) as client:
+            rejected = self._post(
+                client,
+                provider="google",
+                client="android",
+                identity_token=self._google("probe-provider-google-web", aud=web_audience),
+                nonce=None,
+            )
+            self.assertEqual(rejected.status_code, 401, rejected.text)
+            os.environ["GOOGLE_CLIENT_ID"] = web_audience
+            opened = self._post(
+                client,
+                provider="google",
+                client="android",
+                identity_token=self._google("probe-provider-google-web", aud=web_audience),
+                nonce=None,
+            )
+            self.assertEqual(opened.status_code, 200, opened.text)
+            self.assertEqual(opened.json()["user"]["providers"], ["google"])
+            with Session(engine) as session:
+                row = session.scalar(
+                    select(AppSession).where(AppSession.user_id == opened.json()["user"]["id"], AppSession.client == "android")
+                )
+                self.assertIsNotNone(row)
 
     def test_internal_session_route_still_requires_the_secret(self) -> None:
         with TestClient(app) as client:

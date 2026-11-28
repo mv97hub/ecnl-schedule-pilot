@@ -2,16 +2,27 @@ import { useState } from "react";
 
 import { ApiError, acceptTerms, postProvider } from "@/lib/api";
 import { finishSignIn, type SignInFrom } from "@/lib/finishSignIn";
+import { TERMS_REQUIRED_MESSAGE, providerSignInDecision } from "@/lib/signInGate";
 import { signInWithApple, signInWithGoogle } from "@/lib/signInProviders";
 import type { ProviderSession } from "@/lib/types";
 
 export function useProviderSignIn(from: SignInFrom, next: string | null) {
   const [busy, setBusy] = useState<"apple" | "google" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [agreed, setAgreed] = useState(false);
+  const [agreed, setAgreedState] = useState(false);
+
+  function setAgreed(nextAgreed: boolean) {
+    setAgreedState(nextAgreed);
+    if (nextAgreed) setError((current) => (current === TERMS_REQUIRED_MESSAGE ? null : current));
+  }
 
   async function run(provider: "apple" | "google") {
-    if (busy || !agreed) return;
+    const decision = providerSignInDecision(agreed, busy != null);
+    if (decision === "wait") return;
+    if (decision === "terms") {
+      setError(TERMS_REQUIRED_MESSAGE);
+      return;
+    }
     setBusy(provider);
     setError(null);
     try {

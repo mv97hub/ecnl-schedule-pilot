@@ -69,11 +69,21 @@ def fetch_jwks(url: str) -> list[dict[str, object]]:
     return parsed
 
 
-def google_ios_client_id() -> str:
-    value = os.environ.get("GOOGLE_IOS_CLIENT_ID", "").strip()
-    if not value:
-        raise ProviderTokenError("GOOGLE_IOS_CLIENT_ID is not set", unavailable=True)
-    return value
+def google_audiences() -> list[str]:
+    """iOS tokens use the iOS client id. Android tokens use the web client id.
+
+    The web client id is the same public ``GOOGLE_CLIENT_ID`` the website
+    already uses. The client secret stays on the website and is not read here.
+    """
+
+    found: list[str] = []
+    for name in ("GOOGLE_IOS_CLIENT_ID", "GOOGLE_CLIENT_ID"):
+        value = os.environ.get(name, "").strip()
+        if value and value not in found:
+            found.append(value)
+    if not found:
+        raise ProviderTokenError("Google sign-in is not configured", unavailable=True)
+    return found
 
 
 def _name_from_claims(claims: dict[str, object]) -> str | None:
@@ -124,7 +134,7 @@ def _signing_key(token: str, keys: list[dict[str, object]]):
     raise ProviderTokenError("token key was not found")
 
 
-def _decode(token: str, key: object, *, audience: str) -> dict[str, object]:
+def _decode(token: str, key: object, *, audience: str | list[str]) -> dict[str, object]:
     try:
         claims = jwt.decode(
             token,
@@ -157,7 +167,7 @@ def verify_identity_token(*, provider: str, identity_token: str, nonce: str | No
             raise ProviderTokenError("token nonce was rejected")
     elif provider == "google":
         keys = fetch_jwks(GOOGLE_KEYS)
-        claims = _decode(token, _signing_key(token, keys), audience=google_ios_client_id())
+        claims = _decode(token, _signing_key(token, keys), audience=google_audiences())
         issuer = claims.get("iss")
         if not isinstance(issuer, str) or issuer not in GOOGLE_ISSUERS:
             raise ProviderTokenError("token issuer was rejected")

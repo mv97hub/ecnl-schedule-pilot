@@ -13,7 +13,7 @@ const KIND_COLOR = {
   do: colors.draw,
 } as const;
 
-/** Apple Maps on iOS. No Google maps key is stored in the app. */
+/** Apple Maps on iOS. Android uses FieldMap.android.tsx and does not mount this view. */
 export function FieldMap({
   points,
   focusId,

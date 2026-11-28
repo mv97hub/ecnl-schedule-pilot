@@ -1,6 +1,8 @@
 import Constants from "expo-constants";
+import { Platform } from "react-native";
 
 import type { LeagueGender } from "@/lib/leagues";
+import { phoneClient } from "@/lib/phoneClient";
 import type {
   AccountCalendar,
   AccountHomeAddress,
@@ -276,7 +278,7 @@ export function postProvider(input: {
       identity_token: input.identityToken,
       nonce: input.nonce,
       display_name: input.displayName,
-      client: "ios",
+      client: phoneClient(Platform.OS),
     },
   });
 }
