@@ -59,11 +59,6 @@ function teamChip(team: WeekendGame["squad"]): string {
   return `${team.age_group} ${side} · ${team.name}`;
 }
 
-function scheduleHref(teamId: number | null): string {
-  if (teamId == null) return "/?board=schedule";
-  return `/?board=schedule&team=${teamId}`;
-}
-
 function inWindow(day: string, start: string, end: string): boolean {
   return day >= start && day <= end;
 }
@@ -286,8 +281,6 @@ export function FavoritesHome() {
     document.getElementById(`stop-${id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
-  const lead = payload?.lead_team_id ?? null;
-
   return (
     <div className="min-h-full bg-bone">
       <section className="bg-navy text-bone">
@@ -299,9 +292,6 @@ export function FavoritesHome() {
           {payload?.record ? <p className="text-sm font-semibold text-white">{wdl(payload.record)} W-D-L</p> : null}
           {payload?.club_games ? <p className="text-sm font-semibold text-gold">Club games</p> : null}
           <div className="ml-auto flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium">
-            <Link href={scheduleHref(lead)} className="text-white underline underline-offset-4">
-              Full schedule
-            </Link>
             <Link href="/profile/favorites" className="text-white underline underline-offset-4">
               Edit club and teams
             </Link>
