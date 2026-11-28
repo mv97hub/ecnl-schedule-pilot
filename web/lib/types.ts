@@ -531,3 +531,57 @@ export type AccountFavorites = {
   club_id: string | null;
   team_ids: number[];
 };
+
+export type WeekendRecord = {
+  wins: number;
+  draws: number;
+  losses: number;
+};
+
+export type WeekendNote = {
+  surface: string | null;
+  parking: number | null;
+  line: string | null;
+};
+
+export type WeekendGame = {
+  id: number;
+  starts_at: string;
+  timezone: string;
+  status: GameStatus;
+  side: "home" | "away";
+  day: string;
+  complex_name: string;
+  field_name: string | null;
+  city: string;
+  state: string;
+  venue_key: string;
+  squad: {
+    id: number;
+    name: string;
+    age_group: string;
+    gender: "boys" | "girls";
+    tier: string;
+  };
+  opponent_id: number;
+  opponent_name: string;
+  opponent_logo_url: string | null;
+  opponent_club_name: string | null;
+  pin: { latitude: number; longitude: number } | null;
+  pin_missing: boolean;
+  note: WeekendNote;
+};
+
+export type WeekendMap = {
+  has_favorites: boolean;
+  club_name: string | null;
+  club_logo_url: string | null;
+  record: WeekendRecord | null;
+  club_games: boolean;
+  lead_team_id: number | null;
+  month_start: string;
+  month_end: string;
+  window_start: string;
+  window_end: string;
+  games: WeekendGame[];
+};

@@ -1,6 +1,7 @@
 "use client";
 
 import { LoaderCircle } from "lucide-react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -15,6 +16,7 @@ import { TeamHero } from "@/components/TeamHero";
 import { TeamSelector } from "@/components/TeamSelector";
 import { fetchDataRefresh, fetchSchedule, fetchTeams, fetchTeamsByIds } from "@/lib/api";
 import { formatDataAsOf } from "@/lib/format";
+import { useAccount } from "@/lib/useAccount";
 import { AGE_GROUPS, TIERS, ageGroupsFor, parseLeagueGender, type LeagueGender } from "@/lib/leagues";
 import { rememberSquad, rememberedSquad, shortConference } from "@/lib/selection";
 import { publicClubKey } from "@/lib/venueKey";
@@ -53,6 +55,7 @@ function pickSquad(
 export function Dashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const account = useAccount();
   const teamParam = searchParams.get("team");
   const [gender, setGender] = useState<LeagueGender>(() => parseLeagueGender(searchParams.get("gender")) ?? "boys");
   const userSwitchRef = useRef(false);
@@ -369,6 +372,14 @@ export function Dashboard() {
               {tier} {genderWord} · 2026–27
             </p>
             {dataAsOf && <p className="mt-1 text-sm text-bone/75">{dataAsOf}</p>}
+            {account === null ? (
+              <p className="mt-2 text-sm text-bone/80">
+                <Link href="/profile?next=/" className="font-medium text-white underline underline-offset-4">
+                  Sign in
+                </Link>{" "}
+                to see your family’s next two weeks on a map.
+              </p>
+            ) : null}
           </div>
           <div className="grid min-w-0 gap-2 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
             <div className="flex w-full min-w-0 items-center gap-2">
