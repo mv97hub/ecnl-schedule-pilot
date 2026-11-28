@@ -41,6 +41,7 @@ class SessionIn(BaseModel):
     email_verified: bool = False
     display_name: str | None = Field(default=None, max_length=80)
     client: Literal["web", "ios", "android"] = "web"
+    terms_version: str | None = Field(default=None, max_length=32)
 
 
 class UserOut(BaseModel):
@@ -145,6 +146,10 @@ def create_session(
     session: Annotated[Session, Depends(get_session)],
     _: Annotated[None, Depends(require_internal)],
 ) -> SessionOut:
+    """Open a session. A current terms version is stored in that same save."""
+
+    if body.terms_version is not None and body.terms_version != TERMS_VERSION:
+        raise HTTPException(status_code=400, detail="Terms version is not current")
     user, raw = open_identity(
         session,
         provider=body.provider,
@@ -153,6 +158,7 @@ def create_session(
         email_verified=body.email_verified,
         display_name=body.display_name,
         client=body.client,
+        accept_terms=body.terms_version == TERMS_VERSION,
     )
     return SessionOut(token=raw, user=_user_out(session, user))
 

@@ -199,6 +199,7 @@ def open_identity(
     email_verified: bool,
     display_name: str | None,
     client: str,
+    accept_terms: bool = False,
 ) -> tuple[AppUser, str]:
     """Find or create the person, then issue one raw session token."""
 
@@ -250,6 +251,9 @@ def open_identity(
 
     now = datetime.now(UTC)
     user.last_login_at = now
+    if accept_terms and not has_current_terms(user):
+        user.terms_accepted_at = now
+        user.terms_version = TERMS_VERSION
     raw = secrets.token_urlsafe(32)
     db.add(
         AppSession(
