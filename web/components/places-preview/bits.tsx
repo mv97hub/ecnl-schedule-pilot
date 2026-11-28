@@ -7,7 +7,7 @@ import { PlaceAddress, tipDisplayName } from "@/components/PlaceCredit";
 import { ReportTip } from "@/components/ReportTip";
 import { TipVotes } from "@/components/TipVotes";
 import { easternStamp } from "@/lib/format";
-import type { LocationGame, LocationTip, TipCategory, TipVote } from "@/lib/types";
+import type { LocationTip, TipCategory, TipVote } from "@/lib/types";
 
 export const TIP_LABEL: Record<TipCategory, string> = {
   HOTEL: "Hotel",
@@ -16,17 +16,6 @@ export const TIP_LABEL: Record<TipCategory, string> = {
   ACTIVITY: "Activity",
   SIDELINE_TIP: "Sideline and Parking Tip",
 };
-
-const SURFACE_LABEL: Record<string, string> = {
-  GRASS: "Grass",
-  TURF: "Turf",
-  MIXED: "Mixed",
-};
-
-export function surfaceText(value: string | null, fallback = "Surface not rated"): string {
-  if (!value) return fallback;
-  return SURFACE_LABEL[value] ?? value;
-}
 
 export function scoreText(value: number | null): string {
   return value == null ? "—" : value.toFixed(1);
@@ -39,27 +28,6 @@ export function StarRow({ value }: { value: number }) {
         <Star key={index} className={`size-3.5 ${index < value ? "fill-amber-400 text-amber-500" : "text-stone-300"}`} />
       ))}
     </span>
-  );
-}
-
-export function formatWhen(iso: string): string {
-  const stamp = easternStamp(iso);
-  if (!stamp) return iso;
-  return `${stamp.weekday}, ${stamp.dateLabel} · ${stamp.clock}`;
-}
-
-export function Meter({ label, value }: { label: string; value: number | null }) {
-  const width = value == null ? 0 : Math.max(0, Math.min(100, (value / 5) * 100));
-  return (
-    <div>
-      <div className="flex items-center justify-between gap-3 text-sm text-ink">
-        <span>{label}</span>
-        <span className="font-medium text-navy">{scoreText(value)}</span>
-      </div>
-      <div className="mt-1 h-2 rounded-full bg-stone-100">
-        <div className="h-2 rounded-full bg-gold" style={{ width: `${width}%` }} />
-      </div>
-    </div>
   );
 }
 
@@ -116,35 +84,6 @@ export function TipCard({
         {showReport ? <ReportTip tipId={tip.id} signInHref={signInHref} onHidden={onHidden} /> : null}
       </div>
     </article>
-  );
-}
-
-export function GameList({ title, games }: { title: string; games: LocationGame[] }) {
-  return (
-    <section>
-      <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">{title}</h3>
-      {games.length === 0 ? (
-        <p className="mt-2 text-sm text-stone-500">None on the schedule.</p>
-      ) : (
-        <ul className="mt-2 overflow-hidden rounded-2xl border border-stone-200 bg-white">
-          {games.map((game) => {
-            const scored = game.status === "COMPLETED" && game.home_score != null && game.away_score != null;
-            return (
-              <li key={game.id} className="border-b border-stone-100 px-4 py-3 last:border-b-0">
-                <p className="text-sm font-medium text-navy">
-                  {game.home_team} vs {game.away_team}
-                </p>
-                <p className="text-xs text-stone-500">
-                  {formatWhen(game.starts_at)}
-                  {game.field_name ? ` · ${game.field_name}` : ""}
-                  {scored ? ` · ${game.home_score}–${game.away_score}` : ""}
-                </p>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
   );
 }
 
