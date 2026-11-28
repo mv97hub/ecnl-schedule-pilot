@@ -50,13 +50,15 @@ export function TermsCheckbox({
   id,
   checked,
   onChange,
+  className = "mt-4 flex items-start gap-2 text-sm text-ink",
 }: {
   id: string;
   checked: boolean;
   onChange: (next: boolean) => void;
+  className?: string;
 }) {
   return (
-    <label htmlFor={id} className="mt-4 flex items-start gap-2 text-sm text-ink">
+    <label htmlFor={id} className={className}>
       <input
         id={id}
         type="checkbox"

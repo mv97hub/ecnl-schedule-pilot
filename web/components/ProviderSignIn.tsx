@@ -1,7 +1,10 @@
 "use client";
 
 import { Roboto } from "next/font/google";
-import Link from "next/link";
+import { useState, type CSSProperties, type ReactNode } from "react";
+
+import { TermsCheckbox } from "@/components/CommentFields";
+import { TERMS_VERSION } from "@/lib/api";
 
 const robotoMedium = Roboto({
   weight: "500",
@@ -50,35 +53,68 @@ function AppleMark() {
 const focusRing =
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f1f1f]";
 
+function providerHref(provider: "google" | "apple", nextQuery: string): string {
+  const params = new URLSearchParams(nextQuery.startsWith("?") ? nextQuery.slice(1) : "");
+  params.set("terms", TERMS_VERSION);
+  return `/api/auth/${provider}?${params.toString()}`;
+}
+
+function SignInChoice({
+  href,
+  className,
+  style,
+  children,
+}: {
+  href: string | null;
+  className: string;
+  style?: CSSProperties;
+  children: ReactNode;
+}) {
+  if (!href) {
+    return (
+      <button type="button" className={className} style={style}>
+        {children}
+      </button>
+    );
+  }
+  return (
+    <a href={href} className={className} style={style}>
+      {children}
+    </a>
+  );
+}
+
 export function ProviderSignIn({ nextQuery }: { nextQuery: string }) {
+  const [agreed, setAgreed] = useState(false);
+  const googleHref = agreed ? providerHref("google", nextQuery) : null;
+  const appleHref = agreed ? providerHref("apple", nextQuery) : null;
   return (
     <div className="flex w-full max-w-[400px] flex-col gap-2">
-      <a
-        href={`/api/auth/google${nextQuery}`}
-        className={`relative flex h-11 w-full items-center justify-center rounded border border-[#747775] bg-white px-12 text-[#1f1f1f] no-underline select-none hover:bg-[#f8f9fa] hover:shadow-[0_1px_2px_rgba(60,64,67,0.3),0_1px_3px_1px_rgba(60,64,67,0.15)] active:bg-[#f1f3f4] ${focusRing}`}
+      <TermsCheckbox
+        id="sign-in-terms"
+        checked={agreed}
+        onChange={setAgreed}
+        className="flex items-start gap-2 text-sm text-ink"
+      />
+      <SignInChoice
+        href={googleHref}
+        className={`relative flex h-11 w-full cursor-pointer items-center justify-center rounded border border-[#747775] bg-white px-12 text-[#1f1f1f] no-underline select-none hover:bg-[#f8f9fa] hover:shadow-[0_1px_2px_rgba(60,64,67,0.3),0_1px_3px_1px_rgba(60,64,67,0.15)] active:bg-[#f1f3f4] ${focusRing}`}
       >
         <span className="absolute left-3 flex h-5 w-5 items-center justify-center">
           <GoogleMark />
         </span>
         <span className={`${robotoMedium.className} text-[14px] leading-5 font-medium tracking-[0.25px]`}>Sign in with Google</span>
-      </a>
-      <a
-        href={`/api/auth/apple${nextQuery}`}
-        className={`relative flex h-11 w-full items-center justify-center rounded-md bg-black px-12 text-white no-underline select-none hover:bg-[#1a1a1a] active:bg-[#333] ${focusRing}`}
+      </SignInChoice>
+      <SignInChoice
+        href={appleHref}
+        className={`relative flex h-11 w-full cursor-pointer items-center justify-center rounded-md border-0 bg-black px-12 text-white no-underline select-none hover:bg-[#1a1a1a] active:bg-[#333] ${focusRing}`}
         style={{ fontFamily: APPLE_FONT }}
       >
         <span className="absolute left-4 flex items-center text-white">
           <AppleMark />
         </span>
         <span className="text-[17px] leading-none font-medium">Sign in with Apple</span>
-      </a>
-      <p className="text-sm text-stone-500">
-        Posting a rating or a tip requires the{" "}
-        <Link href="/terms" className="font-medium text-navy underline underline-offset-4">
-          Terms of Use
-        </Link>
-        .
-      </p>
+      </SignInChoice>
     </div>
   );
 }

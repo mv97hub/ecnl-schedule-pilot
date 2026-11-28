@@ -3,6 +3,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { appleClientSecret, readAppleIdentity } from "@/lib/appleJwt";
+import { TERMS_VERSION } from "@/lib/api";
 import {
   APPLE_REDIRECT,
   GOOGLE_REDIRECT,
@@ -74,6 +75,9 @@ function statesMatch(expected: string, provided: string): boolean {
 }
 
 export function beginProvider(request: NextRequest, provider: "google" | "apple"): Response {
+  if (request.nextUrl.searchParams.get("terms") !== TERMS_VERSION) {
+    return signInError("Agree to the Terms of Use before signing in.");
+  }
   const missing = missingEnv(provider === "google" ? [...GOOGLE_ENV] : [...APPLE_ENV]);
   if (provider === "apple" && missing) logAppleFailure("start", request.nextUrl.pathname, null, missing);
   if (missing) return Response.json({ detail: missing }, { status: 500 });
@@ -81,7 +85,7 @@ export function beginProvider(request: NextRequest, provider: "google" | "apple"
   const next = safeNext(request.nextUrl.searchParams.get("next"));
   const url = provider === "google" ? googleStartUrl(state) : appleStartUrl(state);
   const response = NextResponse.redirect(url);
-  response.cookies.set(STATE_COOKIE, packState(state, next), stateCookie);
+  response.cookies.set(STATE_COOKIE, packState(state, next, TERMS_VERSION), stateCookie);
   return response;
 }
 
@@ -115,7 +119,7 @@ export function signInError(message: string): NextResponse {
   return response;
 }
 
-async function openSession(identity: ProviderIdentity): Promise<{ token: string }> {
+async function openSession(identity: ProviderIdentity, termsVersion: string): Promise<{ token: string }> {
   const secret = process.env.AUTH_INTERNAL_SECRET?.trim();
   if (!secret) throw new Error("AUTH_INTERNAL_SECRET is not set");
   const response = await fetch(`${await apiOrigin()}/auth/session`, {
@@ -132,6 +136,7 @@ async function openSession(identity: ProviderIdentity): Promise<{ token: string 
       email_verified: identity.emailVerified,
       display_name: identity.displayName,
       client: "web",
+      terms_version: termsVersion,
     }),
     cache: "no-store",
   });
@@ -149,8 +154,12 @@ export async function finishProvider(request: NextRequest, identity: ProviderIde
     if (identity.provider === "apple") logAppleFailure("callback", request.nextUrl.pathname, null, "state_mismatch");
     return signInError("Sign-in failed. Start again from Profile.");
   }
+  if (packed.termsVersion !== TERMS_VERSION) {
+    if (identity.provider === "apple") logAppleFailure("callback", request.nextUrl.pathname, null, "terms_missing");
+    return signInError("Agree to the Terms of Use before signing in.");
+  }
   try {
-    const opened = await openSession(identity);
+    const opened = await openSession(identity, packed.termsVersion);
     const response = NextResponse.redirect(publicUrl(packed.next), 303);
     response.cookies.set(SESSION_COOKIE, opened.token, sessionCookie);
     response.cookies.set(STATE_COOKIE, "", clearStateCookie);

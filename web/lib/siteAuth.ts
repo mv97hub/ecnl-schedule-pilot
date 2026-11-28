@@ -1,5 +1,9 @@
 import { connection } from "next/server";
 
+import { safeNext } from "./oauthState";
+
+export { packState, safeNext, unpackState } from "./oauthState";
+
 export const SESSION_COOKIE = "ecnl_session";
 export const STATE_COOKIE = "oauth_state";
 export const SESSION_MAX_AGE = 60 * 60 * 24 * 30;
@@ -57,29 +61,6 @@ export async function apiOrigin(): Promise<string> {
 /** A browser redirect on the public site. Never use the request host: on Render that is 0.0.0.0 and $PORT. */
 export function publicUrl(path: string): URL {
   return new URL(safeNext(path), SITE_ORIGIN);
-}
-
-export function safeNext(value: string | null | undefined): string {
-  if (!value) return "/profile";
-  if (!value.startsWith("/") || value.startsWith("//")) return "/profile";
-  if (value.includes("\\") || value.includes("://") || /[\n\r]/.test(value)) return "/profile";
-  return value;
-}
-
-export function packState(state: string, nextPath: string): string {
-  return `${state}.${Buffer.from(safeNext(nextPath)).toString("base64url")}`;
-}
-
-export function unpackState(packed: string | undefined): { state: string; next: string } | null {
-  if (!packed) return null;
-  const dot = packed.indexOf(".");
-  if (dot <= 0) return null;
-  try {
-    const next = Buffer.from(packed.slice(dot + 1), "base64url").toString("utf8");
-    return { state: packed.slice(0, dot), next: safeNext(next) };
-  } catch {
-    return null;
-  }
 }
 
 export function sessionToken(request: { cookies: { get: (name: string) => { value: string } | undefined } }): string | null {

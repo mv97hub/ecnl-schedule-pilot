@@ -126,6 +126,54 @@ class AccountTests(unittest.TestCase):
             self.assertEqual(wrong.status_code, 401)
             self.assertNotIn(SECRET, wrong.text)
 
+    def test_website_session_accepts_current_terms_in_the_same_save(self) -> None:
+        with TestClient(app) as client:
+            skipped = client.post(
+                "/auth/session",
+                headers={"X-Internal-Auth": SECRET},
+                json=_body("google", "probe-auth-no-terms", "no-terms@probe-auth.test"),
+            )
+            self.assertEqual(skipped.status_code, 200, skipped.text)
+            skipped_me = client.get("/auth/me", headers={"Authorization": f"Bearer {skipped.json()['token']}"})
+            self.assertEqual(skipped_me.status_code, 200, skipped_me.text)
+            self.assertFalse(skipped_me.json()["terms_accepted"])
+
+            stale = client.post(
+                "/auth/session",
+                headers={"X-Internal-Auth": SECRET},
+                json={**_body("google", "probe-auth-stale-terms", "stale@probe-auth.test"), "terms_version": "older"},
+            )
+            self.assertEqual(stale.status_code, 400)
+            self.assertEqual(stale.json()["detail"], "Terms version is not current")
+
+            opened = client.post(
+                "/auth/session",
+                headers={"X-Internal-Auth": SECRET},
+                json={**_body("apple", "probe-auth-terms", "terms@probe-auth.test"), "terms_version": "ugc-1"},
+            )
+            self.assertEqual(opened.status_code, 200, opened.text)
+            me = client.get("/auth/me", headers={"Authorization": f"Bearer {opened.json()['token']}"})
+            self.assertEqual(me.status_code, 200, me.text)
+            self.assertTrue(me.json()["terms_accepted"])
+            with Session(engine) as session:
+                user = session.scalar(select(AppUser).where(AppUser.email == "terms@probe-auth.test"))
+                assert user is not None
+                first_stamp = user.terms_accepted_at
+                self.assertEqual(user.terms_version, "ugc-1")
+                self.assertIsNotNone(first_stamp)
+
+            again = client.post(
+                "/auth/session",
+                headers={"X-Internal-Auth": SECRET},
+                json={**_body("apple", "probe-auth-terms", "terms@probe-auth.test"), "terms_version": "ugc-1"},
+            )
+            self.assertEqual(again.status_code, 200, again.text)
+            with Session(engine) as session:
+                user = session.scalar(select(AppUser).where(AppUser.email == "terms@probe-auth.test"))
+                assert user is not None and user.terms_accepted_at is not None
+                self.assertEqual(user.terms_accepted_at, first_stamp)
+                self.assertEqual(user.terms_version, "ugc-1")
+
     def test_verified_email_links_providers_and_relay_does_not(self) -> None:
         with TestClient(app) as client:
             google, google_token = self._open(
