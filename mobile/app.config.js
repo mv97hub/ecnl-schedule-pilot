@@ -18,8 +18,9 @@ const google = googlePlugin();
 if (google) plugins.push(google);
 
 // react-native-maps 1.29.11 depends on WorkManager 2.9.1. SDK 58 release builds
-// minify with R8 full mode, which drops Room's no-arg constructor. WorkManager's
-// startup initializer then crashes the process before the first screen.
+// minify with R8. These keep rules preserve the constructors WorkManager
+// reflects on. Full mode still constant-folds Class.getCanonicalName() to a
+// string ending in ".canonicalName", so withDisableR8FullMode turns that off.
 plugins.push([
   "expo-build-properties",
   {
@@ -31,6 +32,7 @@ plugins.push([
     },
   },
 ]);
+plugins.push("./plugins/withDisableR8FullMode");
 
 module.exports = {
   expo: {
