@@ -19,6 +19,7 @@ export function CommentBox({
   value,
   onChange,
   extra,
+  optional = false,
 }: {
   id: string;
   label: string;
@@ -26,11 +27,13 @@ export function CommentBox({
   value: string;
   onChange: (next: string) => void;
   extra?: ReactNode;
+  optional?: boolean;
 }) {
   return (
     <div className="mt-3">
       <label htmlFor={id} className="block text-[10px] font-medium uppercase tracking-wide text-stone-400">
         {label}
+        {optional ? <span className="normal-case tracking-normal"> (optional)</span> : null}
         {extra}
       </label>
       <p className="mt-1 text-sm text-stone-400">{COMMENT_CAPTION}</p>

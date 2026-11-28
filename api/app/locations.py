@@ -505,7 +505,7 @@ class RecommendationIn(BaseModel):
     category: TipCategory
     title: str = Field(min_length=1, max_length=160)
     rating: int = Field(ge=1, le=5)
-    review_text: str = Field(min_length=1, max_length=4000)
+    review_text: str = Field(max_length=4000)
     tags: list[str] = Field(default_factory=list)
     author_name: str | None = Field(default=None, max_length=80)
     place_id: str | None = Field(default=None, max_length=512)
@@ -1260,6 +1260,16 @@ def _manual_address(value: str | None) -> str | None:
     return text[:500]
 
 
+def _note_optional(category: str, title: str, place_id: str | None, formatted_address: str | None) -> bool:
+    """A hotel or restaurant note is optional once the place is picked or typed. The place stays required."""
+
+    if category not in {"HOTEL", "RESTAURANT"}:
+        return False
+    if title or place_id:
+        return True
+    return _manual_address(formatted_address) is not None
+
+
 def _apply_match(row: VenueRecommendation, hit: PlaceHit) -> None:
     row.place_provider = PROVIDER
     row.place_id = hit.place_id
@@ -1963,12 +1973,12 @@ def add_recommendation(
     venue_key, venue_name, city, state = _place_from_body(payload.venue_name, payload.city, payload.state)
     title = " ".join(payload.title.split())
     review = payload.review_text.strip()
-    if not title or not review:
-        raise HTTPException(status_code=400, detail="title and review_text are required")
     try:
         place_id = clean_place_id(payload.place_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Unknown place") from None
+    if not title or (not review and not _note_optional(payload.category, title, place_id, payload.formatted_address)):
+        raise HTTPException(status_code=400, detail="title and review_text are required")
     match: PlaceHit | None = None
     if place_id and payload.category in MATCH_CATEGORIES:
         match = _matched_place(session, account_id, payload.category, place_id, venue_key)

@@ -44,6 +44,17 @@ export function formatTipAddress(address: PlaceAddressDraft): string {
   return [street, city, region].filter(Boolean).join(", ").slice(0, 500);
 }
 
+const NOTE_OPTIONAL = new Set<TipCategory>(["HOTEL", "RESTAURANT"]);
+
+export function placeWasGiven(placeId: string | null, title: string, address: PlaceAddressDraft): boolean {
+  return Boolean(placeId) || Boolean(title.trim()) || Boolean(formatTipAddress(address));
+}
+
+export function tipNoteRequired(category: TipCategory, placeId: string | null, title: string, address: PlaceAddressDraft): boolean {
+  if (!NOTE_OPTIONAL.has(category)) return true;
+  return !placeWasGiven(placeId, title, address);
+}
+
 export function StaticFieldName({ name, city, state }: { name: string; city: string; state: string }) {
   const line = [name, city, state].map((part) => part.trim()).filter(Boolean).join(", ");
   return (
