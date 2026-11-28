@@ -20,6 +20,7 @@ export function TermsAgreement({ checked, onChange }: { checked: boolean; onChan
     <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
       <Text
         accessibilityRole="checkbox"
+        accessibilityLabel="I agree to the Terms of Use"
         accessibilityState={{ checked }}
         onPress={() => onChange(!checked)}
         style={{
@@ -46,17 +47,5 @@ export function TermsAgreement({ checked, onChange }: { checked: boolean; onChan
         .
       </Text>
     </View>
-  );
-}
-
-export function TermsSignInNote() {
-  return (
-    <Text style={{ color: colors.secondary, lineHeight: 20 }}>
-      Posting a rating or a tip requires the{" "}
-      <Text onPress={() => openSitePage("/terms")} style={{ color: colors.navy, fontWeight: "700", textDecorationLine: "underline" }}>
-        Terms of Use
-      </Text>
-      .
-    </Text>
   );
 }

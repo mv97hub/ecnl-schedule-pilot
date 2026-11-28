@@ -1,5 +1,6 @@
 import { Image, Text, View } from "react-native";
 
+import { TermsAgreement } from "@/components/CommentNotice";
 import { StandardGoogleButton } from "@/components/StandardGoogleButton";
 import { Hit } from "@/components/ui";
 import { useProviderSignIn } from "@/components/useProviderSignIn";
@@ -14,11 +15,12 @@ const APPLE_MARK =
  * Apple stays 44pt black. Google stays the light 48pt sign-in button.
  */
 export function SignInButtons({ from, next }: { from: SignInFrom; next: string | null }) {
-  const { busy, error, run } = useProviderSignIn(from, next);
+  const { busy, error, agreed, setAgreed, run } = useProviderSignIn(from, next);
   const locked = busy != null;
 
   return (
     <View style={{ gap: 12, alignSelf: "stretch" }}>
+      <TermsAgreement checked={agreed} onChange={setAgreed} />
       <Hit
         label="Sign in with Apple"
         disabled={locked}

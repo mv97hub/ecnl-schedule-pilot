@@ -1,16 +1,18 @@
 import { AppleAuthenticationButton, AppleAuthenticationButtonStyle, AppleAuthenticationButtonType } from "expo-apple-authentication";
 import { Text, View } from "react-native";
 
+import { TermsAgreement } from "@/components/CommentNotice";
 import { StandardGoogleButton } from "@/components/StandardGoogleButton";
 import { useProviderSignIn } from "@/components/useProviderSignIn";
 import type { SignInFrom } from "@/lib/finishSignIn";
 import { colors } from "@/theme";
 
 export function SignInButtons({ from, next }: { from: SignInFrom; next: string | null }) {
-  const { busy, error, run } = useProviderSignIn(from, next);
+  const { busy, error, agreed, setAgreed, run } = useProviderSignIn(from, next);
 
   return (
     <View style={{ gap: 12, alignSelf: "stretch" }}>
+      <TermsAgreement checked={agreed} onChange={setAgreed} />
       <AppleAuthenticationButton
         buttonType={AppleAuthenticationButtonType.SIGN_IN}
         buttonStyle={AppleAuthenticationButtonStyle.BLACK}
