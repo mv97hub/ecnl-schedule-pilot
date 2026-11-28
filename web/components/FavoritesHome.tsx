@@ -54,9 +54,9 @@ function squadLabel(game: WeekendGame): string {
   return `${game.squad.age_group} ${side}`;
 }
 
-function scheduleHref(teamId: number | null): string {
-  if (teamId == null) return "/?board=schedule";
-  return `/?board=schedule&team=${teamId}`;
+function teamChip(team: WeekendGame["squad"]): string {
+  const side = team.gender === "girls" ? "Girls" : "Boys";
+  return `${team.age_group} ${side} · ${team.name}`;
 }
 
 function inWindow(day: string, start: string, end: string): boolean {
@@ -180,6 +180,7 @@ export function FavoritesHome() {
   const [error, setError] = useState<string | null>(null);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
+  const [enabledTeams, setEnabledTeams] = useState<number[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
 
   useEffect(() => {
@@ -190,6 +191,7 @@ export function FavoritesHome() {
         setPayload(next);
         setStart(next.window_start);
         setEnd(next.window_end);
+        setEnabledTeams(next.teams.map((team) => team.id));
         setError(null);
       })
       .catch((err: unknown) => {
@@ -211,8 +213,11 @@ export function FavoritesHome() {
   const windowStart = start || payload?.window_start || "";
   const windowEnd = end || payload?.window_end || "";
   const visibleGames = useMemo(
-    () => (payload ? payload.games.filter((game) => inWindow(game.day, windowStart, windowEnd)) : []),
-    [payload, windowStart, windowEnd],
+    () =>
+      payload
+        ? payload.games.filter((game) => inWindow(game.day, windowStart, windowEnd) && enabledTeams.includes(game.squad.id))
+        : [],
+    [payload, windowStart, windowEnd, enabledTeams],
   );
   const stops = useMemo(() => buildStops(visibleGames), [visibleGames]);
   const opponents = useMemo(() => buildOpponents(visibleGames), [visibleGames]);
@@ -266,12 +271,15 @@ export function FavoritesHome() {
     setSelected(null);
   }
 
+  function toggleTeam(id: number) {
+    setEnabledTeams((current) => (current.includes(id) ? current.filter((teamId) => teamId !== id) : [...current, id]));
+    setSelected(null);
+  }
+
   function showStop(id: string) {
     setSelected(id);
     document.getElementById(`stop-${id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
-
-  const lead = payload?.lead_team_id ?? null;
 
   return (
     <div className="min-h-full bg-bone">
@@ -284,9 +292,6 @@ export function FavoritesHome() {
           {payload?.record ? <p className="text-sm font-semibold text-white">{wdl(payload.record)} W-D-L</p> : null}
           {payload?.club_games ? <p className="text-sm font-semibold text-gold">Club games</p> : null}
           <div className="ml-auto flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium">
-            <Link href={scheduleHref(lead)} className="text-white underline underline-offset-4">
-              Full schedule
-            </Link>
             <Link href="/profile/favorites" className="text-white underline underline-offset-4">
               Edit club and teams
             </Link>
@@ -295,7 +300,7 @@ export function FavoritesHome() {
       </section>
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
-        {loading ? <p className="text-sm text-stone-500">Loading your next two weeks.</p> : null}
+        {loading ? <p className="text-sm text-stone-500">Loading your next six weeks.</p> : null}
         {error ? <p className="text-sm text-ink">{error}</p> : null}
         {payload && !payload.has_favorites ? (
           <section className="rounded-2xl border border-stone-200 bg-white px-4 py-4 shadow-sm">
@@ -310,6 +315,28 @@ export function FavoritesHome() {
 
         {payload?.has_favorites ? (
           <>
+            {payload.teams.length > 0 ? (
+              <section className="mb-6" aria-label="Teams" data-team-count={payload.teams.length} data-enabled-count={enabledTeams.length}>
+                <h2 className="text-xl font-semibold text-navy">Teams</h2>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {payload.teams.map((team) => {
+                    const on = enabledTeams.includes(team.id);
+                    return (
+                      <button
+                        key={team.id}
+                        type="button"
+                        aria-pressed={on}
+                        data-team-id={team.id}
+                        onClick={() => toggleTeam(team.id)}
+                        className={`rounded-full px-3 py-1.5 text-sm font-medium ${on ? "bg-navy text-white" : "border border-stone-300 bg-white text-stone-500"}`}
+                      >
+                        {teamChip(team)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
             <section aria-label="Upcoming opponents" data-opponent-count={opponents.length}>
               <h2 className="text-xl font-semibold text-navy">Upcoming opponents</h2>
               {opponents.length === 0 ? <p className="mt-3 text-sm text-stone-500">No opponents in this window.</p> : null}

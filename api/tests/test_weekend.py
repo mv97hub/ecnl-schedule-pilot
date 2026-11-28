@@ -105,14 +105,14 @@ class WeekendMapTests(unittest.TestCase):
                     )
                 )
 
-    def test_window_defaults_to_fourteen_days_and_the_slider_reaches_the_last_game(self) -> None:
+    def test_window_defaults_to_six_weeks_and_the_slider_reaches_the_last_game(self) -> None:
         today = datetime.now(EASTERN).date()
         window_start, window_end = default_window(today)
         self.assertEqual(window_start, today)
-        self.assertEqual((window_end - window_start).days, 13)
+        self.assertEqual((window_end - window_start).days, 41)
         self.assertEqual(season_end(today, None), window_end)
-        self.assertEqual(season_end(today, today + timedelta(days=2)), window_end)
-        self.assertEqual(season_end(today, today + timedelta(days=40)), today + timedelta(days=40))
+        self.assertEqual(season_end(today, today + timedelta(days=20)), window_end)
+        self.assertEqual(season_end(today, today + timedelta(days=70)), today + timedelta(days=70))
 
     def test_reads_stored_pins_and_leaves_them_alone(self) -> None:
         today = datetime.now(EASTERN).date()
@@ -185,7 +185,7 @@ class WeekendMapTests(unittest.TestCase):
             add_game(ours, rival, _noon(3), "Probe Weekend Annex", None)
             add_game(ours, rival, _noon(4), "TBD", None)
             add_game(ours, rival, _noon(20), "Probe Weekend Complex", "Field 2")
-            add_game(ours, rival, _noon(40), "Probe Weekend Complex", "Field 2")
+            add_game(ours, rival, _noon(70), "Probe Weekend Complex", "Field 2")
             add_game(ours, rival, _noon(-1), "Probe Weekend Complex", "Field 2")
             session.add(
                 VenueFieldPoint(
@@ -292,16 +292,17 @@ class WeekendMapTests(unittest.TestCase):
         self.assertEqual(payload["club_name"], "Probe Weekend FC")
         self.assertEqual(payload["lead_team_id"], ours_id)
         self.assertEqual(payload["window_start"], today.isoformat())
-        self.assertEqual(payload["window_end"], (today + timedelta(days=13)).isoformat())
+        self.assertEqual(payload["window_end"], (today + timedelta(days=41)).isoformat())
         self.assertEqual(payload["range_start"], today.isoformat())
-        self.assertEqual(payload["range_end"], (today + timedelta(days=40)).isoformat())
+        self.assertEqual(payload["range_end"], (today + timedelta(days=70)).isoformat())
         self.assertIsNone(payload["home"])
         days = {game["day"] for game in payload["games"]}
         self.assertIn((today + timedelta(days=1)).isoformat(), days)
         self.assertIn((today + timedelta(days=20)).isoformat(), days)
-        self.assertIn((today + timedelta(days=40)).isoformat(), days)
+        self.assertIn((today + timedelta(days=70)).isoformat(), days)
         self.assertNotIn((today - timedelta(days=1)).isoformat(), days)
         self.assertTrue(all(game["squad"]["id"] == ours_id for game in payload["games"]))
+        self.assertEqual([team["id"] for team in payload["teams"]], [ours_id])
         self.assertNotIn(other_id, [game["squad"]["id"] for game in payload["games"]])
 
         by_day = {}
@@ -342,6 +343,21 @@ class WeekendMapTests(unittest.TestCase):
             self.assertTrue(payload["club_games"])
             squads = {game["squad"]["id"] for game in payload["games"] if game["day"] == (today + timedelta(days=1)).isoformat()}
             self.assertEqual(squads, {ours_id, other_id})
+            self.assertEqual({team["id"] for team in payload["teams"]}, {ours_id, other_id})
+
+        with TestClient(app) as client:
+            headers = _sign_in(client, "probe-weekend-both")
+            both = client.put(
+                "/me/favorites",
+                json={"club_id": str(CLUB_ID), "team_ids": [other_id, ours_id]},
+                headers=headers,
+            )
+            self.assertEqual(both.status_code, 200, both.text)
+            body = client.get("/me/weekend", headers=headers)
+            self.assertEqual(body.status_code, 200, body.text)
+            chosen = body.json()
+            self.assertEqual([team["id"] for team in chosen["teams"]], [other_id, ours_id])
+            self.assertEqual({game["squad"]["id"] for game in chosen["games"]}, {ours_id, other_id})
 
     def test_home_star_is_geocoded_once_and_field_pins_stay_put(self) -> None:
         complex_key = make_venue_key("Probe Weekend Complex", "Probeville", "FL")
@@ -451,7 +467,7 @@ class WeekendMapTests(unittest.TestCase):
             self.assertEqual(stored.longitude, -81.2)
             self.assertEqual(stored.pin_rule, "manual")
             self.assertEqual(stored.fetched_at, stamped)
-            homes = list(session.scalars(select(UserHomeAddress)).all())
+            homes = list(session.scalars(select(UserHomeAddress).where(UserHomeAddress.street == "10 Oak Street")).all())
             self.assertEqual(len(homes), 1)
             self.assertEqual(homes[0].latitude, 30.25)
             self.assertEqual(homes[0].longitude, -81.4)
