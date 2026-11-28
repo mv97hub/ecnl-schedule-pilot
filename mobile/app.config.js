@@ -12,10 +12,25 @@ function googlePlugin() {
 
 const plugins = (expo.plugins ?? []).filter((plugin) => {
   const name = Array.isArray(plugin) ? plugin[0] : plugin;
-  return name !== "@react-native-google-signin/google-signin";
+  return name !== "@react-native-google-signin/google-signin" && name !== "expo-build-properties";
 });
 const google = googlePlugin();
 if (google) plugins.push(google);
+
+// react-native-maps 1.29.11 depends on WorkManager 2.9.1. SDK 58 release builds
+// minify with R8 full mode, which drops Room's no-arg constructor. WorkManager's
+// startup initializer then crashes the process before the first screen.
+plugins.push([
+  "expo-build-properties",
+  {
+    android: {
+      extraProguardRules: [
+        "-keep class * extends androidx.room.RoomDatabase { <init>(); }",
+        "-keep class * extends androidx.work.InputMerger { <init>(); }",
+      ].join("\n"),
+    },
+  },
+]);
 
 module.exports = {
   expo: {
