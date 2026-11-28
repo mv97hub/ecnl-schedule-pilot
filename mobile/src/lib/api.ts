@@ -8,6 +8,9 @@ import type {
   ClubDetail,
   ClubListItem,
   ClubLocations,
+  ClubMap,
+  FieldMap,
+  PlaceSuggestion,
   HeadToHeadReport,
   LocationDetail,
   MobileDashboard,
@@ -337,6 +340,21 @@ export function deleteCalendar(token: string, teamId: number): Promise<void> {
   return request(`/me/calendars/${teamId}`, { method: "DELETE", token });
 }
 
+export function fetchClubMap(club: string): Promise<ClubMap> {
+  const params = new URLSearchParams({ club });
+  return request<ClubMap>(`/locations/map/club?${params.toString()}`);
+}
+
+export function fetchFieldMap(venueKey: string): Promise<FieldMap> {
+  const params = new URLSearchParams({ venue_key: venueKey });
+  return request<FieldMap>(`/locations/map/field?${params.toString()}`);
+}
+
+export function fetchPlaceSuggestions(token: string, venueKey: string, category: TipCategory, q: string): Promise<PlaceSuggestion[]> {
+  const params = new URLSearchParams({ venue_key: venueKey, category, q });
+  return request<{ suggestions: PlaceSuggestion[] }>(`/locations/places?${params.toString()}`, { token }).then((body) => body.suggestions ?? []);
+}
+
 export function fetchClubLocations(club: string, token: string | null): Promise<ClubLocations> {
   const params = new URLSearchParams({ club });
   return request<ClubLocations>(`/locations/club?${params.toString()}`, { token });
@@ -382,6 +400,8 @@ export function postRecommendation(
     rating: number;
     review_text: string;
     tags: string[];
+    place_id?: string | null;
+    formatted_address?: string | null;
   },
 ): Promise<void> {
   return request("/locations/recommendations", { method: "POST", token, body });

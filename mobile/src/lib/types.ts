@@ -417,6 +417,55 @@ export type LocationTip = {
   created_at: string;
   map_url: string;
   edited?: boolean;
+  matched_name?: string | null;
+  formatted_address?: string | null;
+  place_provider?: string | null;
+};
+
+export type MapField = {
+  venue_key: string;
+  venue_name: string;
+  city: string;
+  state: string;
+  status: string;
+  latitude: number | null;
+  longitude: number | null;
+  formatted_address: string | null;
+};
+
+export type MapTip = {
+  id: number;
+  venue_key: string;
+  category: string;
+  title: string;
+  rating: number;
+  formatted_address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  distance_miles: number | null;
+  map_url: string;
+};
+
+export type FieldMap = MapField & {
+  tips: MapTip[];
+};
+
+export type ClubMap = {
+  club_id: number | string;
+  club_name: string;
+  fields: MapField[];
+};
+
+export type PlaceSuggestion = {
+  place_id: string;
+  name: string;
+  formatted_address: string;
+  street: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 export type LocationAggregate = {

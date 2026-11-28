@@ -2,11 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useEffect, useState } from "react";
-import { RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
+import { RefreshControl, ScrollView, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Card, Chip, Crest, Hit, Loading, Notice, PreferencesButton } from "@/components/ui";
-import { fetchClubLocations, fetchClubs } from "@/lib/api";
+import { FieldMap } from "@/components/FieldMap";
+import type { MapPoint } from "@/components/fieldMap";
+import { Card, Chip, Crest, GoldButton, Hit, Loading, Notice, PreferencesButton } from "@/components/ui";
+import { fetchClubLocations, fetchClubMap, fetchClubs } from "@/lib/api";
 import { placePath } from "@/lib/finishSignIn";
 import { formatKickoff } from "@/lib/format";
 import { openMaps } from "@/lib/maps";
@@ -57,6 +59,22 @@ export default function PlacesScreen() {
     queryFn: () => fetchClubLocations(clubId!, token),
     enabled: Boolean(clubId),
   });
+  const clubMap = useQuery({
+    queryKey: ["locations", "map", "club", clubId],
+    queryFn: () => fetchClubMap(clubId!),
+    enabled: Boolean(clubId),
+  });
+  const [addingTip, setAddingTip] = useState(false);
+  const mapHeight = Math.max(240, Math.round(useWindowDimensions().height * 0.4));
+  const pins: MapPoint[] = (clubMap.data?.fields ?? [])
+    .filter((field) => field.latitude != null && field.longitude != null)
+    .map((field) => ({
+      id: field.venue_key,
+      latitude: field.latitude as number,
+      longitude: field.longitude as number,
+      label: field.venue_name,
+      kind: "field" as const,
+    }));
 
   return (
     <ScrollView
@@ -110,6 +128,44 @@ export default function PlacesScreen() {
               <Text style={{ color: colors.ink, fontSize: 20, fontWeight: "800", flex: 1 }}>{locations.data.club_name}</Text>
             </View>
             <ClubRatings scores={locations.data.aggregate} />
+            <GoldButton
+              label="Add a family tip"
+              onPress={() => {
+                if (!token) {
+                  router.push("/sign-in?from=profile" as Href);
+                  return;
+                }
+                setAddingTip((current) => !current);
+              }}
+            />
+            {addingTip && token ? (
+              <View style={{ gap: 6 }}>
+                <Text style={{ color: colors.secondary }}>Choose a field for the tip.</Text>
+                {locations.data.fields.map((field) => (
+                  <Hit
+                    key={`tip-${field.venue_key}`}
+                    label={`Add a tip at ${field.venue_name}`}
+                    onPress={() => {
+                      setAddingTip(false);
+                      router.push(placePath({ venueKey: field.venue_key, venueName: field.venue_name, city: field.city, state: field.state }) as Href);
+                    }}
+                  >
+                    <Text style={{ color: colors.navy, fontWeight: "700" }}>{field.venue_name}</Text>
+                  </Hit>
+                ))}
+              </View>
+            ) : null}
+            <FieldMap
+              points={pins}
+              focusId={null}
+              onSelect={(id) => {
+                const field = locations.data?.fields.find((item) => item.venue_key === id);
+                if (!field) return;
+                router.push(placePath({ venueKey: field.venue_key, venueName: field.venue_name, city: field.city, state: field.state }) as Href);
+              }}
+              height={mapHeight}
+            />
+            <Text style={{ color: colors.secondary, lineHeight: 20 }}>Pins are saved lookups, not verified locations. Map data © OpenStreetMap.</Text>
             {locations.data.fields.length === 0 ? <Text style={{ color: colors.secondary }}>No fields are stored for this club yet.</Text> : null}
             {locations.data.fields.map((field) => (
               <Card key={field.venue_key}>
@@ -125,7 +181,10 @@ export default function PlacesScreen() {
                       {field.overall == null ? "No ratings yet" : `${scoreText(field.overall)} overall`}
                       {` · ${countLabel(field.ratings_count, "rating", "ratings")}`}
                     </Text>
-                    <Text style={{ color: colors.secondary, marginTop: 2 }}>{countLabel(field.recommendations_count, "thing to do", "things to do")}</Text>
+                    <Text style={{ color: colors.secondary, marginTop: 2 }}>{tipCountLine(locations.data.tips, field.venue_key)}</Text>
+                    {tipLines(locations.data.tips, field.venue_key).map((line) => (
+                      <Text key={line} style={{ color: colors.ink, marginTop: 4 }} numberOfLines={1}>{line}</Text>
+                    ))}
                   </Hit>
                   <Hit
                     label={`Directions to ${field.venue_name}`}
@@ -148,6 +207,16 @@ export default function PlacesScreen() {
       </View>
     </ScrollView>
   );
+}
+
+function tipCountLine(tips: ClubLocationTip[], venueKey: string): string {
+  const rows = tips.filter((tip) => tip.venue_key === venueKey);
+  const count = (category: TipCategory) => rows.filter((tip) => tip.category === category).length;
+  return `Hotels ${count("HOTEL")} · Food ${count("RESTAURANT")} · Hangouts ${count("COFFEE_GAP")} · Parking ${count("SIDELINE_TIP")}`;
+}
+
+function tipLines(tips: ClubLocationTip[], venueKey: string): string[] {
+  return tips.filter((tip) => tip.venue_key === venueKey).slice(0, 2).map((tip) => tip.title);
 }
 
 function ClubRatings({ scores }: { scores: LocationAggregate }) {

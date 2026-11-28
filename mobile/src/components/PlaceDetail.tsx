@@ -2,18 +2,28 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useRouter, type Href } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from "react-native";
 
 import { CommentGuidance, RATING_PLACEHOLDER, TIP_PLACEHOLDER, TermsAgreement } from "@/components/CommentNotice";
+import { FieldMap } from "@/components/FieldMap";
+import type { MapPoint } from "@/components/fieldMap";
 import { Card, Chip, GoldButton, Hit, Loading, Notice, OutlineButton } from "@/components/ui";
-import { ApiError, acceptTerms, fetchAuthMe, fetchLocationDetail, flagRecommendation, postRating, postRecommendation, postVote } from "@/lib/api";
+import { ApiError, acceptTerms, fetchAuthMe, fetchFieldMap, fetchLocationDetail, fetchPlaceSuggestions, flagRecommendation, postRating, postRecommendation, postVote } from "@/lib/api";
 import { formatKickoff } from "@/lib/format";
 import { placePath, signInPath } from "@/lib/finishSignIn";
 import { openMaps } from "@/lib/maps";
 import { SCORE_ROWS, TIP_CATEGORIES, TIP_TABS, TIP_TAGS, categoryLabel, countLabel, scoreText, surfaceLabel, tipNoteOptional, type ScoreKey } from "@/lib/placeCopy";
 import { useAccount } from "@/store/account";
 import { colors } from "@/theme";
-import type { LocationDetail, LocationGame, LocationTip, SurfaceVote, TipCategory } from "@/lib/types";
+import type { LocationDetail, LocationGame, LocationTip, PlaceSuggestion, SurfaceVote, TipCategory } from "@/lib/types";
+
+const SEARCHABLE = new Set<TipCategory>(["HOTEL", "RESTAURANT", "COFFEE_GAP"]);
+
+function markerKind(category: string): MapPoint["kind"] {
+  if (category === "HOTEL") return "stay";
+  if (category === "RESTAURANT") return "eat";
+  return "do";
+}
 
 const EMPTY: Record<ScoreKey, number> = {
   field_quality: 0,
@@ -61,6 +71,16 @@ export function PlaceDetail({
   const [tab, setTab] = useState("all");
   const [agreed, setAgreed] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null);
+  const [picked, setPicked] = useState<PlaceSuggestion | null>(null);
+  const [address, setAddress] = useState("");
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const mapHeight = Math.max(240, Math.round(useWindowDimensions().height * 0.4));
+  const placeKey = detail.data?.venue_key ?? venueKey ?? "";
+  const fieldMap = useQuery({
+    queryKey: ["locations", "map", "field", placeKey],
+    queryFn: () => fetchFieldMap(placeKey),
+    enabled: Boolean(placeKey),
+  });
 
   useEffect(() => {
     if (!sessionToken) {
@@ -83,6 +103,28 @@ export function PlaceDetail({
 
   const termsReady = !signedIn || termsAccepted !== null;
   const needsTerms = signedIn && termsAccepted === false;
+  const searchable = SEARCHABLE.has(category);
+
+  useEffect(() => {
+    if (!searchable || !sessionToken || !placeKey || needsTerms || picked || title.trim().length < 3) {
+      setSuggestions([]);
+      return;
+    }
+    let active = true;
+    const handle = setTimeout(() => {
+      fetchPlaceSuggestions(sessionToken, placeKey, category, title.trim())
+        .then((rows) => {
+          if (active) setSuggestions(rows);
+        })
+        .catch(() => {
+          if (active) setSuggestions([]);
+        });
+    }, 300);
+    return () => {
+      active = false;
+      clearTimeout(handle);
+    };
+  }, [searchable, sessionToken, placeKey, needsTerms, picked, title, category]);
 
   useEffect(() => {
     const mine = detail.data?.my_rating;
@@ -171,6 +213,7 @@ export function PlaceDetail({
         await acceptTerms(token);
         setTermsAccepted(true);
       }
+      const manualAddress = address.trim();
       await postRecommendation(token, {
         venue_name: place.venue_name,
         city: place.city,
@@ -180,11 +223,16 @@ export function PlaceDetail({
         rating: stars,
         review_text: noteText,
         tags,
+        place_id: picked?.place_id ?? null,
+        formatted_address: picked?.formatted_address ?? (SEARCHABLE.has(category) && manualAddress ? manualAddress : null),
       });
       setTitle("");
       setStars(0);
       setTags([]);
       setReview("");
+      setPicked(null);
+      setAddress("");
+      setSuggestions([]);
       await detail.refetch();
     } catch (error) {
       setTipError(error instanceof ApiError ? error.message : "Could not add that comment.");
@@ -227,6 +275,27 @@ export function PlaceDetail({
 
   const place = detail.data;
   const surfaceText = surfaceLabel(place);
+  const distances = new Map((fieldMap.data?.tips ?? []).map((tip) => [tip.id, tip.distance_miles]));
+  const mapPoints: MapPoint[] = [];
+  if (fieldMap.data?.latitude != null && fieldMap.data.longitude != null) {
+    mapPoints.push({
+      id: fieldMap.data.venue_key,
+      latitude: fieldMap.data.latitude,
+      longitude: fieldMap.data.longitude,
+      label: fieldMap.data.venue_name,
+      kind: "field",
+    });
+  }
+  for (const tip of fieldMap.data?.tips ?? []) {
+    if (tip.latitude == null || tip.longitude == null) continue;
+    mapPoints.push({
+      id: `tip-${tip.id}`,
+      latitude: tip.latitude,
+      longitude: tip.longitude,
+      label: tip.title,
+      kind: markerKind(tip.category),
+    });
+  }
 
   return (
     <View style={{ gap: 16 }}>
@@ -237,6 +306,7 @@ export function PlaceDetail({
           {surfaceText ? ` · ${surfaceText}` : ""}
           {` · ${countLabel(place.ratings_count, "rating", "ratings")}`}
         </Text>
+        {fieldMap.data?.formatted_address ? <Text style={{ color: colors.ink }}>{fieldMap.data.formatted_address}</Text> : null}
       </View>
       <OutlineButton
         label="Directions"
@@ -250,29 +320,16 @@ export function PlaceDetail({
           {` · ${countLabel(place.recommendations.length, "thing to do", "things to do")}`}
         </Text>
         <View style={{ gap: 10, marginTop: 12 }}>
-          {SCORE_ROWS.map(([key, label]) => (
-            <ScoreMeter key={key} label={label} value={place[key]} />
-          ))}
-        </View>
-      </Card>
-
-      {!signedIn ? (
-        <Card>
-          <Text style={{ color: colors.ink, lineHeight: 22 }}>Sign in to rate this field, write a comment, or vote.</Text>
-          <View style={{ marginTop: 12 }}>
-            <GoldButton label="Sign in" onPress={() => askSignIn(place)} />
-          </View>
-        </Card>
-      ) : null}
-
-      {signedIn ? (
-      <Card>
-        <Text style={{ color: colors.navy, fontSize: 18, fontWeight: "800" }}>Rate this complex</Text>
-        <Text style={{ color: colors.secondary, marginTop: 4 }}>One rating for this account. Saving again updates it.</Text>
-          <View style={{ gap: 12, marginTop: 12 }}>
-            {SCORE_ROWS.map(([key, label]) => (
+          {SCORE_ROWS.map(([key, label]) =>
+            signedIn ? (
               <ScorePicker key={key} label={label} value={scores[key]} onChange={(value) => setScores((current) => ({ ...current, [key]: value }))} />
-            ))}
+            ) : (
+              <ScoreMeter key={key} label={label} value={place[key]} />
+            ),
+          )}
+        </View>
+        {signedIn ? (
+          <View style={{ gap: 12, marginTop: 12 }}>
             <Text style={{ color: colors.secondary, fontWeight: "700" }}>Surface</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               {(["GRASS", "TURF", "MIXED"] as const).map((item) => (
@@ -296,8 +353,21 @@ export function PlaceDetail({
             {ratingMessage ? <Text style={{ color: colors.navy, fontWeight: "700" }}>{ratingMessage}</Text> : null}
             <GoldButton label={savingRating ? "Saving" : "Save rating"} disabled={savingRating || !termsReady || (needsTerms && !agreed)} onPress={() => void saveRating(place)} />
           </View>
+        ) : null}
       </Card>
+
+      {!signedIn ? (
+        <Card>
+          <Text style={{ color: colors.ink, lineHeight: 22 }}>Sign in to rate this field, write a comment, or vote.</Text>
+          <View style={{ marginTop: 12 }}>
+            <GoldButton label="Sign in" onPress={() => askSignIn(place)} />
+          </View>
+        </Card>
       ) : null}
+
+      {mapPoints.length > 0 ? <FieldMap points={mapPoints} focusId={null} onSelect={() => undefined} height={mapHeight} /> : null}
+      {fieldMap.data && fieldMap.data.latitude == null ? <Text style={{ color: colors.secondary }}>No map point for this field yet.</Text> : null}
+      <Text style={{ color: colors.secondary, lineHeight: 20 }}>Pins are saved lookups, not verified locations. Map data © OpenStreetMap.</Text>
 
       <View style={{ gap: 10 }}>
         <Text style={{ color: colors.navy, fontSize: 22, fontWeight: "800" }}>Things to do</Text>
@@ -313,6 +383,7 @@ export function PlaceDetail({
             tip={tip}
             signedIn={signedIn}
             token={sessionToken}
+            distance={distances.get(tip.id) ?? null}
             onVote={(choice) => void vote(place, tip, choice)}
             onHidden={() => dropTip(tip.id)}
           />
@@ -328,7 +399,47 @@ export function PlaceDetail({
                   <Chip key={item.id} label={item.label} selected={category === item.id} onPress={() => setCategory(item.id)} />
                 ))}
               </View>
-              <TextInput value={title} onChangeText={setTitle} placeholder="Place name" placeholderTextColor={colors.secondary} style={inputStyle} />
+              <TextInput
+                value={title}
+                onChangeText={(value) => {
+                  setTitle(value);
+                  if (picked && value.trim() !== picked.name) setPicked(null);
+                }}
+                placeholder="Place name"
+                placeholderTextColor={colors.secondary}
+                style={inputStyle}
+              />
+              {suggestions.length > 0 ? (
+                <View style={{ borderWidth: 1, borderColor: colors.line, borderRadius: 12, backgroundColor: colors.white }}>
+                  {suggestions.map((item) => (
+                    <Hit
+                      key={item.place_id}
+                      label={item.name}
+                      onPress={() => {
+                        setTitle(item.name);
+                        setPicked(item);
+                        setAddress(item.formatted_address);
+                        setSuggestions([]);
+                      }}
+                    >
+                      <Text style={{ color: colors.ink, fontWeight: "700" }}>{item.name}</Text>
+                      <Text style={{ color: colors.secondary }}>{item.formatted_address}</Text>
+                    </Hit>
+                  ))}
+                </View>
+              ) : null}
+              {searchable ? (
+                <TextInput
+                  value={address}
+                  onChangeText={(value) => {
+                    setAddress(value);
+                    if (picked && value.trim() !== picked.formatted_address) setPicked(null);
+                  }}
+                  placeholder="Address, if search does not list it"
+                  placeholderTextColor={colors.secondary}
+                  style={inputStyle}
+                />
+              ) : null}
               <ScorePicker label="Stars" value={stars} onChange={setStars} />
               <Text style={{ color: colors.secondary, fontWeight: "700" }}>Tags</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
@@ -393,12 +504,14 @@ function TipCard({
   tip,
   signedIn,
   token,
+  distance,
   onVote,
   onHidden,
 }: {
   tip: LocationTip;
   signedIn: boolean;
   token: string | null;
+  distance: number | null;
   onVote: (choice: "up" | "down") => void;
   onHidden: () => void;
 }) {
@@ -432,6 +545,13 @@ function TipCard({
     <Card>
       <Text style={{ color: colors.secondary, fontWeight: "700" }}>{categoryLabel(tip.category)}</Text>
       <Text style={{ color: colors.navy, fontSize: 18, fontWeight: "800", marginTop: 4 }}>{tip.title}</Text>
+      {tip.formatted_address ? (
+        <Text style={{ color: colors.secondary, marginTop: 4 }}>
+          {tip.formatted_address}
+          {tip.place_provider === "geoapify" ? " · © Geoapify" : ""}
+        </Text>
+      ) : null}
+      {distance != null ? <Text style={{ color: colors.secondary, marginTop: 4 }}>{distance.toFixed(1)} miles</Text> : null}
       <Text style={{ color: colors.ink, marginTop: 4 }}>{tip.rating} of 5</Text>
       {tip.tags.length > 0 ? <Text style={{ color: colors.secondary, marginTop: 6 }}>{tip.tags.join(" · ")}</Text> : null}
       {tip.review_text.trim() || tip.edited ? (
