@@ -574,7 +574,7 @@ class UserFavorite(Base):
 
 
 class UserHomeAddress(Base):
-    """Street address saved on the account. Latitude and longitude stay empty."""
+    """Street address saved on the account. A map point is filled once, when the home page needs it."""
 
     __tablename__ = "user_home_address"
 
