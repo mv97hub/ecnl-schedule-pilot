@@ -584,5 +584,6 @@ export type WeekendMap = {
   window_start: string;
   window_end: string;
   home: { latitude: number; longitude: number } | null;
+  teams: WeekendGame["squad"][];
   games: WeekendGame[];
 };

@@ -11,7 +11,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -23,7 +23,7 @@ from app.models import Club, ScheduleGame, ScheduleTeam, UserHomeAddress, VenueF
 from app.places import PlacesUnavailable, geocode_street_address
 
 EASTERN = ZoneInfo("America/New_York")
-WINDOW_DAYS = 14
+WINDOW_DAYS = 42
 SURFACE_LABEL = {"GRASS": "Grass", "TURF": "Turf", "MIXED": "Mixed"}
 BRING_TAGS = ("Bring Shade", "Paid Parking")
 
@@ -87,11 +87,12 @@ class WeekendMapOut(BaseModel):
     window_start: date
     window_end: date
     home: WeekendPinOut | None = None
+    teams: list[WeekendSquadOut] = Field(default_factory=list)
     games: list[WeekendGameOut]
 
 
 def default_window(today: date) -> tuple[date, date]:
-    """The next 14 calendar days, including today. This is the selected window, not the slider limit."""
+    """The next six weeks, including today, in America/New_York. This is the selected window, not the slider limit."""
 
     return today, today + timedelta(days=WINDOW_DAYS - 1)
 
@@ -171,6 +172,16 @@ def _squad(team: ScheduleTeam) -> WeekendSquadOut:
         gender=gender,
         tier=team.tier,
     )
+
+
+def _followed_teams(session: Session, scope: list[int]) -> list[WeekendSquadOut]:
+    """Saved teams, or the club's squads when no teams are saved, in that order."""
+
+    if not scope:
+        return []
+    rows = list(session.scalars(select(ScheduleTeam).where(ScheduleTeam.id.in_(scope))).all())
+    by_id = {int(row.id): row for row in rows}
+    return [_squad(by_id[team_id]) for team_id in scope if team_id in by_id]
 
 
 def _empty(today: date) -> WeekendMapOut:
@@ -355,6 +366,7 @@ def weekend_map(session: Session, user_id: int, today: date | None = None) -> We
         window_start=window_start,
         window_end=window_end,
         home=_home_point(session, user_id),
+        teams=_followed_teams(session, scope),
         games=packed,
     )
 

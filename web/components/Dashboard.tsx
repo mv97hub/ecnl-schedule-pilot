@@ -377,7 +377,7 @@ export function Dashboard() {
                 <Link href="/profile?next=/" className="font-medium text-white underline underline-offset-4">
                   Sign in
                 </Link>{" "}
-                to see your family’s next two weeks on a map.
+                to see your family’s next six weeks on a map.
               </p>
             ) : null}
           </div>
