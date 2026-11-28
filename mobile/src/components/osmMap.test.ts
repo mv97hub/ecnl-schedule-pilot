@@ -68,10 +68,15 @@ test("android home and places use the shared screens and not Google Maps", () =>
 test("android sign-in does not tell the person to use the iOS app", () => {
   const android = readFileSync(new URL("../lib/signInProviders.android.ts", import.meta.url), "utf8");
   const fallback = readFileSync(new URL("../lib/signInProviders.ts", import.meta.url), "utf8");
+  const androidButtons = readFileSync(new URL("./SignInButtons.android.tsx", import.meta.url), "utf8");
+  const iosButtons = readFileSync(new URL("./SignInButtons.ios.tsx", import.meta.url), "utf8");
   assert.match(android, /Sign in with Apple is not available on Android/);
   assert.match(android, /EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID/);
   assert.match(android, /webClientId/);
   assert.doesNotMatch(android, /iOS app/);
   assert.doesNotMatch(fallback, /iOS app/);
   assert.doesNotMatch(android, /expo-apple-authentication/);
+  assert.doesNotMatch(androidButtons, /Sign in with Apple|run\("apple"\)|expo-apple-authentication/);
+  assert.match(androidButtons, /StandardGoogleButton/);
+  assert.match(iosButtons, /AppleAuthenticationButton/);
 });
