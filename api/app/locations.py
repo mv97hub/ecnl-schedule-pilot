@@ -448,7 +448,7 @@ class RecommendationIn(BaseModel):
     category: TipCategory
     title: str = Field(min_length=1, max_length=160)
     rating: int = Field(ge=1, le=5)
-    review_text: str = Field(min_length=1, max_length=4000)
+    review_text: str = Field(default="", max_length=4000)
     tags: list[str] = Field(default_factory=list)
     author_name: str | None = Field(default=None, max_length=80)
 
@@ -987,8 +987,11 @@ def add_recommendation(
     venue_key, venue_name, city, state = _place_from_body(payload.venue_name, payload.city, payload.state)
     title = " ".join(payload.title.split())
     review = payload.review_text.strip()
-    if not title or not review:
-        raise HTTPException(status_code=400, detail="title and review_text are required")
+    if not title:
+        raise HTTPException(status_code=400, detail="title is required")
+    # A hotel or restaurant can be the place alone. Other tips still need a note.
+    if payload.category not in {"HOTEL", "RESTAURANT"} and not review:
+        raise HTTPException(status_code=400, detail="review_text is required")
     row = VenueRecommendation(
         venue_key=venue_key,
         venue_name=venue_name,

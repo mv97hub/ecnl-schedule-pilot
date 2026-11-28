@@ -10,7 +10,7 @@ import { ApiError, acceptTerms, fetchAuthMe, fetchLocationDetail, flagRecommenda
 import { formatKickoff } from "@/lib/format";
 import { placePath, signInPath } from "@/lib/finishSignIn";
 import { openMaps } from "@/lib/maps";
-import { SCORE_ROWS, TIP_CATEGORIES, TIP_TABS, TIP_TAGS, categoryLabel, countLabel, scoreText, surfaceLabel, type ScoreKey } from "@/lib/placeCopy";
+import { SCORE_ROWS, TIP_CATEGORIES, TIP_TABS, TIP_TAGS, categoryLabel, countLabel, scoreText, surfaceLabel, tipNoteOptional, type ScoreKey } from "@/lib/placeCopy";
 import { useAccount } from "@/store/account";
 import { colors } from "@/theme";
 import type { LocationDetail, LocationGame, LocationTip, SurfaceVote, TipCategory } from "@/lib/types";
@@ -153,8 +153,11 @@ export function PlaceDetail({
 
   async function saveTip(place: LocationDetail) {
     if (!token) return askSignIn(place);
-    if (!title.trim() || stars < 1 || !review.trim()) {
-      setTipError("Add a place name, stars, and a note.");
+    const placeName = title.trim();
+    const noteText = review.trim();
+    const noteOptional = tipNoteOptional(category) && placeName.length > 0;
+    if (!placeName || stars < 1 || (!noteOptional && !noteText)) {
+      setTipError(tipNoteOptional(category) ? "Add a place name and stars." : "Add a place name, stars, and a note.");
       return;
     }
     if (needsTerms && !agreed) {
@@ -175,7 +178,7 @@ export function PlaceDetail({
         category,
         title: title.trim(),
         rating: stars,
-        review_text: review.trim(),
+        review_text: noteText,
         tags,
       });
       setTitle("");
@@ -339,6 +342,9 @@ export function PlaceDetail({
                 ))}
               </View>
               <CommentGuidance />
+              {tipNoteOptional(category) ? (
+                <Text style={{ color: colors.secondary }}>A note is optional once the place name is filled in.</Text>
+              ) : null}
               <TextInput value={review} onChangeText={setReview} multiline placeholder={TIP_PLACEHOLDER} placeholderTextColor="#A8A29E" style={inputStyle} />
               {needsTerms ? <TermsAgreement checked={agreed} onChange={setAgreed} /> : null}
               <GoldButton label={savingTip ? "Saving" : "Add comment"} disabled={savingTip || !termsReady || (needsTerms && !agreed)} onPress={() => void saveTip(place)} />
@@ -428,10 +434,12 @@ function TipCard({
       <Text style={{ color: colors.navy, fontSize: 18, fontWeight: "800", marginTop: 4 }}>{tip.title}</Text>
       <Text style={{ color: colors.ink, marginTop: 4 }}>{tip.rating} of 5</Text>
       {tip.tags.length > 0 ? <Text style={{ color: colors.secondary, marginTop: 6 }}>{tip.tags.join(" · ")}</Text> : null}
-      <Text style={{ color: colors.ink, marginTop: 8, lineHeight: 20 }}>
-        {tip.review_text}
-        {tip.edited ? " · Edited" : ""}
-      </Text>
+      {tip.review_text.trim() || tip.edited ? (
+        <Text style={{ color: colors.ink, marginTop: 8, lineHeight: 20 }}>
+          {tip.review_text.trim()}
+          {tip.edited ? `${tip.review_text.trim() ? " · " : ""}Edited` : ""}
+        </Text>
+      ) : null}
       <Text style={{ color: colors.secondary, marginTop: 8 }}>
         {tip.author_name} · {posted}
       </Text>

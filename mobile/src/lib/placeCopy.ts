@@ -10,6 +10,11 @@ export const SCORE_ROWS = [
 
 export type ScoreKey = (typeof SCORE_ROWS)[number][0];
 
+/** Hotel and restaurant notes are optional once the place name is present. */
+export function tipNoteOptional(category: TipCategory): boolean {
+  return category === "HOTEL" || category === "RESTAURANT";
+}
+
 export const TIP_CATEGORIES: { id: TipCategory; label: string }[] = [
   { id: "HOTEL", label: "Hotel" },
   { id: "RESTAURANT", label: "Team Food and Dining" },

@@ -218,10 +218,12 @@ function ClubTip({ tip, onOpen }: { tip: ClubLocationTip; onOpen: () => void }) 
       </View>
       <Text style={{ color: colors.secondary, marginTop: 8, fontSize: 11, fontWeight: "700", letterSpacing: 0.4 }}>{categoryLabel(tip.category).toUpperCase()}</Text>
       {tip.tags.length > 0 ? <Text style={{ color: colors.secondary, marginTop: 6 }}>{tip.tags.join(" · ")}</Text> : null}
-      <Text style={{ color: colors.ink, marginTop: 8, lineHeight: 20 }}>
-        {tip.review_text}
-        {tip.edited ? " · Edited" : ""}
-      </Text>
+      {tip.review_text.trim() || tip.edited ? (
+        <Text style={{ color: colors.ink, marginTop: 8, lineHeight: 20 }}>
+          {tip.review_text.trim()}
+          {tip.edited ? `${tip.review_text.trim() ? " · " : ""}Edited` : ""}
+        </Text>
+      ) : null}
       <Text style={{ color: colors.secondary, marginTop: 8 }}>
         {tip.author_name} · {posted} · Up {tip.upvotes} · Down {tip.downvotes}
       </Text>

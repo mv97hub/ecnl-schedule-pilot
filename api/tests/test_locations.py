@@ -534,5 +534,55 @@ class LocationGuideTests(unittest.TestCase):
             )
 
 
+    def test_hotel_and_restaurant_tips_can_omit_the_note(self) -> None:
+        with TestClient(app) as client:
+            headers, _user_id = _sign_in(client, "probe-location-place-only", "probe-location-place@probe-location.test", "Place Family")
+            hotel = client.post(
+                "/locations/recommendations",
+                json={
+                    "venue_name": "Davis Park",
+                    "city": "Probeville",
+                    "state": "FL",
+                    "category": "HOTEL",
+                    "title": "Hampton Inn",
+                    "rating": 4,
+                    "review_text": "   ",
+                },
+                headers=headers,
+            )
+            self.assertEqual(hotel.status_code, 200, hotel.text)
+            self.assertEqual(hotel.json()["review_text"], "")
+            restaurant = client.post(
+                "/locations/recommendations",
+                json={
+                    "venue_name": "Davis Park",
+                    "city": "Probeville",
+                    "state": "FL",
+                    "category": "RESTAURANT",
+                    "title": "Sideline Pizza",
+                    "rating": 5,
+                },
+                headers=headers,
+            )
+            self.assertEqual(restaurant.status_code, 200, restaurant.text)
+            self.assertEqual(restaurant.json()["title"], "Sideline Pizza")
+            self.assertEqual(restaurant.json()["review_text"], "")
+            hangout = client.post(
+                "/locations/recommendations",
+                json={
+                    "venue_name": "Davis Park",
+                    "city": "Probeville",
+                    "state": "FL",
+                    "category": "COFFEE_GAP",
+                    "title": "Lobby coffee",
+                    "rating": 3,
+                    "review_text": "",
+                },
+                headers=headers,
+            )
+            self.assertEqual(hangout.status_code, 400, hangout.text)
+            self.assertEqual(hangout.json()["detail"], "review_text is required")
+
+
 if __name__ == "__main__":
     unittest.main()
