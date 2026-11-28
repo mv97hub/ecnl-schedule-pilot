@@ -287,6 +287,7 @@ export function logoutSession(token: string): Promise<void> {
   return request("/auth/logout", { method: "POST", token });
 }
 
+/** Signed-in delete of the current user. Matches the website: DELETE /auth/account. */
 export function deleteAccount(token: string): Promise<void> {
   return request("/auth/account", { method: "DELETE", token });
 }

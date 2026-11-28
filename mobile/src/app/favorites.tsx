@@ -1,5 +1,5 @@
 import { useRouter, type Href } from "expo-router";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Alert, ScrollView, Text, View } from "react-native";
 
 import { FavoritesEditor } from "@/components/FavoritesEditor";
@@ -8,6 +8,7 @@ import { SignInButtons } from "@/components/SignInButtons";
 import { GoldButton, Hit, LegalLinks, Loading, OutlineButton } from "@/components/ui";
 import { deleteAccount, logoutSession } from "@/lib/api";
 import { retryFavoriteSync } from "@/lib/accountFavorites";
+import { DELETE_ACCOUNT_CONFIRM } from "@/lib/deleteAccountCopy";
 import { useAccount } from "@/store/account";
 import { colors } from "@/theme";
 
@@ -21,6 +22,7 @@ export default function FavoritesScreen() {
   const token = useAccount((state) => state.token);
   const user = useAccount((state) => state.user);
   const clearSession = useAccount((state) => state.clearSession);
+  const deleting = useRef(false);
 
   useEffect(() => {
     retryFavoriteSync();
@@ -38,25 +40,30 @@ export default function FavoritesScreen() {
   }
 
   function confirmDelete() {
-    Alert.alert("Delete account", "Delete this account, including its ratings, tips, votes, home address, and calendar links?", [
+    Alert.alert("Delete account", DELETE_ACCOUNT_CONFIRM, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete account",
         style: "destructive",
         onPress: () => {
-          void (async () => {
-            if (!token) return;
-            try {
-              await deleteAccount(token);
-              clearSession();
-            } catch (error) {
-              const message = error instanceof Error ? error.message : "Could not delete the account.";
-              Alert.alert("Delete account", message);
-            }
-          })();
+          void removeAccount();
         },
       },
     ]);
+  }
+
+  async function removeAccount() {
+    if (!token || deleting.current) return;
+    deleting.current = true;
+    try {
+      await deleteAccount(token);
+      clearSession();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not delete the account.";
+      Alert.alert("Delete account", message);
+    } finally {
+      deleting.current = false;
+    }
   }
 
   return (
@@ -68,7 +75,6 @@ export default function FavoritesScreen() {
           <Text style={{ color: colors.ink }}>{user.email || "No email from the provider"}</Text>
           <Text style={{ color: colors.secondary }}>{providerLabel(user.providers) || "Signed in"}</Text>
           <GoldButton label="Sign out" onPress={() => void signOut()} />
-          <OutlineButton label="Delete account" onPress={confirmDelete} />
         </View>
       ) : null}
       {ready && token && !user ? (
@@ -88,6 +94,7 @@ export default function FavoritesScreen() {
           <MenuRow label="Favorites" onPress={() => router.push("/profile-favorites" as Href)} />
           <MenuRow label="Home address" onPress={() => router.push("/home-address" as Href)} />
           <MenuRow label="Team calendar" onPress={() => router.push("/team-calendar" as Href)} />
+          <MenuRow label="Delete account" onPress={confirmDelete} danger />
         </View>
       ) : null}
       {ready && !user ? <FavoritesEditor onDone={() => router.back()} doneLabel="Done" /> : null}
@@ -102,10 +109,10 @@ export default function FavoritesScreen() {
   );
 }
 
-function MenuRow({ label, onPress }: { label: string; onPress: () => void }) {
+function MenuRow({ label, onPress, danger }: { label: string; onPress: () => void; danger?: boolean }) {
   return (
     <Hit label={label} onPress={onPress} style={{ backgroundColor: colors.white, borderRadius: 14, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 16 }}>
-      <Text style={{ color: colors.ink, fontWeight: "800", fontSize: 16 }}>{label}</Text>
+      <Text style={{ color: danger ? colors.loss : colors.ink, fontWeight: "800", fontSize: 16 }}>{label}</Text>
     </Hit>
   );
 }
