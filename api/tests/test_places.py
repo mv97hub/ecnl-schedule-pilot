@@ -819,6 +819,50 @@ class PlaceLookupTests(unittest.TestCase):
             assert parked is not None
             self.assertIsNone(parked.formatted_address)
 
+    def test_a_hotel_or_restaurant_can_omit_the_note_when_the_place_is_set(self) -> None:
+        with TestClient(app) as client, patch("app.places.httpx.get", side_effect=self._fake_get):
+            headers = _sign_in(client, "probe-place-optional-note")
+            point = client.get(
+                "/locations/field-point",
+                params={"venue_name": FIELD, "city": CITY, "state": STATE},
+                headers=headers,
+            )
+            self.assertEqual(point.status_code, 200, point.text)
+
+            picked = _tip("Hilton", place_id=HOTEL_ID)
+            picked["review_text"] = ""
+            picked_saved = client.post("/locations/recommendations", json=picked, headers=headers)
+            self.assertEqual(picked_saved.status_code, 200, picked_saved.text)
+            self.assertEqual(picked_saved.json()["review_text"], "")
+            self.assertEqual(picked_saved.json()["matched_name"], "Hilton Probeplace")
+            self.assertEqual(picked_saved.json()["formatted_address"], ADDRESS)
+
+            typed = _tip("Team Dinner", category="RESTAURANT", formatted_address="  12 Oak St, Probeplace, FL 32000  ")
+            typed["review_text"] = "   "
+            typed_saved = client.post("/locations/recommendations", json=typed, headers=headers)
+            self.assertEqual(typed_saved.status_code, 200, typed_saved.text)
+            self.assertEqual(typed_saved.json()["review_text"], "")
+            self.assertEqual(typed_saved.json()["formatted_address"], "12 Oak St, Probeplace, FL 32000")
+
+            named = _tip("Name Only Inn")
+            named["review_text"] = ""
+            named_saved = client.post("/locations/recommendations", json=named, headers=headers)
+            self.assertEqual(named_saved.status_code, 200, named_saved.text)
+            self.assertEqual(named_saved.json()["review_text"], "")
+            self.assertIsNone(named_saved.json()["formatted_address"])
+
+            blank_name = _tip("   ")
+            blank_name["review_text"] = ""
+            missing_place = client.post("/locations/recommendations", json=blank_name, headers=headers)
+            self.assertEqual(missing_place.status_code, 400, missing_place.text)
+
+            for category in ("COFFEE_GAP", "ACTIVITY", "SIDELINE_TIP"):
+                body = _tip("Needs a note", category=category, place_id=HOTEL_ID, formatted_address="12 Oak St")
+                body["review_text"] = ""
+                refused = client.post("/locations/recommendations", json=body, headers=headers)
+                self.assertEqual(refused.status_code, 400, refused.text)
+                self.assertIn("review_text", refused.text)
+
     def test_a_far_or_wrong_place_is_not_stored(self) -> None:
         with TestClient(app) as client, patch("app.places.httpx.get", side_effect=self._fake_get):
             headers = _sign_in(client, "probe-place-far")

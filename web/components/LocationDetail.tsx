@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { CommentBox, RATING_PLACEHOLDER, TIP_PLACEHOLDER, TermsCheckbox } from "@/components/CommentFields";
 import { PlaceAddress, tipDisplayName } from "@/components/PlaceCredit";
-import { EMPTY_ADDRESS, PlaceNameInput, StaticFieldName, formatTipAddress, matchesPlace, type PlaceAddressDraft } from "@/components/PlaceNameInput";
+import { EMPTY_ADDRESS, PlaceNameInput, StaticFieldName, formatTipAddress, matchesPlace, tipNoteRequired, type PlaceAddressDraft } from "@/components/PlaceNameInput";
 import { ReportTip } from "@/components/ReportTip";
 import { TipVotes, sortTips } from "@/components/TipVotes";
 import { acceptTerms, fetchLocationDetail, postRating, postRecommendation, voteRecommendation } from "@/lib/api";
@@ -302,10 +302,12 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
     }
   }
 
+  const noteRequired = tipNoteRequired(category, placeId, title, address);
+
   async function saveTip() {
     if (!detail) return;
-    if (!title.trim() || tipStars < 1 || !review.trim()) {
-      setTipError("Add a name, stars, and a note.");
+    if (!title.trim() || tipStars < 1 || (noteRequired && !review.trim())) {
+      setTipError(noteRequired ? "Add a name, stars, and a note." : "Add a name and stars.");
       return;
     }
     if (needsTerms && !agreed) {
@@ -545,10 +547,12 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                           ))}
                         </ul>
                       ) : null}
-                      <p className="mt-2 text-sm text-ink">
-                        {tip.review_text}
-                        {tip.edited ? <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-stone-400">Edited</span> : null}
-                      </p>
+                      {tip.review_text.trim() || tip.edited ? (
+                        <p className="mt-2 text-sm text-ink">
+                          {tip.review_text}
+                          {tip.edited ? <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-stone-400">Edited</span> : null}
+                        </p>
+                      ) : null}
                       <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-stone-500">
                         <span>{tip.author_name}</span>
                         <span data-tip-added={tip.created_at}>{formatPosted(tip.created_at)}</span>
@@ -641,6 +645,7 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
                 <CommentBox
                   id="tip-review"
                   label="Review"
+                  optional={!noteRequired}
                   placeholder={TIP_PLACEHOLDER}
                   value={review}
                   onChange={setReview}

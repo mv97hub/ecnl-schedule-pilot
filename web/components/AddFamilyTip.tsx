@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { CommentBox, TIP_PLACEHOLDER, TermsCheckbox } from "@/components/CommentFields";
-import { EMPTY_ADDRESS, PlaceNameInput, StaticFieldName, formatTipAddress, matchesPlace, type PlaceAddressDraft } from "@/components/PlaceNameInput";
+import { EMPTY_ADDRESS, PlaceNameInput, StaticFieldName, formatTipAddress, matchesPlace, tipNoteRequired, type PlaceAddressDraft } from "@/components/PlaceNameInput";
 import { acceptTerms, fetchClubLocations, postRecommendation } from "@/lib/api";
 import type { LocationCard, TipCategory } from "@/lib/types";
 import { signInHref, useAccount } from "@/lib/useAccount";
@@ -95,10 +95,12 @@ export function AddFamilyTip() {
     setTags((current) => (current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag]));
   }
 
+  const noteRequired = tipNoteRequired(category, placeId, title, address);
+
   async function saveTip() {
     if (!selected) return;
-    if (!title.trim() || tipStars < 1 || !review.trim()) {
-      setTipError("Add a name, stars, and a note.");
+    if (!title.trim() || tipStars < 1 || (noteRequired && !review.trim())) {
+      setTipError(noteRequired ? "Add a name, stars, and a note." : "Add a name and stars.");
       return;
     }
     if (needsTerms && !agreed) {
@@ -254,6 +256,7 @@ export function AddFamilyTip() {
             <CommentBox
               id="club-tip-review"
               label="Review"
+              optional={!noteRequired}
               placeholder={TIP_PLACEHOLDER}
               value={review}
               onChange={setReview}

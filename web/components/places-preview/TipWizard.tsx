@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { CommentBox, TIP_PLACEHOLDER, TermsCheckbox } from "@/components/CommentFields";
-import { EMPTY_ADDRESS, PlaceNameInput, formatTipAddress, matchesPlace, type PlaceAddressDraft } from "@/components/PlaceNameInput";
+import { EMPTY_ADDRESS, PlaceNameInput, formatTipAddress, matchesPlace, tipNoteRequired, type PlaceAddressDraft } from "@/components/PlaceNameInput";
 import { acceptTerms, fetchFieldMap, fetchLocationDetail, postRecommendation } from "@/lib/api";
 import type { TipCategory } from "@/lib/types";
 import { signInHref, useAccount } from "@/lib/useAccount";
@@ -162,6 +162,7 @@ function TipWizard({
   const needsTerms = Boolean(account && !account.terms_accepted && !termsAccepted);
   const searchable = matchesPlace(category);
   const tagChoices = TAGS_FOR[category];
+  const noteRequired = tipNoteRequired(category, placeId, title, address);
 
   const pins = useMemo(() => {
     const next: MapPin[] = [];
@@ -183,8 +184,8 @@ function TipWizard({
       setStepError("Add the place name.");
       return;
     }
-    if (step === 1 && (tipStars < 1 || !review.trim())) {
-      setStepError("Add stars and a note.");
+    if (step === 1 && (tipStars < 1 || (noteRequired && !review.trim()))) {
+      setStepError(noteRequired ? "Add stars and a note." : "Add stars.");
       return;
     }
     setStepError(null);
@@ -192,6 +193,11 @@ function TipWizard({
   }
 
   async function save() {
+    if (!title.trim() || tipStars < 1 || (noteRequired && !review.trim())) {
+      setStepError(noteRequired ? "Add a name, stars, and a note." : "Add a name and stars.");
+      setSaving(false);
+      return;
+    }
     if (needsTerms && !agreed) {
       setStepError("Agree to the Terms of Use.");
       return;
@@ -322,7 +328,14 @@ function TipWizard({
                 ))}
               </div>
             </fieldset>
-            <CommentBox id="preview-tip-review" label="Review" placeholder={TIP_PLACEHOLDER} value={review} onChange={setReview} />
+            <CommentBox
+              id="preview-tip-review"
+              label="Review"
+              optional={!noteRequired}
+              placeholder={TIP_PLACEHOLDER}
+              value={review}
+              onChange={setReview}
+            />
           </>
         ) : null}
         {step === 2 ? (
@@ -344,7 +357,7 @@ function TipWizard({
                   ))}
                 </ul>
               ) : null}
-              <p className="mt-2 text-sm text-ink">{review.trim()}</p>
+              {review.trim() ? <p className="mt-2 text-sm text-ink">{review.trim()}</p> : null}
             </article>
             {needsTerms ? <TermsCheckbox id="preview-tip-terms" checked={agreed} onChange={setAgreed} /> : null}
           </>

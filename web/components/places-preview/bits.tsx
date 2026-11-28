@@ -105,10 +105,12 @@ export function TipCard({
           ))}
         </ul>
       ) : null}
-      <p className="mt-2 text-sm text-ink">
-        {tip.review_text}
-        {tip.edited ? <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-stone-400">Edited</span> : null}
-      </p>
+      {tip.review_text.trim() || tip.edited ? (
+        <p className="mt-2 text-sm text-ink">
+          {tip.review_text}
+          {tip.edited ? <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-stone-400">Edited</span> : null}
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-stone-500">
         <span>{tip.author_name}</span>
         <span>{easternStamp(tip.created_at)?.dateLabel}</span>
