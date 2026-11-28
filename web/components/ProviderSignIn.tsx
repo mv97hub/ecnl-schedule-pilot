@@ -63,16 +63,18 @@ function SignInChoice({
   href,
   className,
   style,
+  onBlocked,
   children,
 }: {
   href: string | null;
   className: string;
   style?: CSSProperties;
+  onBlocked: () => void;
   children: ReactNode;
 }) {
   if (!href) {
     return (
-      <button type="button" className={className} style={style}>
+      <button type="button" className={className} style={style} onClick={onBlocked}>
         {children}
       </button>
     );
@@ -86,18 +88,35 @@ function SignInChoice({
 
 export function ProviderSignIn({ nextQuery }: { nextQuery: string }) {
   const [agreed, setAgreed] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const googleHref = agreed ? providerHref("google", nextQuery) : null;
   const appleHref = agreed ? providerHref("apple", nextQuery) : null;
+
+  function onAgreed(next: boolean) {
+    setAgreed(next);
+    if (next) setNotice(null);
+  }
+
+  function requireTerms() {
+    setNotice("Agree to the Terms of Use.");
+  }
+
   return (
     <div className="flex w-full max-w-[400px] flex-col gap-2">
       <TermsCheckbox
         id="sign-in-terms"
         checked={agreed}
-        onChange={setAgreed}
+        onChange={onAgreed}
         className="flex items-start gap-2 text-sm text-ink"
       />
+      {notice ? (
+        <p className="text-sm text-ink" role="alert">
+          {notice}
+        </p>
+      ) : null}
       <SignInChoice
         href={googleHref}
+        onBlocked={requireTerms}
         className={`relative flex h-11 w-full cursor-pointer items-center justify-center rounded border border-[#747775] bg-white px-12 text-[#1f1f1f] no-underline select-none hover:bg-[#f8f9fa] hover:shadow-[0_1px_2px_rgba(60,64,67,0.3),0_1px_3px_1px_rgba(60,64,67,0.15)] active:bg-[#f1f3f4] ${focusRing}`}
       >
         <span className="absolute left-3 flex h-5 w-5 items-center justify-center">
@@ -107,6 +126,7 @@ export function ProviderSignIn({ nextQuery }: { nextQuery: string }) {
       </SignInChoice>
       <SignInChoice
         href={appleHref}
+        onBlocked={requireTerms}
         className={`relative flex h-11 w-full cursor-pointer items-center justify-center rounded-md border-0 bg-black px-12 text-white no-underline select-none hover:bg-[#1a1a1a] active:bg-[#333] ${focusRing}`}
         style={{ fontFamily: APPLE_FONT }}
       >
