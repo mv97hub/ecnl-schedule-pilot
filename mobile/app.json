@@ -42,7 +42,8 @@
           "imageWidth": 200
         }
       ],
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      "react-native-maps"
     ],
     "experiments": {
       "typedRoutes": true

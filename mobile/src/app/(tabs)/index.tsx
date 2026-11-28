@@ -4,18 +4,34 @@ import { useState } from "react";
 import { FlatList, RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { SignedInHome } from "@/components/SignedInHome";
 import { VenueLine } from "@/components/VenueLine";
 import { Card, Crest, GoldButton, Hit, Loading, Notice, OutlineButton, PreferencesButton, ResultBadge, SavedDataNote } from "@/components/ui";
 import { fetchDashboard } from "@/lib/api";
 import { formatKickoff } from "@/lib/format";
 import { openMaps } from "@/lib/maps";
 import { countdown, ppg, squadBadge, teamScoreline, wdl } from "@/lib/present";
+import { useAccount } from "@/store/account";
 import { useFavorites } from "@/store/favorites";
 import { useSession } from "@/store/session";
 import { colors } from "@/theme";
 import type { MobileGame, MobileTeamCard } from "@/lib/types";
 
 export default function HomeScreen() {
+  const token = useAccount((state) => state.token);
+  const ready = useAccount((state) => state.ready);
+  if (!ready) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bone, justifyContent: "center" }}>
+        <Loading />
+      </View>
+    );
+  }
+  if (token) return <SignedInHome token={token} />;
+  return <UnsignedHome />;
+}
+
+function UnsignedHome() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const width = useWindowDimensions().width;

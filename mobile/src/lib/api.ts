@@ -11,6 +11,7 @@ import type {
   HeadToHeadReport,
   LocationDetail,
   MobileDashboard,
+  WeekendMap,
   ProviderSession,
   PredictedStandings,
   ScheduleFilter,
@@ -136,6 +137,11 @@ export function fetchTeams(options?: {
 
 export function fetchSchedule(teamId: number, filter: ScheduleFilter): Promise<ScheduleResponse> {
   return request<ScheduleResponse>(`/teams/${teamId}/schedule?filter=${filter}`);
+}
+
+/** Signed-in home. The server uses the account's saved club and teams. Do not send device ids. */
+export function fetchWeekend(token: string): Promise<WeekendMap> {
+  return request<WeekendMap>("/me/weekend", { token });
 }
 
 export function fetchDashboard(teamIds: number[], clubId: string | null): Promise<MobileDashboard> {

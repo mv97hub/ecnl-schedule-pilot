@@ -565,3 +565,66 @@ export type AccountCalendar = {
   source: "playmetrics" | "teamsnap";
   url: string;
 };
+
+export type WeekendPin = {
+  latitude: number;
+  longitude: number;
+};
+
+export type WeekendNote = {
+  surface: string | null;
+  parking: number | null;
+  line: string | null;
+};
+
+export type WeekendTeam = {
+  id: number;
+  name: string;
+  age_group: string;
+  gender: "boys" | "girls";
+  tier: string;
+};
+
+export type WeekendGame = {
+  id: number;
+  starts_at: string;
+  timezone: string;
+  status: GameStatus;
+  side: "home" | "away";
+  day: string;
+  complex_name: string;
+  field_name: string | null;
+  city: string;
+  state: string;
+  venue_key: string;
+  squad: WeekendTeam;
+  opponent_id: number;
+  opponent_name: string;
+  opponent_logo_url: string | null;
+  opponent_club_name: string | null;
+  pin: WeekendPin | null;
+  pin_missing: boolean;
+  note: WeekendNote;
+};
+
+export type WeekendRecord = {
+  wins: number;
+  draws: number;
+  losses: number;
+};
+
+export type WeekendMap = {
+  has_favorites: boolean;
+  club_name: string | null;
+  club_logo_url: string | null;
+  record: WeekendRecord | null;
+  club_games: boolean;
+  lead_team_id: number | null;
+  range_start: string;
+  range_end: string;
+  window_start: string;
+  window_end: string;
+  home: WeekendPin | null;
+  teams: WeekendTeam[];
+  games: WeekendGame[];
+};
