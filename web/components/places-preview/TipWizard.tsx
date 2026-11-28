@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { CommentBox, TIP_PLACEHOLDER, TermsCheckbox } from "@/components/CommentFields";
-import { EMPTY_ADDRESS, PlaceNameInput, formatTipAddress, type PlaceAddressDraft } from "@/components/PlaceNameInput";
+import { EMPTY_ADDRESS, PlaceNameInput, formatTipAddress, matchesPlace, type PlaceAddressDraft } from "@/components/PlaceNameInput";
 import { acceptTerms, fetchFieldMap, fetchLocationDetail, postRecommendation } from "@/lib/api";
 import type { TipCategory } from "@/lib/types";
 import { signInHref, useAccount } from "@/lib/useAccount";
@@ -17,7 +17,7 @@ import { PreviewBack, StarRow, TIP_LABEL } from "./bits";
 const CATEGORIES: { id: TipCategory; label: string }[] = [
   { id: "HOTEL", label: "Hotel" },
   { id: "RESTAURANT", label: "Team Food and Dining" },
-  { id: "COFFEE_GAP", label: "Between-Game Hangout" },
+  { id: "COFFEE_GAP", label: "Team Hangouts" },
   { id: "ACTIVITY", label: "Activity" },
   { id: "SIDELINE_TIP", label: "Sideline and Parking Tip" },
 ];
@@ -160,7 +160,7 @@ function TipWizard({
   const [stepError, setStepError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const needsTerms = Boolean(account && !account.terms_accepted && !termsAccepted);
-  const searchable = category === "HOTEL" || category === "RESTAURANT";
+  const searchable = matchesPlace(category);
   const tagChoices = TAGS_FOR[category];
 
   const pins = useMemo(() => {
@@ -300,7 +300,7 @@ function TipWizard({
               )}
             </div>
             <p className="mt-3 text-xs text-stone-500">
-              Hotel and restaurant names, including cafes, match places within 25 miles of this field. Hangouts, activities, and sideline tips keep the name you type.
+              Hotel, restaurant, and team hangout names match places within 25 miles of this field. Food search includes cafes. Activities and sideline tips keep the name you type.
             </p>
           </>
         ) : null}

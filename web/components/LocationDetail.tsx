@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { CommentBox, RATING_PLACEHOLDER, TIP_PLACEHOLDER, TermsCheckbox } from "@/components/CommentFields";
 import { PlaceAddress, tipDisplayName } from "@/components/PlaceCredit";
-import { EMPTY_ADDRESS, PlaceNameInput, StaticFieldName, formatTipAddress, type PlaceAddressDraft } from "@/components/PlaceNameInput";
+import { EMPTY_ADDRESS, PlaceNameInput, StaticFieldName, formatTipAddress, matchesPlace, type PlaceAddressDraft } from "@/components/PlaceNameInput";
 import { ReportTip } from "@/components/ReportTip";
 import { TipVotes, sortTips } from "@/components/TipVotes";
 import { acceptTerms, fetchLocationDetail, postRating, postRecommendation, voteRecommendation } from "@/lib/api";
@@ -38,7 +38,7 @@ const EMPTY_SCORES: Scores = {
 const CATEGORIES: { id: TipCategory; label: string }[] = [
   { id: "HOTEL", label: "Hotel" },
   { id: "RESTAURANT", label: "Team Food and Dining" },
-  { id: "COFFEE_GAP", label: "Between-Game Hangout" },
+  { id: "COFFEE_GAP", label: "Team Hangouts" },
   { id: "ACTIVITY", label: "Activity" },
   { id: "SIDELINE_TIP", label: "Sideline and Parking Tip" },
 ];
@@ -328,9 +328,8 @@ function LocationDetailView({ venueKey }: { venueKey: string }) {
         rating: tipStars,
         review_text: review.trim(),
         tags,
-        place_id: category === "HOTEL" || category === "RESTAURANT" ? placeId : null,
-        formatted_address:
-          (category === "HOTEL" || category === "RESTAURANT") && !placeId ? formatTipAddress(address) || null : null,
+        place_id: matchesPlace(category) ? placeId : null,
+        formatted_address: matchesPlace(category) && !placeId ? formatTipAddress(address) || null : null,
       });
       setTitle("");
       setPlaceId(null);
